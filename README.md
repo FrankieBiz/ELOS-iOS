@@ -1,179 +1,182 @@
-# ELOS — Daily Performance OS
+# ELOS — Native iOS Gym App
 
-Your personal app for habits, training, nutrition, schedule, and recovery. Built with React + Vite, wrapped in Capacitor 6 for native iOS.
-
----
-
-## How this repo works
-
-You write code on your Windows PC using Claude Code. When you want to test on your iPhone, you pull the repo on your Mac, build it, and open it in Xcode. That's it — no weird sync tools needed.
-
-```
-Windows (code here) ──git push──▶ GitHub ──git pull──▶ Mac (build + run on iPhone)
-```
+A hyper-aesthetic, offline-first gym tracking app built entirely in **SwiftUI + SwiftData**. No web views, no Capacitor, no JavaScript. 100% native Apple.
 
 ---
 
-## One-time Mac setup
+## What's in the App
 
-You only need to do this section once.
+| Tab | What it does |
+|-----|-------------|
+| **Today** | Your program's workout for today, streak badge, week calendar, recent PRs |
+| **Train** | Browse 5 built-in programs, 70+ exercise library, full workout history |
+| **Progress** | Apple Charts — volume over time, muscle breakdown, bodyweight trend, PR list |
+| **You** | Profile, units, haptics, rest timer, plate setup, HealthKit |
 
-### 1. Install the tools
+**Active Workout (fullscreen):**
+- Live elapsed timer + progress bar
+- Smart weight pre-fill based on your last session
+- WeightStepper with long-press to accelerate
+- Rest timer with animated ring + haptics at 3s countdown
+- IPF color-coded plate calculator
+- Automatic PR detection (Epley 1RM formula) + confetti burst
+- Difficulty rating after each set → adjusts next recommendation
 
-**Xcode** — download it from the Mac App Store. It's big (~10 GB), so start this first.
+**Onboarding:** 4-page animated flow (welcome → name → body stats → program pick)
 
-**Homebrew** — open Terminal and run:
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+---
+
+## Built-In Programs
+
+- **PPL** — Push/Pull/Legs, 6 days
+- **Upper/Lower** — 4 days
+- **Full Body 3×** — Beginner-friendly
+- **5/3/1** — Advanced strength
+- **Bro Split** — Classic 5-day
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| UI | SwiftUI (iOS 17+) |
+| State | `@Observable AppState` |
+| Persistence | SwiftData (6 models) |
+| Charts | Apple Charts framework |
+| Haptics | `UIImpactFeedbackGenerator` |
+| Progressive overload | UserDefaults `[exerciseName: recommendedKg]` |
+
+**No backend. No internet required. All data lives locally on device.**
+
+---
+
+## File Structure
+
+```
+ELOS/
+├── ELOSApp.swift              # @main entry, SwiftData container
+├── AppState.swift             # Global @Observable state, streak logic
+├── ContentView.swift          # 4-tab TabView + fullScreenCover workout
+├── Theme.swift                # Colors, fonts, spacing, haptics, animations
+│
+├── Models/
+│   └── ELOSModels.swift       # WorkoutSession, WorkoutSet, PersonalRecord,
+│                              # CustomExercise, WorkoutTemplate, BodyMetric
+│
+├── Services/
+│   ├── ExerciseData.swift     # 70+ exercises with muscle groups + SF Symbols
+│   ├── ProgramLibrary.swift   # 5 programs with day-by-day structure
+│   └── APIService.swift       # Stub (app is fully offline)
+│
+└── Views/
+    ├── Onboarding/
+    │   └── OnboardingFlow.swift
+    ├── Today/
+    │   └── TodayView.swift
+    ├── Train/
+    │   ├── TrainView.swift           # Programs / Library / History tabs
+    │   ├── ActiveSessionView.swift   # Full workout flow
+    │   └── WorkoutCompleteView.swift # Summary + confetti
+    ├── Progress/
+    │   └── ProgressView.swift        # Apple Charts dashboard
+    ├── Me/
+    │   └── MeView.swift              # Settings + profile (struct: YouView)
+    ├── Eat/
+    │   └── EatView.swift             # Stub
+    ├── Plan/
+    │   └── PlanView.swift            # Stub
+    └── Components/
+        ├── SharedComponents.swift    # GlassCard, SolidCard, StatTile, etc.
+        ├── Steppers.swift            # WeightStepper, RepStepper, RPESelector
+        ├── RestTimer.swift           # Animated ring timer + banner
+        ├── PlateCalculator.swift     # IPF color plate visualization
+        └── Confetti.swift            # Particle burst for PRs
 ```
 
-**Node.js** (via Homebrew):
-```bash
-brew install node
-```
+---
 
-**CocoaPods** (iOS dependency manager):
-```bash
-sudo gem install cocoapods
-```
+## Setup (Xcode Only — No Terminal Needed)
 
-If that fails with a Ruby error, try:
-```bash
-brew install cocoapods
-```
+### 1. Clone the repo
 
-### 2. Clone the repo
+Open **Terminal** on your Mac and run:
 
 ```bash
+cd ~/Desktop
 git clone https://github.com/FrankieBiz/ELOS-iOS.git
-cd ELOS-iOS
 ```
 
-### 3. Install npm dependencies and run the first build
+### 2. Create a new Xcode project
 
-```bash
-npm install
-npm run build
-npx cap sync
-```
+1. Open **Xcode**
+2. **File → New → Project**
+3. Select **iOS → App** → click **Next**
+4. Fill in:
+   - **Product Name**: `ELOS`
+   - **Interface**: SwiftUI
+   - **Language**: Swift
+   - **Storage**: SwiftData ← **required**
+5. Click **Next** → Save somewhere on your Mac → **Create**
 
-### 4. Install iOS CocoaPods dependencies
+### 3. Delete the default ContentView
 
-```bash
-cd ios/App
-pod install
-cd ../..
-```
+In Xcode's left sidebar:
+- Right-click `ContentView.swift` → **Delete** → **Remove Reference**
 
-This downloads the native Capacitor plugins. Only needed after the first clone and whenever you add a new Capacitor plugin.
+### 4. Add the Swift files
 
-### 5. Open in Xcode
+1. Open **Finder** → navigate to `~/Desktop/ELOS-iOS/`
+2. In Xcode's left sidebar, right-click the top-level **ELOS** folder
+3. Click **Add Files to "ELOS"...**
+4. Select the **`ELOS/`** folder from the cloned repo
+5. Make sure these are checked:
+   - ✅ **Copy items if needed**
+   - ✅ **Create groups**
+6. Click **Add**
 
-```bash
-npx cap open ios
-```
+### 5. Set deployment target
 
-This opens `ios/App/App.xcworkspace` — always use the `.xcworkspace` file, **not** `.xcodeproj`. If Xcode is already open you can also open it manually via `File → Open`.
+1. Click the **ELOS** project (top of left sidebar, blue icon)
+2. Select the **ELOS** target
+3. **General** tab → scroll to **Minimum Deployments**
+4. Set **iOS** to **17.0**
+
+### 6. Build and run
+
+1. Press **⌘B** to build — wait for "Build Succeeded"
+2. Select a simulator from the top bar (e.g. iPhone 15 Pro)
+3. Press **⌘R** to run
 
 ---
 
-## Running on your iPhone
+## Running on a Real iPhone
 
-### First time only — trust your Mac
-
-1. Plug your iPhone into your Mac with a cable.
-2. Xcode will ask you to trust the device — tap **Trust** on your iPhone.
-
-### Sign the app
-
-1. In Xcode, click the top-level **App** project in the left sidebar.
-2. Go to **Signing & Capabilities**.
-3. Under **Team**, sign in with your Apple ID (free account works for device testing).
-4. The Bundle Identifier is already set to `com.elos.app` — you can leave it or change it to something like `com.yourname.elos`.
-5. Make sure **Automatically manage signing** is checked.
-
-### Run it
-
-1. In the top bar, click the device selector (next to the play button) and choose your iPhone.
-2. Hit the **▶ Play** button (or `Cmd + R`).
-3. Xcode builds and installs the app on your phone. First build takes ~1-2 minutes.
-
-**If you get an "Untrusted Developer" error on your iPhone:**
-Go to `Settings → General → VPN & Device Management → Developer App → Trust`.
+1. Plug your iPhone in via USB
+2. In Xcode: **ELOS target → Signing & Capabilities → Team** → sign in with your Apple ID
+3. Select your iPhone from the device picker at the top
+4. Press **⌘R**
+5. If you get "Untrusted Developer" on your phone: **Settings → General → VPN & Device Management → Developer App → Trust**
 
 ---
 
-## Your coding workflow
+## TestFlight / App Store
 
-Every time you make changes on your Windows PC and want to see them on your iPhone:
+1. Device selector → **Any iOS Device (arm64)**
+2. **Product → Archive**
+3. Organizer → **Distribute App → TestFlight & App Store**
+4. Upload → go to [appstoreconnect.apple.com](https://appstoreconnect.apple.com)
 
-**On Windows (after making changes):**
-```bash
-git add .
-git commit -m "your message"
-git push
-```
-
-**On Mac:**
-```bash
-git pull
-npm run build
-npx cap sync
-```
-
-Then hit **▶** in Xcode — it redeploys to your phone in seconds.
-
-> You don't need to re-run `pod install` unless you add new Capacitor plugins.
+> Requires a paid Apple Developer account ($99/year) to upload. Free Apple ID works for USB device testing.
 
 ---
 
-## Uploading to TestFlight
+## Common Issues
 
-Once you're happy with a build and want to share it or test it properly:
-
-1. In Xcode, make sure your device target is set to **Any iOS Device (arm64)** (not your specific phone).
-2. Go to **Product → Archive**.
-3. Wait for the archive to finish — it opens the Organizer window automatically.
-4. Click **Distribute App → TestFlight & App Store → Next**.
-5. Follow the prompts. Xcode uploads it to App Store Connect.
-6. Go to [appstoreconnect.apple.com](https://appstoreconnect.apple.com) → TestFlight → add yourself as a tester.
-7. You'll get an email invite — accept it, install the TestFlight app on your iPhone, and install ELOS from there.
-
-> **Note:** To upload to TestFlight you need a paid Apple Developer account ($99/year). For just running on your own phone via USB, a free Apple ID works fine.
-
----
-
-## Local web preview (no iPhone needed)
-
-If you just want to see the app in a browser while working:
-
-```bash
-npm run dev
-```
-
-Open `http://localhost:5173`. The app will look exactly like it does on iPhone, minus the native status bar behavior.
-
----
-
-## Project structure
-
-```
-ELOS-iOS/
-├── screens/          # Tab screens (Today, Train, Eat, Plan, Me)
-├── app.jsx           # Root component + state management
-├── shell.jsx         # StatusBar, TabBar, NavBar, shared UI components
-├── sheets.jsx        # Bottom sheet modals (log meal, add habit, etc.)
-├── settings_screens.jsx  # Settings sub-screens
-├── storage.js        # localStorage persistence + cloud sync
-├── styles.css        # All styles (design system + iOS-specific overrides)
-├── main.jsx          # Vite entry point + Capacitor native init
-├── vite.config.js    # Build config
-├── capacitor.config.json  # iOS app config (bundle ID, plugins)
-└── ios/App/          # Xcode project — open App.xcworkspace
-```
-
----
-
-## Backend API
-
-The cloud sync feature uses a lightweight Vercel API. See [README_BACKEND.md](README_BACKEND.md) for endpoint docs. The app works fully offline without it — all data is stored locally on device.
+| Problem | Fix |
+|---------|-----|
+| Play button greyed out | Press ⌘B (build) first, then ⌘R |
+| "Cannot find type X in scope" | Make sure all files in `ELOS/` were added with **Create groups** |
+| Build errors after adding files | Product → Clean Build Folder (⇧⌘K) → then ⌘B |
+| Simulator doesn't appear | Xcode → Settings → Platforms → download an iOS simulator |
+| App crashes on launch | Check deployment target is iOS 17.0 |
