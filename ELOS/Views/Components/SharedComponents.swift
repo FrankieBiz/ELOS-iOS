@@ -193,7 +193,7 @@ struct SectionLabel: View {
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.brand)
+                    .foregroundStyle(Color.brand)
             }
         }
         .padding(.horizontal, Theme.Space.lg)
@@ -326,7 +326,7 @@ struct EmptyStateCard: View {
                 Circle().fill(Color.brand.opacity(0.12)).frame(width: 76, height: 76)
                 Image(systemName: icon)
                     .font(.system(size: 30, weight: .medium))
-                    .foregroundStyle(.brand)
+                    .foregroundStyle(Color.brand)
             }
             VStack(spacing: 4) {
                 Text(title).font(.system(size: 18, weight: .bold, design: .rounded))
