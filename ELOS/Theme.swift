@@ -93,6 +93,7 @@ extension ShapeStyle where Self == Color {
     static var vWarn:        Color { .vWarn }
     static var pearl:        Color { .pearl }
     static var silver:       Color { .silver }
+    static var shadowTxt:    Color { .shadowTxt }
     static var obsidian:     Color { .obsidian }
     static var onyx:         Color { .onyx }
     static var graphite:     Color { .graphite }
