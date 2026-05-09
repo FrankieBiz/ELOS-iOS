@@ -652,7 +652,7 @@ private struct SetInputRow: View {
         HStack(spacing: 8) {
             Text(set.isWarmup ? "W" : "\(index + 1)")
                 .font(.system(size: 13, weight: .black, design: .rounded))
-                .foregroundStyle(set.isWarmup ? .brandWarn : (set.completed ? .brandSuccess : .secondary))
+                .foregroundStyle(set.isWarmup ? Color.brandWarn : (set.completed ? Color.brandSuccess : Color.secondary))
                 .frame(width: 36, height: 44)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -716,7 +716,7 @@ private struct SetInputRow: View {
             } label: {
                 Image(systemName: set.completed ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 26, weight: .black))
-                    .foregroundStyle(set.completed ? .brandSuccess : .secondary)
+                    .foregroundStyle(set.completed ? Color.brandSuccess : Color.secondary)
             }
             .buttonStyle(.pressable(scale: 0.85, haptic: .none))
             .frame(width: 38)
