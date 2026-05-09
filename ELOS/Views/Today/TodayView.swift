@@ -3,20 +3,13 @@ import SwiftData
 
 struct TodayView: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.skin) private var skin
     @Environment(\.modelContext) private var ctx
 
     @Query(sort: \WorkoutSession.date, order: .reverse) private var sessions: [WorkoutSession]
     @Query(sort: \PersonalRecord.dateAchieved, order: .reverse) private var personalRecords: [PersonalRecord]
 
-    private var program: Program {
-        Program.find(id: appState.activeProgramId)
-    }
-
-    private var todayDay: ProgramDay {
-        Program.todayDay(for: program, startDate: appState.programStartDate)
-    }
-
+    private var program: Program { Program.find(id: appState.activeProgramId) }
+    private var todayDay: ProgramDay { Program.todayDay(for: program, startDate: appState.programStartDate) }
     private var todayExercises: [ExerciseDefinition] {
         todayDay.exerciseIds.compactMap { ExerciseDefinition.find(id: $0) }
     }
@@ -27,384 +20,294 @@ struct TodayView: View {
         return sessions.filter { $0.date >= weekStart }
     }
 
-    private var weeklyVolumeKg: Double {
-        thisWeekSessions.reduce(0) { $0 + $1.totalVolumeKg }
-    }
-
-    private var weeklySetCount: Int {
-        thisWeekSessions.reduce(0) { $0 + $1.sets.count }
-    }
-
-    private var lastSession: WorkoutSession? { sessions.first }
+    private var weeklyVolumeKg: Double { thisWeekSessions.reduce(0) { $0 + $1.totalVolumeKg } }
+    private var weeklySetCount: Int    { thisWeekSessions.reduce(0) { $0 + $1.sets.count } }
 
     private var firstName: String {
         let trimmed = appState.displayName.trimmingCharacters(in: .whitespaces)
-        return trimmed.components(separatedBy: " ").first ?? (trimmed.isEmpty ? "Athlete" : trimmed)
+        return trimmed.components(separatedBy: " ").first ?? (trimmed.isEmpty ? "Operator" : trimmed)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    header
-                        .padding(.horizontal, Theme.Space.lg)
-                        .padding(.top, Theme.Space.xs)
-                        .padding(.bottom, Theme.Space.md)
-
-                    sessionCard
+                    statusBar
                         .padding(.horizontal, Theme.Space.md)
+                        .padding(.top, Theme.Space.xs)
 
-                    quickStats
+                    Hairline().padding(.top, Theme.Space.sm)
+
+                    missionCard
+                        .padding(.horizontal, Theme.Space.md)
+                        .padding(.top, Theme.Space.lg)
+
+                    SectionLabel(title: "This Week")
+                    weekStrip
+                        .padding(.horizontal, Theme.Space.md)
+                        .padding(.top, Theme.Space.xs)
+
+                    statRow
                         .padding(.horizontal, Theme.Space.md)
                         .padding(.top, Theme.Space.md)
 
-                    SectionLabel(title: "This Week")
-                    weeklyOverview
-                        .padding(.horizontal, Theme.Space.md)
-
                     if !personalRecords.isEmpty {
-                        SectionLabel(title: "Recent PRs", actionTitle: "All", action: {})
-                        recentPRs
-                            .padding(.horizontal, Theme.Space.md)
+                        SectionLabel(title: "Personal Records")
+                        prList.padding(.horizontal, Theme.Space.md)
                     }
 
-                    Spacer(minLength: 60)
+                    Spacer(minLength: 80)
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(skin.background.ignoresSafeArea())
-            .navigationBarTitleDisplayMode(.inline)
+            .background(Color.vBG.ignoresSafeArea())
+            .navigationBarHidden(true)
         }
     }
 
-    // MARK: Header (greeting + streak)
+    // MARK: Status bar
 
-    private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
+    private var statusBar: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(Date.now.prettyDay)
-                    .font(.system(size: 11, weight: .heavy))
-                    .kerning(0.6)
-                    .foregroundStyle(.secondary)
-                Text(elosGreeting + ",")
-                    .font(Theme.Font.title(28))
-                Text(firstName + ".")
-                    .font(Theme.Font.title(28))
-                    .foregroundStyle(.brand)
+                    .font(.system(size: 10, weight: .heavy))
+                    .kerning(1.6)
+                    .foregroundStyle(.vLabelMute)
+                Text(elosGreeting + ", " + firstName.uppercased())
+                    .font(Theme.Font.title(22))
+                    .foregroundStyle(.vLabel)
+                    .kerning(0.5)
             }
             Spacer()
             if appState.currentStreak > 0 {
-                StreakBadge(count: appState.currentStreak)
+                StreakBadge(count: appState.currentStreak, size: 28)
             }
         }
     }
 
-    // MARK: Today's Session card
+    // MARK: Mission card (today's workout)
 
-    private var sessionCard: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: Theme.Radius.xl, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [program.accent, program.accent.opacity(0.65), program.accent.opacity(0.35)],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    )
-                )
-
-            // Decorative glow circles
-            Circle()
-                .fill(Color.white.opacity(0.12))
-                .frame(width: 220, height: 220)
-                .offset(x: 180, y: -80)
-            Circle()
-                .fill(Color.black.opacity(0.18))
-                .frame(width: 140, height: 140)
-                .offset(x: -40, y: 120)
-
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .center, spacing: 8) {
-                    Image(systemName: program.icon)
-                        .font(.system(size: 12, weight: .heavy))
-                    Text(program.name.uppercased())
+    private var missionCard: some View {
+        let dayNumber = workoutDayNumber()
+        return VStack(alignment: .leading, spacing: 0) {
+            // Top row: program tag + day index
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        StatusDot(color: todayDay.isRest ? .vLabelMute : .vSignal)
+                        Text(program.name.uppercased())
+                            .font(.system(size: 10, weight: .heavy))
+                            .kerning(1.4)
+                            .foregroundStyle(.vLabelMute)
+                    }
+                    Text(todayDay.isRest ? "REST" : todayDay.title.uppercased())
+                        .font(Theme.Font.display(54))
+                        .foregroundStyle(.vLabel)
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+                        .kerning(-0.5)
+                    Text(todayDay.focus.uppercased())
                         .font(.system(size: 11, weight: .heavy))
-                        .kerning(0.7)
+                        .kerning(1.2)
+                        .foregroundStyle(.vLabelMute)
                 }
-                .foregroundStyle(.white.opacity(0.85))
-
-                if todayDay.isRest {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Rest day")
-                            .font(.system(size: 38, weight: .black, design: .rounded))
-                            .foregroundStyle(.white)
-                        Text(todayDay.focus)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(todayDay.title)
-                            .font(.system(size: 44, weight: .black, design: .rounded))
-                            .foregroundStyle(.white)
-                            .minimumScaleFactor(0.6)
-                            .lineLimit(1)
-                        Text(todayDay.focus)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.9))
-                    }
-                }
-
-                if !todayDay.isRest {
-                    HStack(spacing: 14) {
-                        SmallStat(value: "\(todayExercises.count)", label: "Exercises")
-                        SmallStat(value: "\(todayExercises.count * 4)", label: "Sets")
-                        SmallStat(value: estimatedDuration, label: "Min")
-                    }
-                    .padding(.top, 2)
-
-                    Button {
-                        startWorkout()
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "play.fill").font(.system(size: 16, weight: .black))
-                            Text("Start Workout")
-                                .font(.system(size: 17, weight: .black, design: .rounded))
-                        }
-                        .foregroundStyle(program.accent)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
-                    .buttonStyle(.pressable(scale: 0.97, haptic: .heavy))
-                    .padding(.top, 4)
-                } else {
-                    Button {
-                        startEmptyWorkout()
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "plus.circle.fill").font(.system(size: 16, weight: .black))
-                            Text("Start Empty Workout")
-                                .font(.system(size: 16, weight: .black, design: .rounded))
-                        }
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(.white.opacity(0.4), lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.pressable(scale: 0.97, haptic: .medium))
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("DAY")
+                        .font(.system(size: 9, weight: .heavy))
+                        .kerning(1.6)
+                        .foregroundStyle(.vLabelFaint)
+                    Text(String(format: "%02d", dayNumber))
+                        .font(Theme.Font.mono(28, .black))
+                        .foregroundStyle(.vSignal)
                 }
             }
-            .padding(20)
+
+            // Stats sub-row
+            if !todayDay.isRest {
+                Hairline().padding(.vertical, Theme.Space.md)
+                HStack(spacing: 0) {
+                    metric(label: "Exercises", value: "\(todayExercises.count)")
+                    Rectangle().fill(Color.vLine).frame(width: 0.5, height: 32)
+                    metric(label: "Sets",      value: "\(todayExercises.count * 4)")
+                    Rectangle().fill(Color.vLine).frame(width: 0.5, height: 32)
+                    metric(label: "Min",       value: "~\(todayExercises.count * 11)")
+                }
+            } else {
+                Hairline().padding(.vertical, Theme.Space.md)
+                Text("Recovery is part of the protocol.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.vLabelMute)
+            }
+
+            // CTA
+            Button {
+                if todayDay.isRest { startEmptyWorkout() } else { startWorkout() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: todayDay.isRest ? "plus" : "play.fill")
+                        .font(.system(size: 13, weight: .black))
+                    Text(todayDay.isRest ? "FREE WORKOUT" : "BEGIN MISSION")
+                        .font(.system(size: 13, weight: .black))
+                        .kerning(1.6)
+                }
+                .foregroundStyle(.vBG)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color.vSignal, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+            }
+            .buttonStyle(.pressable(scale: 0.98, haptic: .heavy))
+            .padding(.top, Theme.Space.md)
         }
-        .frame(minHeight: 220)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xl, style: .continuous))
-        .shadow(color: program.accent.opacity(0.3), radius: 22, x: 0, y: 14)
+        .padding(Theme.Space.md)
+        .background(Color.vSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
+                .strokeBorder(Color.vLine, lineWidth: 0.5)
+        )
     }
 
-    private var estimatedDuration: String {
-        let mins = todayExercises.count * 11
-        return "\(mins)"
+    private func metric(label: String, value: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(Theme.Font.mono(20, .black))
+                .foregroundStyle(.vLabel)
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .heavy))
+                .kerning(1.2)
+                .foregroundStyle(.vLabelMute)
+        }
+        .frame(maxWidth: .infinity)
     }
 
-    // MARK: Quick stats
+    // MARK: Week strip
 
-    private var quickStats: some View {
-        HStack(spacing: 10) {
-            StatTile(
-                label: "Streak",
-                value: "\(appState.currentStreak)",
-                sub: appState.currentStreak == 1 ? "day" : "days",
-                icon: "flame.fill",
-                accent: .brand
-            )
-            StatTile(
-                label: "This Week",
-                value: weeklySetCount > 0 ? "\(weeklySetCount)" : "0",
-                sub: weeklySetCount == 1 ? "set" : "sets",
-                icon: "list.bullet.rectangle.fill",
-                accent: .brandInfo
-            )
-            StatTile(
-                label: "PRs",
-                value: "\(personalRecords.count)",
-                sub: "all-time",
-                icon: "trophy.fill",
-                accent: .brandTrophy
-            )
+    private var weekStrip: some View {
+        let cal = Calendar.current
+        let weekStart = cal.dateInterval(of: .weekOfYear, for: .now)?.start ?? .now
+        let days = (0..<7).map { cal.date(byAdding: .day, value: $0, to: weekStart)! }
+        let trained: Set<String> = Set(thisWeekSessions.map { $0.date.dayKey })
+
+        return HStack(spacing: 4) {
+            ForEach(Array(days.enumerated()), id: \.offset) { idx, day in
+                dayCell(day: day, trained: trained.contains(day.dayKey),
+                        isToday: cal.isDateInToday(day))
+            }
         }
     }
 
-    // MARK: Weekly overview
+    private func dayCell(day: Date, trained: Bool, isToday: Bool) -> some View {
+        let f = DateFormatter(); f.dateFormat = "EEE"
+        let dn = DateFormatter(); dn.dateFormat = "d"
+        return VStack(spacing: 4) {
+            Text(f.string(from: day).uppercased())
+                .font(.system(size: 9, weight: .heavy))
+                .kerning(0.8)
+                .foregroundStyle(isToday ? .vSignal : .vLabelFaint)
+            Text(dn.string(from: day))
+                .font(Theme.Font.mono(15, .black))
+                .foregroundStyle(trained ? .vBG : (isToday ? .vSignal : .vLabel))
+            Rectangle()
+                .fill(trained ? Color.vSignal : Color.vLine)
+                .frame(height: 2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(trained ? Color.vSignal : Color.vSurface)
+        .overlay(
+            Rectangle().strokeBorder(isToday ? Color.vSignal : Color.vLine, lineWidth: isToday ? 1 : 0.5)
+        )
+    }
 
-    private var weeklyOverview: some View {
-        SolidCard {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("VOLUME")
-                            .font(.system(size: 10, weight: .heavy))
-                            .kerning(0.6)
-                            .foregroundStyle(.secondary)
-                        Text(displayVolume)
-                            .font(.system(size: 28, weight: .black, design: .rounded))
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("SESSIONS")
-                            .font(.system(size: 10, weight: .heavy))
-                            .kerning(0.6)
-                            .foregroundStyle(.secondary)
-                        Text("\(thisWeekSessions.count)")
-                            .font(.system(size: 28, weight: .black, design: .rounded))
-                    }
-                }
+    // MARK: Stat row
 
-                weekDayDots
-            }
+    private var statRow: some View {
+        HStack(spacing: 8) {
+            StatTile(label: "Sets", value: "\(weeklySetCount)",
+                     sub: "this week", icon: "list.number")
+            StatTile(label: "Volume", value: displayVolume,
+                     sub: "this week", icon: "scalemass")
+            StatTile(label: "PRs", value: "\(personalRecords.count)",
+                     sub: "all time", icon: "rosette")
         }
     }
 
     private var displayVolume: String {
         let v = appState.units.from(kg: weeklyVolumeKg)
-        if v >= 10000 { return String(format: "%.1fk %@", v/1000, appState.units.label) }
-        if v >= 1000  { return String(format: "%.1fk %@", v/1000, appState.units.label) }
-        return String(format: "%.0f %@", v, appState.units.label)
+        if v >= 10000 { return String(format: "%.0fK", v/1000) }
+        if v >= 1000  { return String(format: "%.1fK", v/1000) }
+        return String(format: "%.0f", v)
     }
 
-    private var weekDayDots: some View {
-        let cal = Calendar.current
-        let weekStart = cal.dateInterval(of: .weekOfYear, for: .now)?.start ?? .now
-        let days = (0..<7).map { cal.date(byAdding: .day, value: $0, to: weekStart)! }
-        let didTrain: Set<String> = Set(thisWeekSessions.map { $0.date.dayKey })
+    // MARK: PR list
 
-        return HStack(spacing: 6) {
-            ForEach(days, id: \.self) { day in
-                let trained = didTrain.contains(day.dayKey)
-                let isToday = cal.isDateInToday(day)
-                VStack(spacing: 4) {
-                    Text(weekdayLetter(day))
-                        .font(.system(size: 10, weight: .heavy))
-                        .foregroundStyle(.secondary)
-                    Circle()
-                        .fill(trained ? Color.brand : Color.surfaceInset)
-                        .overlay(
-                            Circle().strokeBorder(isToday ? Color.brand : .clear, lineWidth: 2)
-                        )
-                        .frame(width: 22, height: 22)
-                        .overlay(
-                            trained
-                                ? Image(systemName: "checkmark")
-                                    .font(.system(size: 10, weight: .black))
-                                    .foregroundStyle(.white)
-                                : nil
-                        )
-                }
-                .frame(maxWidth: .infinity)
-            }
-        }
-    }
-
-    private func weekdayLetter(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "EEEEE"
-        return f.string(from: d)
-    }
-
-    // MARK: Recent PRs
-
-    private var recentPRs: some View {
-        SolidCard(padding: 4) {
-            VStack(spacing: 0) {
-                ForEach(Array(personalRecords.prefix(4).enumerated()), id: \.element.id) { i, pr in
-                    PRRow(pr: pr, units: appState.units)
-                        .padding(.horizontal, 12).padding(.vertical, 10)
-                    if i < min(personalRecords.count, 4) - 1 { Hairline(inset: 12) }
+    private var prList: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(personalRecords.prefix(4).enumerated()), id: \.element.id) { i, pr in
+                prRow(idx: i + 1, pr: pr)
+                if i < min(personalRecords.count, 4) - 1 {
+                    Hairline().padding(.leading, 38)
                 }
             }
         }
+        .background(Color.vSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+                .strokeBorder(Color.vLine, lineWidth: 0.5)
+        )
     }
 
-    // MARK: Actions
+    private func prRow(idx: Int, pr: PersonalRecord) -> some View {
+        HStack(spacing: 10) {
+            IndexBadge(n: idx, active: false, size: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(pr.exerciseName.uppercased())
+                    .font(.system(size: 13, weight: .black))
+                    .kerning(0.4)
+                    .foregroundStyle(.vLabel)
+                    .lineLimit(1)
+                Text("\(pr.reps) REP\(pr.reps == 1 ? "" : "S") · \(pr.dateAchieved.shortDate.uppercased())")
+                    .font(.system(size: 9, weight: .heavy))
+                    .kerning(0.8)
+                    .foregroundStyle(.vLabelMute)
+            }
+            Spacer()
+            Text(appState.units.from(kg: pr.weightKg).prettyWeight)
+                .font(Theme.Font.mono(18, .black))
+                .foregroundStyle(.vSignal)
+            Text(appState.units.label.uppercased())
+                .font(.system(size: 9, weight: .heavy))
+                .foregroundStyle(.vLabelMute)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+    }
+
+    // MARK: Helpers
+
+    private func workoutDayNumber() -> Int {
+        let days = Calendar.current.dateComponents([.day], from: appState.programStartDate, to: .now).day ?? 0
+        return max(1, days + 1)
+    }
 
     private func startWorkout() {
         let drafts: [DraftExercise] = todayExercises.map { ex in
             DraftExercise(name: ex.name, muscleGroup: ex.muscleGroup, targetSets: 4, targetReps: 8)
         }
-        let workout = ActiveWorkout(
+        appState.activeWorkout = ActiveWorkout(
             title: todayDay.title,
             subtitle: todayDay.focus,
             exercises: drafts
         )
-        appState.activeWorkout = workout
         Haptic.heavy()
     }
 
     private func startEmptyWorkout() {
-        let workout = ActiveWorkout(
+        appState.activeWorkout = ActiveWorkout(
             title: "Free Workout",
             subtitle: "Build as you go",
             exercises: []
         )
-        appState.activeWorkout = workout
         Haptic.heavy()
-    }
-}
-
-// MARK: - Helper subviews
-
-private struct SmallStat: View {
-    let value: String
-    let label: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(value)
-                .font(.system(size: 22, weight: .black, design: .rounded))
-                .foregroundStyle(.white)
-            Text(label.uppercased())
-                .font(.system(size: 9, weight: .heavy))
-                .kerning(0.7)
-                .foregroundStyle(.white.opacity(0.85))
-        }
-    }
-}
-
-
-private struct PRRow: View {
-    let pr: PersonalRecord
-    let units: WeightUnit
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Circle()
-                    .fill(Color.brandTrophy.opacity(0.18))
-                Image(systemName: "trophy.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.brandTrophy)
-            }
-            .frame(width: 36, height: 36)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(pr.exerciseName)
-                    .font(.system(size: 15, weight: .heavy, design: .rounded))
-                Text("\(pr.reps) rep\(pr.reps == 1 ? "" : "s") · \(pr.dateAchieved.shortDate)")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(units.from(kg: pr.weightKg).prettyWeight)
-                    .font(.system(size: 22, weight: .black, design: .rounded))
-                Text(units.label)
-                    .font(.system(size: 11, weight: .heavy))
-                    .foregroundStyle(.secondary)
-            }
-        }
     }
 }

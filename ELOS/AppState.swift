@@ -13,7 +13,7 @@ final class AppState {
     var experience: Experience = .intermediate { didSet { save() } }
 
     // MARK: Preferences
-    var themeMode: ThemeMode = .inferno { didSet { save() } }
+    var themeMode: ThemeMode = .vigil { didSet { save() } }
     var units: WeightUnit = .imperial { didSet { save() } }
     var defaultRestSeconds: Int = 90 { didSet { save() } }
     var hapticsEnabled: Bool = true { didSet { save() } }
@@ -125,7 +125,7 @@ final class AppState {
         bodyweightKg      = d.double(forKey: "bodyweightKg").nonZero ?? 75
         heightCm          = d.double(forKey: "heightCm").nonZero ?? 178
         experience        = Experience(rawValue: d.string(forKey: "experience") ?? "") ?? .intermediate
-        themeMode         = ThemeMode(rawValue: d.string(forKey: "themeMode") ?? "") ?? .inferno
+        themeMode         = ThemeMode(rawValue: d.string(forKey: "themeMode") ?? "") ?? .vigil
         units             = WeightUnit(rawValue: d.string(forKey: "units") ?? "") ?? .imperial
         defaultRestSeconds = d.integer(forKey: "defaultRestSeconds").nonZero ?? 90
         hapticsEnabled    = (d.object(forKey: "hapticsEnabled") as? Bool) ?? true

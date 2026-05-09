@@ -3,7 +3,6 @@ import SwiftData
 
 struct YouView: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.skin) private var skin
     @Environment(\.modelContext) private var ctx
 
     @Query(sort: \WorkoutSession.date, order: .reverse) private var sessions: [WorkoutSession]
@@ -16,34 +15,39 @@ struct YouView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: 0) {
                     profileHeader
-                        .padding(.horizontal, 16).padding(.top, 8)
+                        .padding(.horizontal, Theme.Space.md)
+                        .padding(.top, Theme.Space.xs)
 
-                    statsRow
-                        .padding(.horizontal, 14)
+                    Hairline().padding(.top, Theme.Space.sm)
+
+                    statRow
+                        .padding(.horizontal, Theme.Space.md)
+                        .padding(.top, Theme.Space.md)
 
                     SectionLabel(title: "Preferences")
-                    preferencesCard.padding(.horizontal, 14)
+                    preferencesCard.padding(.horizontal, Theme.Space.md)
 
                     SectionLabel(title: "Workout")
-                    workoutCard.padding(.horizontal, 14)
+                    workoutCard.padding(.horizontal, Theme.Space.md)
 
                     SectionLabel(title: "Body")
-                    bodyCard.padding(.horizontal, 14)
+                    bodyCard.padding(.horizontal, Theme.Space.md)
 
                     SectionLabel(title: "Integrations")
-                    integrationsCard.padding(.horizontal, 14)
+                    integrationsCard.padding(.horizontal, Theme.Space.md)
 
                     SectionLabel(title: "Danger Zone")
-                    dangerCard.padding(.horizontal, 14)
+                    dangerCard.padding(.horizontal, Theme.Space.md)
 
                     aboutFooter
 
-                    Spacer(minLength: 50)
+                    Spacer(minLength: 80)
                 }
             }
-            .background(skin.background.ignoresSafeArea())
+            .scrollContentBackground(.hidden)
+            .background(Color.vBG.ignoresSafeArea())
             .navigationTitle("You")
             .navigationBarTitleDisplayMode(.large)
             .sheet(isPresented: $showEditProfile) { EditProfileSheet() }
@@ -56,257 +60,261 @@ struct YouView: View {
     private var profileHeader: some View {
         HStack(spacing: 14) {
             ZStack {
-                Circle()
-                    .fill(LinearGradient(colors: [Color.brand, Color.brand.opacity(0.6)],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                Rectangle()
+                    .fill(Color.vSignal)
+                    .frame(width: 64, height: 64)
                 Text(initials)
-                    .font(.system(size: 30, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
+                    .font(Theme.Font.mono(22, .black))
+                    .foregroundStyle(.vBG)
             }
-            .frame(width: 70, height: 70)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(appState.displayName.isEmpty ? "Set your name" : appState.displayName)
-                    .font(.system(size: 22, weight: .black, design: .rounded))
-                Text("\(appState.experience.label.capitalized) lifter")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(appState.displayName.isEmpty ? "SET YOUR NAME" : appState.displayName.uppercased())
+                    .font(.system(size: 18, weight: .black))
+                    .kerning(0.6)
+                    .foregroundStyle(.vLabel)
+                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    StatusDot(color: .vSignal, size: 5)
+                    Text("\(appState.experience.label.uppercased()) · OPERATOR")
+                        .font(.system(size: 9, weight: .heavy))
+                        .kerning(1.0)
+                        .foregroundStyle(.vLabelMute)
+                }
             }
             Spacer()
             Button { showEditProfile = true } label: {
-                Image(systemName: "pencil.circle.fill")
-                    .font(.system(size: 26, weight: .heavy))
-                    .foregroundStyle(.brand)
+                Image(systemName: "pencil")
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(.vSignal)
+                    .frame(width: 36, height: 36)
+                    .overlay(Rectangle().strokeBorder(Color.vLineHigh, lineWidth: 0.5))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable(scale: 0.92, haptic: .light))
         }
-        .padding(.bottom, 4)
     }
 
     private var initials: String {
         let parts = appState.displayName.split(separator: " ")
         let letters = parts.prefix(2).compactMap { $0.first.map(String.init) }
         let s = letters.joined().uppercased()
-        return s.isEmpty ? "ME" : s
+        return s.isEmpty ? "OP" : s
     }
 
     // MARK: Stats row
 
-    private var statsRow: some View {
-        HStack(spacing: 10) {
-            StatTile(label: "Workouts", value: "\(sessions.count)",
-                     icon: "checkmark.circle.fill", accent: .brand)
-            StatTile(label: "PRs", value: "\(prs.count)",
-                     icon: "trophy.fill", accent: .brandTrophy)
-            StatTile(label: "Streak", value: "\(appState.currentStreak)",
-                     icon: "flame.fill", accent: .brandWarn)
+    private var statRow: some View {
+        HStack(spacing: 8) {
+            StatTile(label: "Workouts", value: "\(sessions.count)", icon: "checkmark")
+            StatTile(label: "PRs", value: "\(prs.count)", icon: "rosette")
+            StatTile(label: "Streak", value: "\(appState.currentStreak)", icon: "bolt")
         }
     }
 
-    // MARK: Cards
+    // MARK: Preferences
 
     private var preferencesCard: some View {
         @Bindable var s = appState
-        return SolidCard(padding: 0) {
-            VStack(spacing: 0) {
-                row("Theme", icon: "swatchpalette.fill") {
-                    HStack(spacing: 10) {
-                        ForEach(ThemeMode.allCases, id: \.self) { mode in
-                            ThemeSwatch(mode: mode, isSelected: s.themeMode == mode) {
-                                s.themeMode = mode; Haptic.selection()
-                            }
-                        }
-                    }
+        return VStack(spacing: 0) {
+            row("Units", icon: "scalemass") {
+                Picker("", selection: $s.units) {
+                    Text("LBS").tag(WeightUnit.imperial)
+                    Text("KG").tag(WeightUnit.metric)
                 }
-                Hairline(inset: 16)
-                row("Units", icon: "scalemass") {
-                    Picker("", selection: $s.units) {
-                        Text("lbs").tag(WeightUnit.imperial)
-                        Text("kg").tag(WeightUnit.metric)
-                    }
-                    .pickerStyle(.segmented).frame(width: 110)
-                }
-                Hairline(inset: 16)
-                row("Haptics", icon: "iphone.radiowaves.left.and.right") {
-                    Toggle("", isOn: $s.hapticsEnabled).labelsHidden()
-                }
-                Hairline(inset: 16)
-                row("Sounds", icon: "speaker.wave.2.fill") {
-                    Toggle("", isOn: $s.soundsEnabled).labelsHidden()
-                }
+                .pickerStyle(.segmented)
+                .frame(width: 100)
+            }
+            Hairline().padding(.leading, 44)
+            row("Haptics", icon: "iphone.radiowaves.left.and.right") {
+                Toggle("", isOn: $s.hapticsEnabled).labelsHidden().tint(.vSignal)
+            }
+            Hairline().padding(.leading, 44)
+            row("Sounds", icon: "speaker.wave.2") {
+                Toggle("", isOn: $s.soundsEnabled).labelsHidden().tint(.vSignal)
             }
         }
+        .background(Color.vSurface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.sm)
+                .strokeBorder(Color.vLine, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
     }
 
     private var workoutCard: some View {
         @Bindable var s = appState
-        return SolidCard(padding: 0) {
-            VStack(spacing: 0) {
-                row("Default Rest Timer", icon: "clock.fill") {
-                    Stepper(value: $s.defaultRestSeconds, in: 30...300, step: 15) {
-                        Text("\(s.defaultRestSeconds)s")
-                            .font(.system(size: 14, weight: .heavy, design: .monospaced))
-                    }
-                    .labelsHidden()
+        return VStack(spacing: 0) {
+            row("Default Rest", icon: "clock") {
+                Stepper(value: $s.defaultRestSeconds, in: 30...300, step: 15) {
+                    Text("\(s.defaultRestSeconds)s")
+                        .font(Theme.Font.mono(13, .black))
+                        .foregroundStyle(.vLabel)
                 }
-                Hairline(inset: 16)
-                row("Plate Setup", icon: "circle.grid.2x2.fill") {
-                    Button("Edit") { showPlateSetup = true }
-                        .font(.system(size: 13, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.brand)
+                .labelsHidden()
+            }
+            Hairline().padding(.leading, 44)
+            row("Plate Setup", icon: "circle.grid.2x2") {
+                Button {
+                    showPlateSetup = true
+                } label: {
+                    Text("EDIT")
+                        .font(.system(size: 10, weight: .black))
+                        .kerning(1.0)
+                        .foregroundStyle(.vSignal)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .overlay(Rectangle().strokeBorder(Color.vSignal, lineWidth: 1))
                 }
-                Hairline(inset: 16)
-                row("Bar Weight", icon: "minus.circle.fill") {
-                    HStack(spacing: 4) {
-                        Text(s.units.from(kg: s.barWeightKg).prettyWeight)
-                            .font(.system(size: 14, weight: .heavy, design: .monospaced))
-                        Text(s.units.label).font(.system(size: 12, weight: .heavy))
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                .buttonStyle(.plain)
+            }
+            Hairline().padding(.leading, 44)
+            row("Bar Weight", icon: "minus") {
+                Text("\(s.units.from(kg: s.barWeightKg).prettyWeight) \(s.units.label.uppercased())")
+                    .font(Theme.Font.mono(13, .black))
+                    .foregroundStyle(.vLabel)
             }
         }
+        .background(Color.vSurface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.sm)
+                .strokeBorder(Color.vLine, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
     }
 
     private var bodyCard: some View {
         @Bindable var s = appState
-        return SolidCard(padding: 0) {
-            VStack(spacing: 0) {
-                row("Bodyweight", icon: "figure.stand") {
-                    HStack(spacing: 4) {
-                        TextField("", value: Binding(
-                            get: { s.units.from(kg: s.bodyweightKg) },
-                            set: { s.bodyweightKg = s.units.toKg($0) }
-                        ), format: .number)
-                        .keyboardType(.decimalPad)
-                        .font(.system(size: 14, weight: .heavy, design: .monospaced))
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 70)
-                        Text(s.units.label).font(.system(size: 12, weight: .heavy))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Hairline(inset: 16)
-                row("Height", icon: "ruler") {
-                    HStack(spacing: 4) {
-                        TextField("", value: $s.heightCm, format: .number)
-                            .keyboardType(.decimalPad)
-                            .font(.system(size: 14, weight: .heavy, design: .monospaced))
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 70)
-                        Text("cm").font(.system(size: 12, weight: .heavy))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Hairline(inset: 16)
-                row("Experience", icon: "star.fill") {
-                    Picker("", selection: $s.experience) {
-                        ForEach(Experience.allCases, id: \.self) { e in
-                            Text(e.label.capitalized).tag(e)
-                        }
-                    }
-                    .pickerStyle(.menu).labelsHidden()
+        return VStack(spacing: 0) {
+            row("Bodyweight", icon: "figure.stand") {
+                HStack(spacing: 4) {
+                    TextField("", value: Binding(
+                        get: { s.units.from(kg: s.bodyweightKg) },
+                        set: { s.bodyweightKg = s.units.toKg($0) }
+                    ), format: .number)
+                    .keyboardType(.decimalPad)
+                    .font(Theme.Font.mono(13, .black))
+                    .foregroundStyle(.vLabel)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 60)
+                    Text(s.units.label.uppercased())
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundStyle(.vLabelMute)
                 }
             }
+            Hairline().padding(.leading, 44)
+            row("Height", icon: "ruler") {
+                HStack(spacing: 4) {
+                    TextField("", value: $s.heightCm, format: .number)
+                        .keyboardType(.decimalPad)
+                        .font(Theme.Font.mono(13, .black))
+                        .foregroundStyle(.vLabel)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 60)
+                    Text("CM")
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundStyle(.vLabelMute)
+                }
+            }
+            Hairline().padding(.leading, 44)
+            row("Experience", icon: "star") {
+                Picker("", selection: $s.experience) {
+                    ForEach(Experience.allCases, id: \.self) { e in
+                        Text(e.label.capitalized).tag(e)
+                    }
+                }
+                .pickerStyle(.menu).labelsHidden().tint(.vSignal)
+            }
         }
+        .background(Color.vSurface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.sm)
+                .strokeBorder(Color.vLine, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
     }
 
     private var integrationsCard: some View {
         @Bindable var s = appState
-        return SolidCard(padding: 0) {
-            VStack(spacing: 0) {
-                row("Apple Health", icon: "heart.fill") {
-                    Toggle("", isOn: $s.healthKitEnabled).labelsHidden().tint(.pink)
-                }
+        return VStack(spacing: 0) {
+            row("Apple Health", icon: "heart") {
+                Toggle("", isOn: $s.healthKitEnabled).labelsHidden().tint(.vSignal)
             }
         }
+        .background(Color.vSurface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.sm)
+                .strokeBorder(Color.vLine, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
     }
 
     private var dangerCard: some View {
-        SolidCard(padding: 0) {
-            VStack(spacing: 0) {
-                Button {
-                    resetConfirm = true
-                } label: {
-                    HStack {
-                        Image(systemName: "arrow.counterclockwise.circle.fill")
-                            .foregroundStyle(.brandDanger)
-                        Text("Reset onboarding")
-                            .font(.system(size: 14, weight: .heavy, design: .rounded))
-                            .foregroundStyle(.brandDanger)
-                        Spacer()
-                    }
-                    .padding(14)
-                }
-                .buttonStyle(.plain)
-                .alert("Reset onboarding?", isPresented: $resetConfirm) {
-                    Button("Reset", role: .destructive) {
-                        appState.hasCompletedOnboarding = false
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("Your data is kept; you'll just see the welcome screens again.")
-                }
+        Button {
+            resetConfirm = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(.vDanger)
+                    .frame(width: 30, height: 30)
+                    .background(Color.vDanger.opacity(0.10))
+                Text("RESET ONBOARDING")
+                    .font(.system(size: 11, weight: .black))
+                    .kerning(1.0)
+                    .foregroundStyle(.vDanger)
+                Spacer()
             }
+            .padding(.horizontal, 12).padding(.vertical, 14)
+            .background(Color.vSurface)
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.Radius.sm)
+                    .strokeBorder(Color.vDanger.opacity(0.3), lineWidth: 0.5)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
+        }
+        .buttonStyle(.pressable(scale: 0.98, haptic: .warning))
+        .alert("Reset onboarding?", isPresented: $resetConfirm) {
+            Button("Reset", role: .destructive) { appState.hasCompletedOnboarding = false }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your data is kept; you'll just see the welcome screens again.")
         }
     }
 
     private var aboutFooter: some View {
         VStack(spacing: 4) {
-            Text("ELOS")
-                .font(.system(size: 14, weight: .black, design: .rounded))
-                .foregroundStyle(.brand)
-            Text("Built natively in SwiftUI · v1.0")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+            Rectangle().fill(Color.vSignal).frame(width: 24, height: 2)
+                .padding(.bottom, 6)
+            Text("ELOS · VIGIL")
+                .font(.system(size: 11, weight: .black))
+                .kerning(2.0)
+                .foregroundStyle(.vLabel)
+            Text("BUILT NATIVELY IN SWIFTUI · V1.0")
+                .font(.system(size: 9, weight: .heavy))
+                .kerning(1.4)
+                .foregroundStyle(.vLabelFaint)
         }
-        .padding(.top, 14)
+        .padding(.top, 30)
     }
 
-    // MARK: helpers
+    // MARK: helper
 
     @ViewBuilder
     private func row<Trail: View>(_ title: String, icon: String, @ViewBuilder trail: () -> Trail) -> some View {
         HStack(spacing: 10) {
             ZStack {
-                RoundedRectangle(cornerRadius: 8).fill(Color.brand.opacity(0.14))
-                Image(systemName: icon).font(.system(size: 13, weight: .heavy))
-                    .foregroundStyle(.brand)
+                Rectangle().fill(Color.vSurfaceHigh)
+                Image(systemName: icon).font(.system(size: 11, weight: .black))
+                    .foregroundStyle(.vLabelMute)
             }
-            .frame(width: 30, height: 30)
-            Text(title).font(.system(size: 14, weight: .heavy, design: .rounded))
+            .frame(width: 26, height: 26)
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .black))
+                .kerning(0.6)
+                .foregroundStyle(.vLabel)
             Spacer()
             trail()
         }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-    }
-}
-
-// MARK: - Theme swatch
-
-private struct ThemeSwatch: View {
-    let mode: ThemeMode
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        let sk = ThemeSkin.forMode(mode)
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(sk.background == Color(hex: "#F5F5F7") ? sk.background : Color(hex: "#1C1C1E"))
-                Circle()
-                    .fill(sk.accent)
-                    .scaleEffect(0.45)
-                if isSelected {
-                    Circle().strokeBorder(sk.accent, lineWidth: 2)
-                } else {
-                    Circle().strokeBorder(Color(hex: "#48484A"), lineWidth: 0.5)
-                }
-            }
-            .frame(width: 32, height: 32)
-        }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 12).padding(.vertical, 11)
     }
 }
 
@@ -324,6 +332,8 @@ struct EditProfileSheet: View {
                     TextField("Your name", text: $name)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.vBG)
             .navigationTitle("Edit Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -359,8 +369,8 @@ struct PlateSetupSheet: View {
                             Text("Bar Weight")
                             Spacer()
                             Text(formatKg(s.barWeightKg))
-                                .font(.system(size: 14, weight: .heavy, design: .monospaced))
-                                .foregroundStyle(.secondary)
+                                .font(Theme.Font.mono(13, .black))
+                                .foregroundStyle(.vLabelMute)
                         }
                     }
                 } header: { Text("Olympic Bar") }
@@ -383,6 +393,8 @@ struct PlateSetupSheet: View {
                 } header: { Text("Plates Available (per side)") }
                   footer: { Text("These are used to calculate the plates you need to load on the bar.") }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.vBG)
             .navigationTitle("Plate Setup")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

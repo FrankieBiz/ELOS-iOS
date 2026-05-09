@@ -4,7 +4,6 @@ import Charts
 
 struct ProgressDashboardView: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.skin) private var skin
     @Environment(\.modelContext) private var ctx
 
     @Query(sort: \WorkoutSession.date, order: .reverse) private var sessions: [WorkoutSession]
@@ -16,8 +15,7 @@ struct ProgressDashboardView: View {
     @State private var showAddBodyMetric = false
 
     enum TimeRange: String, CaseIterable {
-        case week = "1W", month = "1M", threeMonth = "3M", year = "1Y", all = "All"
-
+        case week = "1W", month = "1M", threeMonth = "3M", year = "1Y", all = "ALL"
         var days: Int {
             switch self {
             case .week: return 7
@@ -32,146 +30,129 @@ struct ProgressDashboardView: View {
     private var startDate: Date {
         Calendar.current.date(byAdding: .day, value: -range.days, to: .now) ?? .now
     }
-
-    private var sessionsInRange: [WorkoutSession] {
-        sessions.filter { $0.date >= startDate }
-    }
-
-    private var setsInRange: [WorkoutSet] {
-        allSets.filter { $0.completedAt >= startDate }
-    }
-
-    private var totalVolume: Double {
-        sessionsInRange.reduce(0) { $0 + $1.totalVolumeKg }
-    }
-
-    private var totalSets: Int {
-        sessionsInRange.reduce(0) { $0 + $1.sets.count }
-    }
+    private var sessionsInRange: [WorkoutSession] { sessions.filter { $0.date >= startDate } }
+    private var setsInRange: [WorkoutSet] { allSets.filter { $0.completedAt >= startDate } }
+    private var totalVolume: Double { sessionsInRange.reduce(0) { $0 + $1.totalVolumeKg } }
+    private var totalSets: Int { sessionsInRange.reduce(0) { $0 + $1.sets.count } }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
                     rangePicker
-                        .padding(.horizontal, 14)
-                        .padding(.top, 4)
+                        .padding(.horizontal, Theme.Space.md)
+                        .padding(.top, Theme.Space.sm)
 
                     statRow
-                        .padding(.horizontal, 14)
-                        .padding(.top, 12)
+                        .padding(.horizontal, Theme.Space.md)
+                        .padding(.top, Theme.Space.md)
 
-                    SectionLabel(title: "Volume Over Time")
-                    volumeChart.padding(.horizontal, 14)
+                    SectionLabel(title: "Volume")
+                    volumeChart.padding(.horizontal, Theme.Space.md)
 
                     SectionLabel(title: "Volume by Muscle")
-                    muscleChart.padding(.horizontal, 14)
+                    muscleChart.padding(.horizontal, Theme.Space.md)
 
-                    SectionLabel(title: "Streaks")
-                    streakCard.padding(.horizontal, 14)
+                    SectionLabel(title: "Streak")
+                    streakCard.padding(.horizontal, Theme.Space.md)
 
                     SectionLabel(title: "Personal Records",
                                  actionTitle: prs.count > 6 ? "All" : nil) {}
-                    prList.padding(.horizontal, 14)
+                    prList.padding(.horizontal, Theme.Space.md)
 
                     SectionLabel(title: "Body Weight",
                                  actionTitle: "Log") { showAddBodyMetric = true }
-                    bodyWeightCard.padding(.horizontal, 14)
+                    bodyWeightCard.padding(.horizontal, Theme.Space.md)
 
-                    Spacer(minLength: 60)
+                    Spacer(minLength: 80)
                 }
             }
-            .background(skin.background.ignoresSafeArea())
-            .navigationTitle("Progress")
+            .scrollContentBackground(.hidden)
+            .background(Color.vBG.ignoresSafeArea())
+            .navigationTitle("Stats")
             .navigationBarTitleDisplayMode(.large)
-            .sheet(isPresented: $showAddBodyMetric) {
-                LogBodyMetricSheet()
-            }
+            .sheet(isPresented: $showAddBodyMetric) { LogBodyMetricSheet() }
         }
     }
 
-    // MARK: Range picker
-
     private var rangePicker: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 0) {
             ForEach(TimeRange.allCases, id: \.self) { r in
                 Button {
                     withAnimation(Theme.Motion.snappy) { range = r }
                     Haptic.selection()
                 } label: {
                     Text(r.rawValue)
-                        .font(.system(size: 13, weight: .heavy, design: .rounded))
-                        .foregroundStyle(range == r ? Color.white : Color.secondary)
+                        .font(.system(size: 11, weight: .black))
+                        .kerning(1.0)
+                        .foregroundStyle(range == r ? Color.vBG : Color.vLabelMute)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .background(range == r ? Color.brand : Color.clear, in: Capsule())
+                        .background(range == r ? Color.vSignal : Color.vSurfaceHigh)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(4)
-        .background(Color.surfaceRaised, in: Capsule())
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.xs)
+                .strokeBorder(Color.vLine, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xs))
     }
 
-    // MARK: Headline stats
-
     private var statRow: some View {
-        HStack(spacing: 10) {
-            StatTile(label: "Workouts", value: "\(sessionsInRange.count)",
-                     icon: "checkmark.circle.fill", accent: .brand)
-            StatTile(label: "Sets",     value: "\(totalSets)",
-                     icon: "list.number", accent: .brandInfo)
-            StatTile(label: "Volume",   value: formatVolume(totalVolume),
-                     icon: "scalemass.fill", accent: .brandTrophy)
+        HStack(spacing: 8) {
+            StatTile(label: "Workouts", value: "\(sessionsInRange.count)", icon: "checkmark")
+            StatTile(label: "Sets",     value: "\(totalSets)", icon: "list.number")
+            StatTile(label: "Volume",   value: formatVolume(totalVolume), icon: "scalemass")
         }
     }
 
     private func formatVolume(_ kg: Double) -> String {
         let v = appState.units.from(kg: kg)
-        if v >= 10000 { return String(format: "%.0fk", v/1000) }
-        if v >= 1000  { return String(format: "%.1fk", v/1000) }
+        if v >= 10000 { return String(format: "%.0fK", v/1000) }
+        if v >= 1000  { return String(format: "%.1fK", v/1000) }
         return String(format: "%.0f", v)
     }
 
-    // MARK: Volume over time chart
+    // MARK: Volume chart
 
     private var volumeChart: some View {
-        SolidCard {
+        VStack {
             if sessionsInRange.isEmpty {
-                VStack(spacing: 6) {
-                    Image(systemName: "chart.bar.xaxis").font(.system(size: 30))
-                        .foregroundStyle(.secondary)
-                    Text("No workouts in this range")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, minHeight: 180)
+                emptyChart(icon: "chart.bar.xaxis", text: "No workouts in this range")
             } else {
                 Chart(sessionsInRange.sorted(by: { $0.date < $1.date })) { session in
                     BarMark(
                         x: .value("Date", session.date, unit: barUnit),
                         y: .value("Volume", appState.units.from(kg: session.totalVolumeKg))
                     )
-                    .foregroundStyle(LinearGradient(
-                        colors: [Color.brand, Color.brand.opacity(0.5)],
-                        startPoint: .top, endPoint: .bottom)
-                    )
-                    .cornerRadius(4)
+                    .foregroundStyle(Color.vSignal)
+                    .cornerRadius(0)
                 }
-                .frame(height: 200)
+                .frame(height: 180)
                 .chartYAxis {
                     AxisMarks(position: .leading) { _ in
-                        AxisGridLine().foregroundStyle(Color.hairline)
-                        AxisValueLabel().font(.system(size: 10))
+                        AxisGridLine().foregroundStyle(Color.vLine)
+                        AxisValueLabel().font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(Color.vLabelMute)
                     }
                 }
                 .chartXAxis {
                     AxisMarks { _ in
-                        AxisValueLabel().font(.system(size: 10))
+                        AxisValueLabel().font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(Color.vLabelMute)
                     }
                 }
+                .padding(Theme.Space.md)
             }
         }
+        .background(Color.vSurface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.sm)
+                .strokeBorder(Color.vLine, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
     }
 
     private var barUnit: Calendar.Component {
@@ -182,7 +163,7 @@ struct ProgressDashboardView: View {
         }
     }
 
-    // MARK: Muscle volume chart
+    // MARK: Muscle volume
 
     private var muscleByVolume: [(group: String, volumeKg: Double)] {
         let dict = Dictionary(grouping: setsInRange, by: \.exerciseMuscleGroup)
@@ -192,169 +173,200 @@ struct ProgressDashboardView: View {
     }
 
     private var muscleChart: some View {
-        SolidCard {
+        VStack {
             if muscleByVolume.isEmpty {
-                VStack(spacing: 6) {
-                    Image(systemName: "figure.run").font(.system(size: 30)).foregroundStyle(.secondary)
-                    Text("Log workouts to see muscle volume")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, minHeight: 180)
+                emptyChart(icon: "figure.run", text: "Log workouts to see muscle volume")
             } else {
                 Chart(muscleByVolume, id: \.group) { item in
                     BarMark(
                         x: .value("Volume", appState.units.from(kg: item.volumeKg)),
                         y: .value("Muscle", item.group)
                     )
-                    .foregroundStyle(colorFor(item.group))
-                    .cornerRadius(4)
+                    .foregroundStyle(Color.vSignal)
+                    .cornerRadius(0)
                 }
-                .frame(height: max(180, CGFloat(muscleByVolume.count) * 28))
+                .frame(height: max(180, CGFloat(muscleByVolume.count) * 26))
                 .chartXAxis {
                     AxisMarks { _ in
-                        AxisGridLine().foregroundStyle(Color.hairline)
-                        AxisValueLabel().font(.system(size: 10))
+                        AxisGridLine().foregroundStyle(Color.vLine)
+                        AxisValueLabel().font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(Color.vLabelMute)
                     }
                 }
+                .chartYAxis {
+                    AxisMarks { _ in
+                        AxisValueLabel().font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(Color.vLabelMute)
+                    }
+                }
+                .padding(Theme.Space.md)
             }
         }
+        .background(Color.vSurface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.sm)
+                .strokeBorder(Color.vLine, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
     }
 
-    private func colorFor(_ muscle: String) -> Color {
-        ExerciseDefinition.library.first { $0.muscleGroup == muscle }?.color ?? .brand
+    private func emptyChart(icon: String, text: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 24, weight: .heavy))
+                .foregroundStyle(.vLabelFaint)
+            Text(text.uppercased())
+                .font(.system(size: 10, weight: .heavy))
+                .kerning(1.0)
+                .foregroundStyle(.vLabelMute)
+        }
+        .frame(maxWidth: .infinity, minHeight: 140)
     }
 
     // MARK: Streak card
 
     private var streakCard: some View {
-        SolidCard {
-            HStack(alignment: .center, spacing: 16) {
-                StreakFlame(count: appState.currentStreak, size: 44)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("CURRENT STREAK")
-                        .font(.system(size: 10, weight: .heavy)).kerning(0.6)
-                        .foregroundStyle(.secondary)
-                    Text(appState.currentStreak == 0 ? "Start one today" : "Don't lose it")
-                        .font(.system(size: 14, weight: .heavy, design: .rounded))
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("LONGEST")
-                        .font(.system(size: 10, weight: .heavy)).kerning(0.6)
-                        .foregroundStyle(.secondary)
-                    Text("\(appState.longestStreak)")
-                        .font(.system(size: 22, weight: .black, design: .rounded))
-                }
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("CURRENT")
+                    .font(.system(size: 9, weight: .heavy))
+                    .kerning(1.4)
+                    .foregroundStyle(.vLabelMute)
+                Text("\(appState.currentStreak)")
+                    .font(Theme.Font.mono(40, .black))
+                    .foregroundStyle(.vSignal)
+                Text(appState.currentStreak == 0 ? "START TODAY" : "DAY STREAK")
+                    .font(.system(size: 9, weight: .heavy))
+                    .kerning(1.0)
+                    .foregroundStyle(.vLabelMute)
             }
+            Rectangle().fill(Color.vLine).frame(width: 0.5)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("LONGEST")
+                    .font(.system(size: 9, weight: .heavy))
+                    .kerning(1.4)
+                    .foregroundStyle(.vLabelMute)
+                Text("\(appState.longestStreak)")
+                    .font(Theme.Font.mono(40, .black))
+                    .foregroundStyle(.vLabel)
+                Text("DAYS")
+                    .font(.system(size: 9, weight: .heavy))
+                    .kerning(1.0)
+                    .foregroundStyle(.vLabelMute)
+            }
+            Spacer()
         }
+        .padding(Theme.Space.md)
+        .background(Color.vSurface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.sm)
+                .strokeBorder(Color.vLine, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
     }
 
     // MARK: PR list
 
     private var prList: some View {
-        SolidCard(padding: 4) {
+        VStack(spacing: 0) {
             if prs.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "trophy")
-                        .font(.system(size: 28)).foregroundStyle(.secondary)
-                    Text("No PRs yet — get after it.")
-                        .font(.system(size: 13, weight: .heavy, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity).padding(20)
+                EmptyStateCard(icon: "rosette",
+                               title: "No PRs Yet",
+                               subtitle: "Get after it.")
             } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(prs.prefix(6).enumerated()), id: \.element.id) { i, pr in
-                        ProgressPRRow(pr: pr, units: appState.units)
-                            .padding(.horizontal, 12).padding(.vertical, 10)
-                        if i < min(prs.count, 6) - 1 { Hairline(inset: 12) }
+                ForEach(Array(prs.prefix(6).enumerated()), id: \.element.id) { i, pr in
+                    HStack(spacing: 10) {
+                        IndexBadge(n: i + 1, active: false, size: 22)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(pr.exerciseName.uppercased())
+                                .font(.system(size: 12, weight: .black))
+                                .kerning(0.4)
+                                .foregroundStyle(.vLabel)
+                                .lineLimit(1)
+                            Text("\(pr.reps) REP\(pr.reps == 1 ? "" : "S") · \(pr.dateAchieved.shortDate.uppercased())")
+                                .font(.system(size: 9, weight: .heavy))
+                                .kerning(0.6)
+                                .foregroundStyle(.vLabelMute)
+                        }
+                        Spacer()
+                        Text(appState.units.from(kg: pr.weightKg).prettyWeight)
+                            .font(Theme.Font.mono(18, .black))
+                            .foregroundStyle(.vSignal)
+                        Text(appState.units.label.uppercased())
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(.vLabelMute)
                     }
+                    .padding(.horizontal, 10).padding(.vertical, 10)
+                    if i < min(prs.count, 6) - 1 { Hairline().padding(.leading, 40) }
                 }
             }
         }
+        .background(Color.vSurface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.sm)
+                .strokeBorder(Color.vLine, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
     }
 
-    // MARK: Body weight chart
+    // MARK: Body weight
 
     private var bodyWeightCard: some View {
-        SolidCard {
+        VStack(alignment: .leading, spacing: 0) {
             if bodyLogs.isEmpty {
-                VStack(spacing: 6) {
-                    Image(systemName: "figure.stand").font(.system(size: 30)).foregroundStyle(.secondary)
-                    Text("Log your weight to track trends")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, minHeight: 120)
+                emptyChart(icon: "figure.stand", text: "Log your weight to track trends")
+                    .padding(.vertical, 14)
             } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("Latest")
-                            .font(.system(size: 10, weight: .heavy)).kerning(0.6)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        if let latest = bodyLogs.first {
-                            Text("\(appState.units.from(kg: latest.weightKg).prettyWeight) \(appState.units.label)")
-                                .font(.system(size: 22, weight: .black, design: .rounded))
+                HStack(alignment: .firstTextBaseline) {
+                    Text("LATEST")
+                        .font(.system(size: 9, weight: .heavy))
+                        .kerning(1.4)
+                        .foregroundStyle(.vLabelMute)
+                    Spacer()
+                    if let latest = bodyLogs.first {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text("\(appState.units.from(kg: latest.weightKg).prettyWeight)")
+                                .font(Theme.Font.mono(28, .black))
+                                .foregroundStyle(.vLabel)
+                            Text(appState.units.label.uppercased())
+                                .font(.system(size: 10, weight: .heavy))
+                                .foregroundStyle(.vLabelMute)
                         }
                     }
-                    Chart(bodyLogs.sorted(by: { $0.date < $1.date })) { log in
-                        LineMark(
-                            x: .value("Date", log.date),
-                            y: .value("Weight", appState.units.from(kg: log.weightKg))
-                        )
-                        .interpolationMethod(.catmullRom)
-                        .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .foregroundStyle(Color.brandInfo)
-                        AreaMark(
-                            x: .value("Date", log.date),
-                            y: .value("Weight", appState.units.from(kg: log.weightKg))
-                        )
-                        .interpolationMethod(.catmullRom)
-                        .foregroundStyle(LinearGradient(
-                            colors: [Color.brandInfo.opacity(0.4), Color.brandInfo.opacity(0)],
-                            startPoint: .top, endPoint: .bottom)
-                        )
-                    }
-                    .frame(height: 140)
                 }
+                .padding(Theme.Space.md)
+                Chart(bodyLogs.sorted(by: { $0.date < $1.date })) { log in
+                    LineMark(
+                        x: .value("Date", log.date),
+                        y: .value("Weight", appState.units.from(kg: log.weightKg))
+                    )
+                    .interpolationMethod(.linear)
+                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .butt))
+                    .foregroundStyle(Color.vSignal)
+                }
+                .frame(height: 120)
+                .chartYAxis {
+                    AxisMarks(position: .leading) { _ in
+                        AxisValueLabel().font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(Color.vLabelMute)
+                    }
+                }
+                .chartXAxis {
+                    AxisMarks { _ in
+                        AxisValueLabel().font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(Color.vLabelMute)
+                    }
+                }
+                .padding(.horizontal, Theme.Space.md)
+                .padding(.bottom, Theme.Space.md)
             }
         }
-    }
-}
-
-// MARK: - PR row
-
-private struct ProgressPRRow: View {
-    let pr: PersonalRecord
-    let units: WeightUnit
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Circle().fill(Color.brandTrophy.opacity(0.18))
-                Image(systemName: "trophy.fill")
-                    .font(.system(size: 14, weight: .black))
-                    .foregroundStyle(.brandTrophy)
-            }
-            .frame(width: 36, height: 36)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(pr.exerciseName)
-                    .font(.system(size: 15, weight: .heavy, design: .rounded))
-                Text("\(pr.reps) rep\(pr.reps == 1 ? "" : "s") · \(pr.dateAchieved.shortDate)")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 0) {
-                Text(units.from(kg: pr.weightKg).prettyWeight)
-                    .font(.system(size: 22, weight: .black, design: .rounded))
-                Text(units.label)
-                    .font(.system(size: 10, weight: .heavy))
-                    .foregroundStyle(.secondary)
-            }
-        }
+        .background(Color.vSurface)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.sm)
+                .strokeBorder(Color.vLine, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
     }
 }
 
@@ -377,10 +389,10 @@ struct LogBodyMetricSheet: View {
                     HStack {
                         TextField(appState.units.label, text: $weight)
                             .keyboardType(.decimalPad)
-                            .font(.system(size: 24, weight: .black, design: .rounded))
+                            .font(Theme.Font.mono(22, .black))
                         Text(appState.units.label.uppercased())
                             .font(.system(size: 11, weight: .heavy))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.vLabelMute)
                     }
                     DatePicker("Date", selection: $date, displayedComponents: .date)
                 }
@@ -392,6 +404,8 @@ struct LogBodyMetricSheet: View {
                         .lineLimit(2...4)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.vBG)
             .navigationTitle("Log Body Weight")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
