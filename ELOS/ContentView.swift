@@ -40,8 +40,8 @@ struct ContentView: View {
         appearance.shadowColor = UIColor(red: 0.18, green: 0.18, blue: 0.18, alpha: 1)
 
         let item = UITabBarItemAppearance()
-        let mute = UIColor(red: 0.54, green: 0.54, blue: 0.54, alpha: 1)
-        let signal = UIColor(red: 0.961, green: 0.773, blue: 0.094, alpha: 1)
+        let mute = UIColor(red: 0.42, green: 0.42, blue: 0.42, alpha: 1)
+        let signal = UIColor.white
         item.normal.iconColor = mute
         item.normal.titleTextAttributes = [
             .foregroundColor: mute,

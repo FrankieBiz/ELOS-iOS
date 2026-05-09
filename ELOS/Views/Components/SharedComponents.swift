@@ -45,13 +45,16 @@ struct SolidCard<Content: View>: View {
 struct PressableStyle: ButtonStyle {
     var scaleAmount: CGFloat = 0.97
     var hapticStyle: HapticKind = .light
+    var glow: Bool = true
+    var glowRadius: CGFloat = 16
 
     enum HapticKind { case light, medium, heavy, soft, none }
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? scaleAmount : 1.0)
-            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .brightness(configuration.isPressed ? 0.04 : 0)
+            .glow(active: glow && configuration.isPressed, radius: glowRadius, intensity: 0.9)
             .animation(Theme.Motion.snappy, value: configuration.isPressed)
             .onChange(of: configuration.isPressed) { _, pressed in
                 guard pressed else { return }
@@ -68,12 +71,15 @@ struct PressableStyle: ButtonStyle {
 
 extension ButtonStyle where Self == PressableStyle {
     static var pressable: PressableStyle { PressableStyle() }
-    static func pressable(scale: CGFloat = 0.97, haptic: PressableStyle.HapticKind = .light) -> PressableStyle {
-        PressableStyle(scaleAmount: scale, hapticStyle: haptic)
+    static func pressable(scale: CGFloat = 0.97,
+                          haptic: PressableStyle.HapticKind = .light,
+                          glow: Bool = true,
+                          glowRadius: CGFloat = 16) -> PressableStyle {
+        PressableStyle(scaleAmount: scale, hapticStyle: haptic, glow: glow, glowRadius: glowRadius)
     }
 }
 
-// MARK: - Primary CTA (signal yellow on black)
+// MARK: - Primary CTA (platinum on obsidian, with aura)
 
 struct PrimaryCTA: View {
     let title: String
@@ -113,8 +119,9 @@ struct PrimaryCTA: View {
             .frame(maxWidth: .infinity)
             .frame(height: height)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+            .glow(radius: 18, intensity: 0.45)
         }
-        .buttonStyle(.pressable(scale: 0.98, haptic: .none))
+        .buttonStyle(.pressable(scale: 0.98, haptic: .none, glow: true, glowRadius: 24))
     }
 }
 

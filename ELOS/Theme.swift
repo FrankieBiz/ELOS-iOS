@@ -2,7 +2,7 @@ import SwiftUI
 
 // =====================================================================
 //  VIGIL  ·  the only design system this app has.
-//  pure black · signal yellow · sharp · condensed · tactical
+//  obsidian black · platinum white · sharp · luxe · aura glow
 // =====================================================================
 
 // MARK: - Color tokens
@@ -24,15 +24,16 @@ extension Color {
     static let vLabelMute   = Color(hex: "#8A8A8A") // secondary
     static let vLabelFaint  = Color(hex: "#4A4A4A") // tertiary
 
-    // Signal (the one accent)
-    static let vSignal      = Color(hex: "#F5C518") // bat-signal gold
-    static let vSignalDeep  = Color(hex: "#C99A0F") // pressed/dim
-    static let vSignalSoft  = Color(hex: "#F5C518").opacity(0.14)
+    // Signal (the one accent — pure platinum white)
+    static let vSignal      = Color(hex: "#FFFFFF") // platinum
+    static let vSignalDeep  = Color(hex: "#BFBFBF") // pressed/dim
+    static let vSignalSoft  = Color(hex: "#FFFFFF").opacity(0.10)
+    static let vAura        = Color(hex: "#FFFFFF") // glow halo color
 
-    // Status
-    static let vDanger      = Color(hex: "#E11D2A")
-    static let vSuccess     = Color(hex: "#00D26A")
-    static let vWarn        = Color(hex: "#FF8C00")
+    // Status — desaturated to fit the monochrome luxe palette
+    static let vDanger      = Color(hex: "#FF4D4D")
+    static let vSuccess     = Color(hex: "#E8E8E8")
+    static let vWarn        = Color(hex: "#CFCFCF")
 }
 
 // Backwards-compat aliases (so non-touched files still compile)
@@ -153,6 +154,33 @@ enum Theme {
         static let smooth   = Animation.easeInOut(duration: 0.20)
         static let bouncy   = Animation.spring(response: 0.34, dampingFraction: 0.70)
         static let celebrate = Animation.spring(response: 0.40, dampingFraction: 0.62)
+    }
+}
+
+// MARK: - Glow (the aura)
+//
+// Layered white shadows produce a clean halo against pure black.
+// Use .glow(active:) to fade it in on tap, focus, or selection.
+
+struct GlowModifier: ViewModifier {
+    var active: Bool = true
+    var radius: CGFloat = 14
+    var color: Color = .vAura
+    var intensity: Double = 1.0
+
+    func body(content: Content) -> some View {
+        content
+            .shadow(color: color.opacity(active ? 0.55 * intensity : 0), radius: radius * 0.5, x: 0, y: 0)
+            .shadow(color: color.opacity(active ? 0.30 * intensity : 0), radius: radius,        x: 0, y: 0)
+            .shadow(color: color.opacity(active ? 0.18 * intensity : 0), radius: radius * 1.8,  x: 0, y: 0)
+            .animation(Theme.Motion.smooth, value: active)
+    }
+}
+
+extension View {
+    /// Soft white halo around the view. Defaults to always on; pass `active:` to gate it.
+    func glow(active: Bool = true, radius: CGFloat = 14, color: Color = .vAura, intensity: Double = 1.0) -> some View {
+        modifier(GlowModifier(active: active, radius: radius, color: color, intensity: intensity))
     }
 }
 

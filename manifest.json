@@ -1,0 +1,64 @@
+{
+  "id": "/elos/",
+  "name": "ELOS — Daily Performance OS",
+  "short_name": "ELOS",
+  "description": "Habits, training, nutrition, schedule and recovery — your daily performance OS in one app.",
+  "lang": "en-US",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#0A0A0A",
+  "theme_color": "#0A0A0A",
+  "start_url": "./",
+  "scope": "./",
+  "categories": ["health", "fitness", "lifestyle", "productivity"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Log meal",
+      "short_name": "Log meal",
+      "description": "Quick-log a meal",
+      "url": "./?intent=logMeal",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Start workout",
+      "short_name": "Workout",
+      "description": "Start today's workout",
+      "url": "./?intent=startWorkout",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Log sleep",
+      "short_name": "Sleep",
+      "description": "Log last night's sleep",
+      "url": "./?intent=logSleep",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
