@@ -2,7 +2,7 @@
 
 ## Requirements
 - macOS 14+ (Sonoma)
-- Xcode 15+
+- Xcode 15.2+
 - iOS 17+ deployment target
 
 ---
@@ -17,112 +17,139 @@
    - **Bundle Identifier**: `com.yourname.elos`
    - **Interface**: SwiftUI
    - **Language**: Swift
-   - **Storage**: SwiftData ← IMPORTANT
-4. Click **Next** → save to `ELOS-Native/`
+   - **Storage**: SwiftData ← REQUIRED
+4. Click **Next** → choose a save location
 
 ---
 
-## 2. Add Swift Files
+## 2. Add the Swift Files
 
-Delete the default `ContentView.swift` that Xcode generates, then **drag all files** from `ELOS-Native/ELOS/` into your Xcode project:
+Delete the default `ContentView.swift` Xcode generates, then **drag the entire `ELOS/` folder** from this repo into your Xcode project navigator.
+
+When the import dialog appears:
+- ✅ **Copy items if needed**
+- ✅ **Create groups**
+
+The folder structure being imported:
 
 ```
-ELOSApp.swift
-ContentView.swift
-AppState.swift
-
-Models/
-  ELOSModels.swift
-
-Views/
-  Today/TodayView.swift
-  Train/TrainView.swift
-  Train/ActiveSessionView.swift
-  Eat/EatView.swift
-  Plan/PlanView.swift
-  Me/MeView.swift
-  Components/SharedComponents.swift
-
-Services/
-  APIService.swift
-  ExerciseData.swift
+ELOS/
+├── ELOSApp.swift
+├── AppState.swift
+├── ContentView.swift
+├── Theme.swift
+│
+├── Models/
+│   └── ELOSModels.swift
+│
+├── Services/
+│   ├── ExerciseData.swift
+│   ├── ProgramLibrary.swift
+│   └── APIService.swift
+│
+└── Views/
+    ├── Onboarding/
+    │   └── OnboardingFlow.swift
+    ├── Today/
+    │   └── TodayView.swift
+    ├── Train/
+    │   ├── TrainView.swift
+    │   ├── ActiveSessionView.swift
+    │   └── WorkoutCompleteView.swift
+    ├── Progress/
+    │   └── ProgressView.swift
+    ├── Me/
+    │   └── MeView.swift
+    ├── Eat/
+    │   └── EatView.swift        ← stub, kept for project ref
+    ├── Plan/
+    │   └── PlanView.swift       ← stub, kept for project ref
+    └── Components/
+        ├── SharedComponents.swift
+        ├── Steppers.swift
+        ├── RestTimer.swift
+        ├── PlateCalculator.swift
+        └── Confetti.swift
 ```
-
-When the import dialog appears: ✅ **Copy items if needed** + ✅ **Create groups**
 
 ---
 
-## 3. Configure Signing & Capabilities
+## 3. Add the Charts Framework
+
+1. Select your project in the navigator → **Package Dependencies**
+2. **Apple Charts is built into iOS 16+** — no package needed, it's part of the SDK
+3. Make sure your deployment target is **iOS 17.0**
+
+---
+
+## 4. Configure Signing & Capabilities
 
 1. Select the `ELOS` target → **Signing & Capabilities**
 2. Set your **Team** (Apple Developer account)
-3. Add capabilities:
-   - **Push Notifications** (for future)
-   - **HealthKit** (optional, for Apple Health integration)
-   - **Camera** (for barcode scanning — requires NSCameraUsageDescription in Info.plist)
+3. Optionally add **HealthKit** capability if you want Apple Health integration
 
 ---
 
-## 4. Info.plist Keys
+## 5. Info.plist Keys (HealthKit only)
 
-Add these to `Info.plist`:
+If you added the HealthKit capability, add to `Info.plist`:
+
 ```xml
-<key>NSCameraUsageDescription</key>
-<string>ELOS uses the camera to scan food barcodes for quick nutrition logging.</string>
-
 <key>NSHealthShareUsageDescription</key>
-<string>ELOS can read your health data to provide insights.</string>
+<string>ELOS reads body metrics from Apple Health.</string>
 
 <key>NSHealthUpdateUsageDescription</key>
-<string>ELOS can write workouts and nutrition data to Apple Health.</string>
+<string>ELOS can log workouts and body weight to Apple Health.</string>
 ```
 
 ---
 
-## 5. Run the App
+## 6. Run the App
 
-Select your iPhone (or simulator) → **Run (⌘R)**
+Select your iPhone or simulator → **Run (⌘R)**
 
-The app will launch with:
-- ✅ Full offline storage (SwiftData)
-- ✅ 5 tabs: Today / Train / Eat / Plan / Me
-- ✅ Live workout logging with timer
-- ✅ Nutrition tracking with macro rings
-- ✅ Habit tracking with streaks
-- ✅ Assignment and exam tracker
-- ✅ Dark/light mode (system adaptive)
+First launch shows onboarding:
+1. Welcome screen
+2. Name input
+3. Body stats (weight, height, experience level, units)
+4. Program selection (PPL, Upper/Lower, Full Body, 5/3/1, Bro Split)
 
----
-
-## 6. Connect a Backend (Optional)
-
-In the app: **Me → (future Settings screen) → Backend URL + Auth Token**
-
-The app works 100% offline — the backend is optional for cloud sync.
-
-If you want to connect your existing ELOS backend:
-1. Set `apiBaseURL` to `https://elos.vercel.app`
-2. Set `authToken` to the user's JWT from your NextAuth system
-3. The `APIService.swift` layer will sync data automatically
+After onboarding you land on the **Today** tab.
 
 ---
 
-## 7. AI Meal Parsing
+## 7. What's in the App
 
-To enable Claude-powered AI meal parsing:
-1. Add your Anthropic API key to the app (via Settings → Developer)
-2. The `SyncManager.parseMealWithAI()` function in `APIService.swift` handles the call
-3. Rate-limit this to 30 calls/hour per your existing cost controls
+| Tab | Features |
+|-----|----------|
+| **Today** | Program hero card, today's workout CTA, streak badge, week calendar, quick stats, recent PRs |
+| **Train** | Programs browser, exercise library (70+ exercises), workout history; start any workout |
+| **Progress** | Volume bar chart, muscle breakdown, streak card, PR list, bodyweight trend (Apple Charts) |
+| **You** | Profile, units/theme/haptics settings, rest timer default, plate setup, HealthKit toggle |
+
+**Active Workout (fullscreen):**
+- Elapsed timer, progress bar, finish button
+- Per-set weight + reps with smart pre-fill from previous performance
+- WeightStepper with long-press acceleration
+- Rest timer with animated ring, auto-haptic countdown
+- Plate calculator with IPF color visualization
+- Automatic PR detection (Epley 1RM) with confetti
+- Difficulty rating after each set → adjusts next recommendation
 
 ---
 
-## 8. Barcode Scanner (AVFoundation)
+## 8. Architecture
 
-The barcode scanner sheet (`BarcodeScannerSheet`) is currently a stub.
-To implement the real camera scanner:
-1. Create a `UIViewRepresentable` wrapping `AVCaptureSession`
-2. Add an `AVMetadataObjectTypeEAN13Code` output
-3. On scan, call OpenFoodFacts API: `https://world.openfoodfacts.org/api/v2/product/{barcode}.json`
+| Layer | Technology |
+|-------|-----------|
+| UI | SwiftUI (100% native) |
+| Global state | `@Observable AppState` |
+| Persistence | SwiftData (6 models) |
+| Progressive overload | UserDefaults `[String: Double]` keyed by exercise |
+| Charts | Apple Charts framework |
+| Haptics | `UIImpactFeedbackGenerator` |
+
+All data is local — no backend, no internet required. Perfect for the gym.
 
 ---
 
@@ -130,20 +157,6 @@ To implement the real camera scanner:
 
 1. **Archive**: Product → Archive
 2. **Validate**: Xcode Organizer → Validate App
-3. **Upload**: Distribute App → App Store Connect
-4. **App Store Connect**: Set screenshots, description, pricing
-5. **Review**: Submit for Apple Review
-
----
-
-## Architecture Notes
-
-| Layer | Technology | Purpose |
-|---|---|---|
-| UI | SwiftUI | 100% native Apple views |
-| State | `@Observable` AppState | Global ephemeral state |
-| Persistence | SwiftData | Offline-first local storage |
-| Networking | URLSession + actor | Backend sync (optional) |
-| AI | Anthropic Claude API | Meal parsing |
-
-All data lives locally in SwiftData first. Network sync is additive — the app is fully functional without any internet connection. Perfect for the gym.
+3. **Distribute**: App Store Connect → upload
+4. Set screenshots, description, pricing in App Store Connect
+5. Submit for Apple Review
