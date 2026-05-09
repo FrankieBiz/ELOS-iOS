@@ -9,169 +9,151 @@ struct WorkoutCompleteView: View {
 
     private var formattedVolume: String {
         let v = units.from(kg: data.totalVolumeKg)
-        if v >= 10000 { return String(format: "%.0fK", v/1000) }
-        if v >= 1000  { return String(format: "%.1fK", v/1000) }
+        if v >= 10000 { return String(format: "%.0fK", v / 1000) }
+        if v >= 1000  { return String(format: "%.1fK", v / 1000) }
         return String(format: "%.0f", v)
     }
 
     var body: some View {
         ZStack {
-            Color.vBG.ignoresSafeArea()
+            Color.obsidian.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 Spacer()
 
-                // Big mark
-                ZStack {
-                    Rectangle()
-                        .fill(Color.vSignal)
-                        .frame(width: 96, height: 96)
-                        .scaleEffect(phase >= 1 ? 1 : 0.6)
-                        .opacity(phase >= 1 ? 1 : 0)
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 44, weight: .black))
-                        .foregroundStyle(.vBG)
-                        .scaleEffect(phase >= 1 ? 1 : 0.4)
-                        .opacity(phase >= 1 ? 1 : 0)
-                }
-
+                // Hero text — typography IS the celebration
                 VStack(spacing: 6) {
-                    Text("MISSION COMPLETE")
-                        .font(.system(size: 11, weight: .heavy))
-                        .kerning(2.4)
-                        .foregroundStyle(.vSignal)
-                    Text(data.title.uppercased())
-                        .font(Theme.Font.display(40))
-                        .foregroundStyle(.vLabel)
-                        .kerning(-0.5)
-                        .multilineTextAlignment(.center)
-                        .minimumScaleFactor(0.6)
-                        .lineLimit(2)
-                    Text(data.subtitle.uppercased())
-                        .font(.system(size: 10, weight: .heavy))
-                        .kerning(1.4)
-                        .foregroundStyle(.vLabelMute)
-                }
-                .padding(.top, 24)
-                .opacity(phase >= 2 ? 1 : 0)
-                .offset(y: phase >= 2 ? 0 : 14)
+                    Text("Session complete".uppercased())
+                        .font(Theme.Font.label)
+                        .kerning(2.0)
+                        .foregroundStyle(.silver)
+                        .opacity(phase >= 1 ? 1 : 0)
 
-                Spacer().frame(height: 40)
+                    Text("Well done.")
+                        .font(Theme.Font.display(64))
+                        .foregroundStyle(.pearl)
+                        .breathGlow(minIntensity: 0.10, maxIntensity: 0.30, radius: 24)
+                        .scaleEffect(phase >= 1 ? 1 : 0.92)
+                        .opacity(phase >= 1 ? 1 : 0)
 
-                // Stat grid
-                HStack(spacing: 0) {
-                    statCol(label: "Duration", value: "\(data.durationMinutes)", suffix: "MIN")
-                    Rectangle().fill(Color.vLine).frame(width: 0.5, height: 56)
-                    statCol(label: "Sets", value: "\(data.totalSets)", suffix: nil)
-                    Rectangle().fill(Color.vLine).frame(width: 0.5, height: 56)
-                    statCol(label: "Volume", value: formattedVolume, suffix: units.label.uppercased())
-                    Rectangle().fill(Color.vLine).frame(width: 0.5, height: 56)
-                    statCol(label: "Exercises", value: "\(data.exerciseCount)", suffix: nil)
+                    Text(data.title)
+                        .font(Theme.Font.body(16))
+                        .foregroundStyle(.silver)
+                        .opacity(phase >= 2 ? 1 : 0)
                 }
-                .padding(.horizontal, Theme.Space.md)
-                .padding(.vertical, 14)
-                .background(Color.vSurface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.Radius.sm)
-                        .strokeBorder(Color.vLine, lineWidth: 0.5)
-                )
+                .multilineTextAlignment(.center)
+                .animation(Theme.Motion.glide, value: phase)
+
+                Spacer().frame(height: 48)
+
+                // Stat grid — 2×2
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    statTile(label: "Duration", value: "\(data.durationMinutes)", suffix: "min")
+                    statTile(label: "Sets", value: "\(data.totalSets)", suffix: nil)
+                    statTile(label: "Volume", value: formattedVolume, suffix: units.label)
+                    statTile(label: "Exercises", value: "\(data.exerciseCount)", suffix: nil)
+                }
                 .padding(.horizontal, Theme.Space.md)
                 .opacity(phase >= 3 ? 1 : 0)
-                .offset(y: phase >= 3 ? 0 : 14)
+                .offset(y: phase >= 3 ? 0 : 16)
+                .animation(Theme.Motion.glide, value: phase)
 
+                // New PRs
                 if !data.newPRs.isEmpty {
-                    VStack(spacing: 6) {
-                        HStack(spacing: 6) {
-                            Rectangle().fill(Color.vSignal).frame(width: 12, height: 2)
-                            Text("\(data.newPRs.count) NEW PR\(data.newPRs.count == 1 ? "" : "S")")
-                                .font(.system(size: 11, weight: .heavy))
-                                .kerning(1.4)
-                                .foregroundStyle(.vSignal)
-                            Spacer()
-                        }
-                        .padding(.horizontal, Theme.Space.md)
-                        .padding(.top, Theme.Space.lg)
-
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionLabel(title: "\(data.newPRs.count) New Record\(data.newPRs.count == 1 ? "" : "s")")
                         VStack(spacing: 0) {
                             ForEach(Array(data.newPRs.enumerated()), id: \.offset) { i, name in
-                                HStack(spacing: 10) {
-                                    IndexBadge(n: i + 1, active: true, size: 22)
-                                    Text(name.uppercased())
-                                        .font(.system(size: 12, weight: .black))
-                                        .kerning(0.4)
-                                        .foregroundStyle(.vLabel)
+                                HStack(spacing: 12) {
+                                    Rectangle().fill(Color.pearl).frame(width: 2, height: 28)
+                                    Text(name)
+                                        .font(Theme.Font.heading(14))
+                                        .foregroundStyle(.pearl)
                                     Spacer()
                                     Image(systemName: "rosette")
-                                        .font(.system(size: 14, weight: .black))
-                                        .foregroundStyle(.vSignal)
+                                        .font(.system(size: 13, weight: .thin))
+                                        .foregroundStyle(.silver)
                                 }
-                                .padding(.horizontal, 12).padding(.vertical, 10)
-                                if i < data.newPRs.count - 1 { Hairline().padding(.leading, 38) }
+                                .padding(.horizontal, Theme.Space.md).padding(.vertical, 12)
+                                if i < data.newPRs.count - 1 {
+                                    Hairline().padding(.horizontal, Theme.Space.md)
+                                }
                             }
                         }
-                        .background(Color.vSurface)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: Theme.Radius.sm)
-                                .strokeBorder(Color.vSignal.opacity(0.3), lineWidth: 0.5)
-                        )
+                        .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+                        .edgeHighlight(radius: Theme.Radius.md)
                         .padding(.horizontal, Theme.Space.md)
                     }
                     .opacity(phase >= 3 ? 1 : 0)
                     .offset(y: phase >= 3 ? 0 : 14)
+                    .animation(Theme.Motion.glide.delay(0.1), value: phase)
                 }
 
                 Spacer()
 
+                // CTA
                 Button {
                     Haptic.success(); onDone()
                 } label: {
-                    Text("RETURN TO BASE")
-                        .font(.system(size: 13, weight: .black))
-                        .kerning(1.6)
-                        .foregroundStyle(.vBG)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(Color.vSignal)
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.left")
+                            .font(.system(size: 14, weight: .thin))
+                        Text("Return home")
+                            .font(Theme.Font.title(17))
+                    }
+                    .foregroundStyle(.obsidian)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(
+                        LinearGradient(colors: [Color.pearl.opacity(0.97), .pearl], startPoint: .top, endPoint: .bottom),
+                        in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
+                    )
+                    .breathGlow(minIntensity: 0.10, maxIntensity: 0.28, radius: 16)
                 }
-                .buttonStyle(.pressable(scale: 0.98, haptic: .none))
+                .buttonStyle(.pressable(scale: 0.985, haptic: .none, glow: true, glowRadius: 20))
                 .padding(.horizontal, Theme.Space.md)
-                .padding(.bottom, 28)
+                .padding(.bottom, 32)
+                .opacity(phase >= 3 ? 1 : 0)
+                .animation(Theme.Motion.glide.delay(0.2), value: phase)
             }
         }
         .preferredColorScheme(.dark)
         .onAppear {
             Haptic.success()
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) { phase = 1 }
+            withAnimation(Theme.Motion.glide) { phase = 1 }
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 250_000_000)
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) { phase = 2 }
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                withAnimation(Theme.Motion.glide) { phase = 2 }
             }
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 600_000_000)
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.75)) { phase = 3 }
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                withAnimation(Theme.Motion.glide) { phase = 3 }
             }
         }
     }
 
-    private func statCol(label: String, value: String, suffix: String?) -> some View {
-        VStack(spacing: 4) {
+    private func statTile(label: String, value: String, suffix: String?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             Text(label.uppercased())
-                .font(.system(size: 9, weight: .heavy))
-                .kerning(1.2)
-                .foregroundStyle(.vLabelMute)
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                .font(Theme.Font.label)
+                .kerning(1.4)
+                .foregroundStyle(.silver)
+            HStack(alignment: .lastTextBaseline, spacing: 4) {
                 Text(value)
-                    .font(Theme.Font.mono(20, .black))
-                    .foregroundStyle(.vLabel)
+                    .font(Theme.Font.display(40))
+                    .foregroundStyle(.pearl)
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
                 if let suffix {
                     Text(suffix)
-                        .font(.system(size: 9, weight: .heavy))
-                        .foregroundStyle(.vLabelFaint)
+                        .font(Theme.Font.body(12))
+                        .foregroundStyle(.shadowTxt)
                 }
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Space.md)
+        .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+        .edgeHighlight(radius: Theme.Radius.md)
     }
 }

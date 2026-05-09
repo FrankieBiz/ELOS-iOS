@@ -27,15 +27,9 @@ struct ActiveWorkoutView: View {
     private var workout: ActiveWorkout {
         appState.activeWorkout ?? ActiveWorkout(title: "", subtitle: "", exercises: [])
     }
-
     private var isResting: Bool { restRemaining > 0 }
-
-    private var totalCompletedSets: Int {
-        workout.exercises.flatMap(\.sets).filter(\.completed).count
-    }
-    private var totalPlannedSets: Int {
-        workout.exercises.flatMap(\.sets).count
-    }
+    private var totalCompletedSets: Int { workout.exercises.flatMap(\.sets).filter(\.completed).count }
+    private var totalPlannedSets: Int { workout.exercises.flatMap(\.sets).count }
 
     private var lastWeightByExercise: [String: Double] {
         var out: [String: Double] = [:]
@@ -54,26 +48,21 @@ struct ActiveWorkoutView: View {
     private var bestEstimated1RMByExercise: [String: Double] {
         var out: [String: Double] = [:]
         for s in allSets where !s.isWarmup {
-            if let e1rm = s.estimated1RMKg {
-                out[s.exerciseName] = max(out[s.exerciseName] ?? 0, e1rm)
-            }
+            if let e1rm = s.estimated1RMKg { out[s.exerciseName] = max(out[s.exerciseName] ?? 0, e1rm) }
         }
-        for pr in allPRs {
-            out[pr.exerciseName] = max(out[pr.exerciseName] ?? 0, pr.estimated1RMKg)
-        }
+        for pr in allPRs { out[pr.exerciseName] = max(out[pr.exerciseName] ?? 0, pr.estimated1RMKg) }
         return out
     }
 
     var body: some View {
         ZStack {
-            Color.vBG.ignoresSafeArea()
+            Color.obsidian.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 topBar
 
                 if isResting {
-                    restBanner
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                    restBanner.transition(.move(edge: .top).combined(with: .opacity))
                 }
 
                 exerciseList
@@ -81,8 +70,7 @@ struct ActiveWorkoutView: View {
 
             if let title = prToastTitle {
                 VStack {
-                    prToast(title)
-                        .padding(.top, 90)
+                    prToast(title).padding(.top, 90)
                     Spacer()
                 }
                 .ignoresSafeArea()
@@ -97,11 +85,11 @@ struct ActiveWorkoutView: View {
         .sheet(isPresented: $showAddExercise) {
             AddExerciseSheet { ex in addExercise(ex) }
         }
-        .alert("Discard workout?", isPresented: $showDiscardConfirm) {
-            Button("Discard", role: .destructive) { appState.activeWorkout = nil }
+        .alert("End session?", isPresented: $showDiscardConfirm) {
+            Button("End session", role: .destructive) { appState.activeWorkout = nil }
             Button("Keep going", role: .cancel) {}
         } message: { Text("Your sets won't be saved.") }
-        .alert("Finish workout?", isPresented: $showFinishConfirm) {
+        .alert("Finish session?", isPresented: $showFinishConfirm) {
             Button("Finish", role: .none) { finishWorkout() }
             Button("Keep going", role: .cancel) {}
         } message: { Text("\(totalCompletedSets) of \(totalPlannedSets) sets completed.") }
@@ -113,31 +101,30 @@ struct ActiveWorkoutView: View {
         }
     }
 
-    // MARK: Top bar (HUD)
+    // MARK: Top bar
 
     private var topBar: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: 14) {
                 Button {
                     Haptic.light(); showDiscardConfirm = true
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .black))
-                        .foregroundStyle(.vLabel)
-                        .frame(width: 32, height: 32)
-                        .background(Color.vSurfaceHigh)
-                        .overlay(Rectangle().strokeBorder(Color.vLine, lineWidth: 0.5))
+                        .font(.system(size: 13, weight: .thin))
+                        .foregroundStyle(.silver)
+                        .frame(width: 34, height: 34)
+                        .background(Color.graphite, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
                 }
-                .buttonStyle(.pressable(scale: 0.9, haptic: .none))
+                .buttonStyle(.pressable(scale: 0.9, haptic: .none, glow: false))
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("MISSION TIME")
-                        .font(.system(size: 8, weight: .heavy))
-                        .kerning(1.4)
-                        .foregroundStyle(.vLabelFaint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Session")
+                        .font(Theme.Font.label)
+                        .kerning(1.2)
+                        .foregroundStyle(.shadowTxt)
                     Text(formatElapsed(elapsed))
-                        .font(Theme.Font.mono(20, .black))
-                        .foregroundStyle(.vLabel)
+                        .font(Theme.Font.mono(22, .regular))
+                        .foregroundStyle(.pearl)
                 }
 
                 Spacer()
@@ -145,48 +132,45 @@ struct ActiveWorkoutView: View {
                 Button {
                     Haptic.medium(); showFinishConfirm = true
                 } label: {
-                    Text("FINISH")
-                        .font(.system(size: 11, weight: .black))
-                        .kerning(1.4)
-                        .foregroundStyle(.vBG)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(Color.vSignal)
+                    Text("Finish")
+                        .font(Theme.Font.body(14, .medium))
+                        .foregroundStyle(.obsidian)
+                        .padding(.horizontal, 16).padding(.vertical, 9)
+                        .background(Color.pearl, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+                        .glow(radius: 14, intensity: 0.25)
                 }
-                .buttonStyle(.pressable(scale: 0.95, haptic: .none))
+                .buttonStyle(.pressable(scale: 0.95, haptic: .none, glow: true, glowRadius: 18))
             }
             .padding(.horizontal, Theme.Space.md)
-            .padding(.top, 6)
+            .padding(.top, 8)
 
-            // Title + progress
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(workout.title.uppercased())
-                        .font(.system(size: 14, weight: .black))
-                        .kerning(0.6)
-                        .foregroundStyle(.vLabel)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(workout.title)
+                        .font(Theme.Font.heading(16))
+                        .foregroundStyle(.pearl)
                         .lineLimit(1)
-                    Text("\(totalCompletedSets) / \(totalPlannedSets) SETS COMPLETE")
-                        .font(.system(size: 9, weight: .heavy))
-                        .kerning(1.0)
-                        .foregroundStyle(.vLabelMute)
+                    Text("\(totalCompletedSets) / \(totalPlannedSets) sets")
+                        .font(Theme.Font.body(13))
+                        .foregroundStyle(.silver)
                 }
                 Spacer()
             }
             .padding(.horizontal, Theme.Space.md)
             .padding(.top, 10)
 
-            // Progress bar
+            // Progress bar — 2pt, full width
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Rectangle().fill(Color.vSurfaceHigh).frame(height: 3)
+                    Rectangle().fill(Color.mist).frame(height: 2)
                     Rectangle()
-                        .fill(Color.vSignal)
-                        .frame(width: geo.size.width * progressFraction, height: 3)
-                        .animation(Theme.Motion.snappy, value: progressFraction)
+                        .fill(Color.pearl)
+                        .frame(width: geo.size.width * progressFraction, height: 2)
+                        .animation(Theme.Motion.smooth, value: progressFraction)
                 }
             }
-            .frame(height: 3)
-            .padding(.top, 10)
+            .frame(height: 2)
+            .padding(.top, 12)
 
             Hairline()
         }
@@ -200,43 +184,44 @@ struct ActiveWorkoutView: View {
     // MARK: Rest banner
 
     private var restBanner: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Text(formatRest(restRemaining))
-                .font(Theme.Font.mono(28, .black))
-                .foregroundStyle(.vSignal)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("REST")
-                    .font(.system(size: 9, weight: .heavy))
-                    .kerning(1.4)
-                    .foregroundStyle(.vLabelMute)
+                .font(Theme.Font.mono(32, .light))
+                .foregroundStyle(.pearl)
+                .glow(radius: 12, intensity: 0.2)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Rest".uppercased())
+                    .font(Theme.Font.label)
+                    .kerning(1.2)
+                    .foregroundStyle(.shadowTxt)
                 Text("Recovery in progress")
-                    .font(.system(size: 11, weight: .heavy))
-                    .foregroundStyle(.vLabel)
+                    .font(Theme.Font.body(13))
+                    .foregroundStyle(.silver)
             }
             Spacer()
-            Button { restRemaining = max(0, restRemaining + 15); Haptic.light() } label: {
-                Text("+15s")
-                    .font(.system(size: 10, weight: .black))
-                    .kerning(0.6)
-                    .foregroundStyle(.vLabel)
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .overlay(Rectangle().strokeBorder(Color.vLineHigh, lineWidth: 0.5))
+            Button { restRemaining = max(0, restRemaining + 30); Haptic.light() } label: {
+                Text("+30s")
+                    .font(Theme.Font.body(13))
+                    .foregroundStyle(.pearl)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(Color.graphite, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+                    .edgeHighlight(radius: Theme.Radius.sm)
             }
-            .buttonStyle(.pressable(scale: 0.94, haptic: .none))
+            .buttonStyle(.pressable(scale: 0.94, haptic: .none, glow: false))
             Button { restRemaining = 0; Haptic.medium() } label: {
-                Text("SKIP")
-                    .font(.system(size: 10, weight: .black))
-                    .kerning(1.0)
-                    .foregroundStyle(.vBG)
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(Color.vSignal)
+                Text("Skip")
+                    .font(Theme.Font.body(13, .medium))
+                    .foregroundStyle(.obsidian)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(Color.pearl, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
             }
-            .buttonStyle(.pressable(scale: 0.94, haptic: .none))
+            .buttonStyle(.pressable(scale: 0.94, haptic: .none, glow: true, glowRadius: 14))
         }
         .padding(.horizontal, Theme.Space.md)
-        .padding(.vertical, 10)
-        .background(Color.vSurface)
-        .overlay(Rectangle().fill(Color.vLine).frame(height: 0.5), alignment: .bottom)
+        .padding(.vertical, 12)
+        .background(Color.onyx)
+        .overlay(Hairline(), alignment: .bottom)
     }
 
     // MARK: Exercise list
@@ -247,9 +232,9 @@ struct ActiveWorkoutView: View {
                 if workout.exercises.isEmpty {
                     EmptyStateCard(
                         icon: "plus.app",
-                        title: "Empty Roster",
-                        subtitle: "Add your first exercise to begin logging.",
-                        actionTitle: "Add Exercise"
+                        title: "Empty session",
+                        subtitle: "Add your first exercise to begin.",
+                        actionTitle: "Add exercise"
                     ) { showAddExercise = true }
                     .padding(.top, 40)
                 }
@@ -279,24 +264,21 @@ struct ActiveWorkoutView: View {
 
                 Button { showAddExercise = true } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "plus").font(.system(size: 12, weight: .black))
-                        Text("ADD EXERCISE")
-                            .font(.system(size: 12, weight: .black))
-                            .kerning(1.4)
+                        Image(systemName: "plus").font(.system(size: 13, weight: .thin))
+                        Text("Add exercise")
+                            .font(Theme.Font.body(14))
                     }
-                    .foregroundStyle(.vSignal)
+                    .foregroundStyle(.silver)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
-                            .strokeBorder(Color.vSignal, lineWidth: 1)
-                    )
+                    .frame(height: 48)
+                    .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+                    .edgeHighlight(radius: Theme.Radius.md)
                 }
-                .buttonStyle(.pressable(scale: 0.97, haptic: .light))
+                .buttonStyle(.pressable(scale: 0.97, haptic: .light, glow: false))
                 .padding(.horizontal, Theme.Space.md)
                 .padding(.top, Theme.Space.md)
 
-                Spacer(minLength: 80)
+                Spacer(minLength: 100)
             }
         }
     }
@@ -304,30 +286,31 @@ struct ActiveWorkoutView: View {
     // MARK: PR toast
 
     private func prToast(_ title: String) -> some View {
-        HStack(spacing: 10) {
-            Rectangle().fill(Color.vSignal).frame(width: 4, height: 28)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("NEW RECORD")
-                    .font(.system(size: 9, weight: .heavy))
-                    .kerning(1.4)
-                    .foregroundStyle(.vBG.opacity(0.6))
-                Text(title.uppercased())
-                    .font(.system(size: 13, weight: .black))
-                    .kerning(0.6)
-                    .foregroundStyle(.vBG)
+        HStack(spacing: 12) {
+            Rectangle().fill(Color.pearl).frame(width: 3, height: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("New record".uppercased())
+                    .font(Theme.Font.label)
+                    .kerning(1.2)
+                    .foregroundStyle(.obsidian.opacity(0.5))
+                Text(title)
+                    .font(Theme.Font.heading(14))
+                    .foregroundStyle(.obsidian)
             }
             Spacer()
             Image(systemName: "rosette")
-                .font(.system(size: 16, weight: .black))
-                .foregroundStyle(.vBG)
+                .font(.system(size: 16, weight: .thin))
+                .foregroundStyle(.obsidian.opacity(0.7))
         }
-        .padding(.horizontal, 14).padding(.vertical, 12)
-        .background(Color.vSignal)
+        .padding(.horizontal, 16).padding(.vertical, 14)
+        .background(Color.pearl)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+        .glow(radius: 16, intensity: 0.4)
         .padding(.horizontal, Theme.Space.md)
         .transition(.move(edge: .top).combined(with: .opacity))
     }
 
-    // MARK: Bindings
+    // MARK: Bindings & actions (unchanged logic)
 
     private func bindingFor(idx: Int) -> Binding<DraftExercise> {
         Binding(
@@ -340,120 +323,74 @@ struct ActiveWorkoutView: View {
             }
         )
     }
-
     private func removeExercise(at idx: Int) {
-        guard var w = appState.activeWorkout else { return }
-        guard idx < w.exercises.count else { return }
+        guard var w = appState.activeWorkout, idx < w.exercises.count else { return }
         w.exercises.remove(at: idx)
         appState.activeWorkout = w
         Haptic.warning()
     }
-
     private func addExercise(_ ex: ExerciseDefinition) {
         guard var w = appState.activeWorkout else { return }
-        w.exercises.append(
-            DraftExercise(name: ex.name, muscleGroup: ex.muscleGroup, targetSets: 4, targetReps: 8)
-        )
+        w.exercises.append(DraftExercise(name: ex.name, muscleGroup: ex.muscleGroup, targetSets: 4, targetReps: 8))
         appState.activeWorkout = w
         Haptic.success()
     }
-
     private func startRest(seconds: Int) {
         restTotal = seconds
-        withAnimation(Theme.Motion.snappy) { restRemaining = seconds }
+        withAnimation(Theme.Motion.smooth) { restRemaining = seconds }
     }
-
     private func celebratePR(for exerciseName: String) {
         flashTrigger += 1
         Haptic.success()
         newPRsThisSession.insert(exerciseName)
-        withAnimation(Theme.Motion.snappy) { prToastTitle = exerciseName }
+        withAnimation(Theme.Motion.smooth) { prToastTitle = exerciseName }
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_400_000_000)
-            withAnimation(.easeOut(duration: 0.4)) { prToastTitle = nil }
+            withAnimation(.easeOut(duration: 0.5)) { prToastTitle = nil }
         }
     }
-
-    // MARK: Finish
-
     private func finishWorkout() {
         guard let w = appState.activeWorkout else { return }
-
         let session = WorkoutSession(name: w.title, date: .now, programDay: w.subtitle)
-        session.startedAt = w.startedAt
-        session.endedAt = .now
+        session.startedAt = w.startedAt; session.endedAt = .now
         session.durationMinutes = max(1, elapsed / 60)
-
-        var totalKg = 0.0
-        var orderIdx = 0
-        var prsCreated: [String] = []
-
+        var totalKg = 0.0; var orderIdx = 0; var prsCreated: [String] = []
         for ex in w.exercises {
             for (i, draftSet) in ex.sets.enumerated() where draftSet.completed {
                 let kg = appState.units.toKg(draftSet.weight ?? 0)
                 let reps = draftSet.reps ?? 0
-                let model = WorkoutSet(
-                    exerciseName: ex.name,
-                    muscleGroup: ex.muscleGroup,
-                    setNumber: i + 1,
-                    reps: reps,
-                    weightKg: kg,
-                    rpe: draftSet.rpe,
-                    isWarmup: draftSet.isWarmup
-                )
+                let model = WorkoutSet(exerciseName: ex.name, muscleGroup: ex.muscleGroup,
+                                       setNumber: i + 1, reps: reps, weightKg: kg,
+                                       rpe: draftSet.rpe, isWarmup: draftSet.isWarmup)
                 model.orderIndex = orderIdx; orderIdx += 1
-                model.session = session
-                ctx.insert(model)
-                session.sets.append(model)
+                model.session = session; ctx.insert(model); session.sets.append(model)
                 totalKg += kg * Double(reps)
-
                 if !draftSet.isWarmup, let e1rm = model.estimated1RMKg {
-                    let prior = bestEstimated1RMByExercise[ex.name] ?? 0
-                    if e1rm > prior + 0.001 {
-                        let pr = PersonalRecord(
-                            exerciseName: ex.name,
-                            weightKg: kg, reps: reps, estimated1RMKg: e1rm
-                        )
+                    if e1rm > (bestEstimated1RMByExercise[ex.name] ?? 0) + 0.001 {
+                        let pr = PersonalRecord(exerciseName: ex.name, weightKg: kg, reps: reps, estimated1RMKg: e1rm)
                         ctx.insert(pr)
                         if !prsCreated.contains(ex.name) { prsCreated.append(ex.name) }
                     }
                 }
-
-                if let d = draftSet.difficulty {
-                    appState.recordDifficulty(d, exerciseName: ex.name, lastWeightKg: kg)
-                }
+                if let d = draftSet.difficulty { appState.recordDifficulty(d, exerciseName: ex.name, lastWeightKg: kg) }
             }
         }
-
-        session.totalVolumeKg = totalKg
-        ctx.insert(session)
-        try? ctx.save()
-
+        session.totalVolumeKg = totalKg; ctx.insert(session); try? ctx.save()
         appState.registerCompletedWorkout()
-
-        completionData = WorkoutCompleteData(
-            title: w.title,
-            subtitle: w.subtitle,
-            durationMinutes: session.durationMinutes,
-            totalSets: totalCompletedSets,
-            totalVolumeKg: totalKg,
-            exerciseCount: w.exercises.count,
-            newPRs: prsCreated.isEmpty ? Array(newPRsThisSession) : prsCreated
-        )
+        completionData = WorkoutCompleteData(title: w.title, subtitle: w.subtitle,
+                                              durationMinutes: session.durationMinutes,
+                                              totalSets: totalCompletedSets, totalVolumeKg: totalKg,
+                                              exerciseCount: w.exercises.count,
+                                              newPRs: prsCreated.isEmpty ? Array(newPRsThisSession) : prsCreated)
         Haptic.success()
     }
-
-    // MARK: Helpers
-
     private func formatElapsed(_ s: Int) -> String {
         let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
         if h > 0 { return String(format: "%d:%02d:%02d", h, m, sec) }
         return String(format: "%02d:%02d", m, sec)
     }
-
     private func formatRest(_ s: Int) -> String {
-        let m = s / 60, sec = s % 60
-        return String(format: "%02d:%02d", m, sec)
+        String(format: "%02d:%02d", s / 60, s % 60)
     }
 }
 
@@ -476,87 +413,69 @@ private struct ActiveExerciseCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 10) {
-                IndexBadge(n: index, active: true, size: 26)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(exercise.name.uppercased())
-                        .font(.system(size: 13, weight: .black))
-                        .kerning(0.6)
-                        .foregroundStyle(.vLabel)
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(exercise.name)
+                        .font(Theme.Font.heading(15))
+                        .foregroundStyle(.pearl)
                         .lineLimit(1)
                     Text(exercise.muscleGroup.uppercased())
-                        .font(.system(size: 9, weight: .heavy))
+                        .font(Theme.Font.label)
                         .kerning(1.2)
-                        .foregroundStyle(.vLabelMute)
+                        .foregroundStyle(.shadowTxt)
                 }
                 Spacer()
                 Button { showActions = true } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 14, weight: .black))
-                        .foregroundStyle(.vLabelMute)
-                        .frame(width: 30, height: 30)
+                        .font(.system(size: 14, weight: .thin))
+                        .foregroundStyle(.silver)
+                        .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 12).padding(.vertical, 10)
+            .padding(.horizontal, Theme.Space.md).padding(.vertical, 12)
 
             if let hint = overloadHint {
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .black))
-                    Text(hint.uppercased())
-                        .font(.system(size: 10, weight: .heavy))
-                        .kerning(0.8)
+                    Image(systemName: "arrow.up.right").font(.system(size: 9, weight: .regular))
+                    Text(hint)
+                        .font(Theme.Font.body(12))
                     Spacer()
-                    Text("OVERLOAD")
-                        .font(.system(size: 9, weight: .heavy))
-                        .kerning(1.2)
-                        .foregroundStyle(.vSuccess.opacity(0.7))
                 }
-                .foregroundStyle(.vSuccess)
-                .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(Color.vSuccess.opacity(0.06))
+                .foregroundStyle(.sterling)
+                .padding(.horizontal, Theme.Space.md).padding(.vertical, 8)
+                .background(Color.sterling.opacity(0.06))
             } else if let last = lastSummary {
                 HStack(spacing: 6) {
-                    Image(systemName: "clock").font(.system(size: 9, weight: .heavy))
-                    Text(last.uppercased())
-                        .font(.system(size: 10, weight: .heavy))
-                        .kerning(0.8)
+                    Image(systemName: "clock").font(.system(size: 9, weight: .regular))
+                    Text(last).font(Theme.Font.body(12))
                     Spacer()
                 }
-                .foregroundStyle(.vLabelMute)
-                .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(Color.vSurfaceHigh.opacity(0.5))
+                .foregroundStyle(.silver)
+                .padding(.horizontal, Theme.Space.md).padding(.vertical, 8)
+                .background(Color.graphite.opacity(0.4))
             }
 
             Hairline()
 
             // Column headers
             HStack(spacing: 0) {
-                Text("SET")
-                    .frame(width: 36, alignment: .leading)
-                Text("WEIGHT")
-                    .frame(maxWidth: .infinity, alignment: .center)
-                Text("REPS")
-                    .frame(width: 70, alignment: .center)
-                Text("")
-                    .frame(width: 38)
+                Text("Set").frame(width: 36, alignment: .leading)
+                Text("Weight").frame(maxWidth: .infinity, alignment: .center)
+                Text("Reps").frame(width: 70, alignment: .center)
+                Text("").frame(width: 40)
             }
-            .font(.system(size: 9, weight: .heavy))
-            .kerning(1.2)
-            .foregroundStyle(.vLabelFaint)
-            .padding(.horizontal, 12).padding(.vertical, 8)
+            .font(Theme.Font.label)
+            .kerning(1.0)
+            .foregroundStyle(.shadowTxt)
+            .padding(.horizontal, Theme.Space.md).padding(.vertical, 8)
 
-            // Sets
             if exercise.sets.isEmpty {
-                Text("No sets yet — tap below to add one.")
-                    .font(.system(size: 11, weight: .heavy))
-                    .kerning(0.4)
-                    .foregroundStyle(.vLabelMute)
+                Text("Tap below to add a set")
+                    .font(Theme.Font.body(13))
+                    .foregroundStyle(.silver)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .padding(.horizontal, 12)
-                    .background(Color.vBG)
+                    .padding(.vertical, 18)
             } else {
                 VStack(spacing: 0) {
                     ForEach(exercise.sets.indices, id: \.self) { i in
@@ -568,7 +487,7 @@ private struct ActiveExerciseCard: View {
                             suggestKg: i == 0 ? (recommendedKg ?? lastWeightKg) : nil,
                             onComplete: { handleSetComplete(at: i) }
                         )
-                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .padding(.horizontal, Theme.Space.md).padding(.vertical, 7)
                         .transition(.opacity.combined(with: .move(edge: .leading)))
                     }
                 }
@@ -576,28 +495,20 @@ private struct ActiveExerciseCard: View {
 
             Hairline()
 
-            // Add set
             Button { addSet(warmup: false) } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "plus").font(.system(size: 11, weight: .black))
-                    Text("ADD SET")
-                        .font(.system(size: 11, weight: .black))
-                        .kerning(1.2)
+                    Image(systemName: "plus").font(.system(size: 12, weight: .thin))
+                    Text("Add set").font(Theme.Font.body(13))
                 }
-                .foregroundStyle(.vLabelMute)
+                .foregroundStyle(.silver)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 11)
+                .padding(.vertical, 12)
             }
-            .buttonStyle(.pressable(scale: 0.98, haptic: .soft))
+            .buttonStyle(.pressable(scale: 0.98, haptic: .soft, glow: false))
         }
-        .background(Color.vSurface)
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.sm)
-                .strokeBorder(Color.vLine, lineWidth: 0.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
-        .confirmationDialog("Exercise actions",
-                            isPresented: $showActions, titleVisibility: .hidden) {
+        .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+        .edgeHighlight(radius: Theme.Radius.md)
+        .confirmationDialog("", isPresented: $showActions, titleVisibility: .hidden) {
             Button("Add warm-up set") { addSet(warmup: true) }
             Button("Add working set") { addSet(warmup: false) }
             Button("Remove exercise", role: .destructive) { onDelete() }
@@ -608,26 +519,19 @@ private struct ActiveExerciseCard: View {
         guard let lastKg = lastWeightKg else { return nil }
         let suggestKg = recommendedKg ?? (lastKg + 2.5)
         guard suggestKg > lastKg + 0.01 else { return nil }
-        let v = units.from(kg: suggestKg)
-        let lastV = units.from(kg: lastKg)
-        return "Try \(v.prettyWeight) \(units.label) (was \(lastV.prettyWeight))"
+        return "Try \(units.from(kg: suggestKg).prettyWeight) \(units.label) (was \(units.from(kg: lastKg).prettyWeight))"
     }
-
     private var lastSummary: String? {
         guard let kg = lastWeightKg, let reps = lastReps else { return nil }
-        let v = units.from(kg: kg)
-        return "Last: \(v.prettyWeight) \(units.label) × \(reps)"
+        return "Last: \(units.from(kg: kg).prettyWeight) \(units.label) × \(reps)"
     }
-
     private func setBinding(_ i: Int) -> Binding<DraftSet> {
         Binding(get: { exercise.sets[i] }, set: { exercise.sets[i] = $0 })
     }
-
     private func addSet(warmup: Bool) {
         var s = DraftSet(isWarmup: warmup)
         if let last = exercise.sets.last(where: { $0.weight != nil }) {
-            s.weight = last.weight
-            s.reps = exercise.targetReps
+            s.weight = last.weight; s.reps = exercise.targetReps
         } else if let rec = recommendedKg {
             s.weight = units.from(kg: rec); s.reps = exercise.targetReps
         } else if let last = lastWeightKg {
@@ -635,24 +539,19 @@ private struct ActiveExerciseCard: View {
         } else {
             s.reps = exercise.targetReps
         }
-        withAnimation(Theme.Motion.snappy) { exercise.sets.append(s) }
+        withAnimation(Theme.Motion.smooth) { exercise.sets.append(s) }
         Haptic.light()
     }
-
     private func handleSetComplete(at i: Int) {
         guard i < exercise.sets.count else { return }
         var set = exercise.sets[i]
-        set.completed = true
-        set.completedAt = .now
-        exercise.sets[i] = set
-
+        set.completed = true; set.completedAt = .now; exercise.sets[i] = set
         var beatsPR = false
         if let kg = set.weight.map(units.toKg), let reps = set.reps, !set.isWarmup, reps > 0, kg > 0 {
             let e1rm = reps == 1 ? kg : kg * (1 + Double(reps) / 30.0)
             if e1rm > (bestE1RMKg ?? 0) + 0.001 { beatsPR = true }
         }
-        Haptic.success()
-        onSetCompleted(beatsPR)
+        Haptic.success(); onSetCompleted(beatsPR)
     }
 }
 
@@ -670,67 +569,64 @@ private struct SetInputRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            // Set index / W marker
+            // Set badge
             ZStack {
-                Rectangle()
-                    .fill(set.completed ? Color.vSignal : (set.isWarmup ? Color.vWarn.opacity(0.18) : Color.vSurfaceHigh))
+                RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous)
+                    .fill(set.completed ? Color.pearl : (set.isWarmup ? Color.amber.opacity(0.15) : Color.graphite))
                 Text(set.isWarmup ? "W" : "\(index + 1)")
-                    .font(Theme.Font.mono(11, .black))
-                    .foregroundStyle(set.completed ? Color.vBG : (set.isWarmup ? Color.vWarn : Color.vLabelMute))
+                    .font(Theme.Font.mono(11, .regular))
+                    .foregroundStyle(set.completed ? Color.obsidian : (set.isWarmup ? Color.amber : Color.silver))
             }
             .frame(width: 36, height: 38)
 
             TextField(weightPlaceholder, text: $weightStr)
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.center)
-                .font(Theme.Font.mono(15, .black))
-                .foregroundStyle(.vLabel)
+                .font(Theme.Font.mono(15, .regular))
+                .foregroundStyle(.pearl)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(set.completed ? Color.vSignal.opacity(0.08) : Color.vInset)
-                .overlay(Rectangle().strokeBorder(set.completed ? Color.vSignal.opacity(0.4) : Color.vLine, lineWidth: 0.5))
-                .onChange(of: weightStr) { _, new in
-                    set.weight = Double(new.replacingOccurrences(of: ",", with: "."))
-                }
+                .background(set.completed ? Color.pearl.opacity(0.07) : Color.smoke,
+                            in: RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous)
+                        .strokeBorder(set.completed ? Color.pearl.opacity(0.3) : Color.mist, lineWidth: 0.5)
+                )
+                .onChange(of: weightStr) { _, new in set.weight = Double(new.replacingOccurrences(of: ",", with: ".")) }
                 .onAppear {
                     if let w = set.weight { weightStr = w.prettyWeight }
-                    else if let s = suggestKg {
-                        let v = units.from(kg: s)
-                        weightStr = v.prettyWeight
-                        set.weight = v
-                    }
+                    else if let s = suggestKg { let v = units.from(kg: s); weightStr = v.prettyWeight; set.weight = v }
                 }
 
             TextField("0", text: $repsStr)
                 .keyboardType(.numberPad)
                 .multilineTextAlignment(.center)
-                .font(Theme.Font.mono(15, .black))
-                .foregroundStyle(.vLabel)
+                .font(Theme.Font.mono(15, .regular))
+                .foregroundStyle(.pearl)
                 .padding(.vertical, 10)
                 .frame(width: 70)
-                .background(set.completed ? Color.vSignal.opacity(0.08) : Color.vInset)
-                .overlay(Rectangle().strokeBorder(set.completed ? Color.vSignal.opacity(0.4) : Color.vLine, lineWidth: 0.5))
-                .onChange(of: repsStr) { _, new in
-                    set.reps = Int(new)
-                }
-                .onAppear {
-                    if let r = set.reps { repsStr = "\(r)" }
-                }
+                .background(set.completed ? Color.pearl.opacity(0.07) : Color.smoke,
+                            in: RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous)
+                        .strokeBorder(set.completed ? Color.pearl.opacity(0.3) : Color.mist, lineWidth: 0.5)
+                )
+                .onChange(of: repsStr) { _, new in set.reps = Int(new) }
+                .onAppear { if let r = set.reps { repsStr = "\(r)" } }
 
             Button {
-                guard !set.completed else {
-                    set.completed = false; Haptic.warning(); return
-                }
+                guard !set.completed else { set.completed = false; Haptic.warning(); return }
                 onComplete()
             } label: {
                 Image(systemName: set.completed ? "checkmark" : "circle")
-                    .font(.system(size: 14, weight: .black))
-                    .foregroundStyle(set.completed ? Color.vBG : Color.vLabelMute)
-                    .frame(width: 38, height: 38)
-                    .background(set.completed ? Color.vSignal : Color.vSurfaceHigh)
-                    .overlay(Rectangle().strokeBorder(set.completed ? Color.clear : Color.vLine, lineWidth: 0.5))
+                    .font(.system(size: 14, weight: set.completed ? .regular : .thin))
+                    .foregroundStyle(set.completed ? Color.obsidian : Color.shadowTxt)
+                    .frame(width: 40, height: 38)
+                    .background(set.completed ? Color.pearl : Color.graphite,
+                                in: RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous))
+                    .glow(active: set.completed, radius: 10, intensity: 0.3)
             }
-            .buttonStyle(.pressable(scale: 0.88, haptic: .none))
+            .buttonStyle(.pressable(scale: 0.88, haptic: .none, glow: false))
         }
     }
 
@@ -746,7 +642,6 @@ private struct AddExerciseSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
     @State private var muscleFilter: String? = nil
-
     let onPick: (ExerciseDefinition) -> Void
 
     private var filtered: [ExerciseDefinition] {
@@ -767,43 +662,39 @@ private struct AddExerciseSheet: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .padding(.horizontal, Theme.Space.md).padding(.vertical, 10)
                 }
+                Hairline()
 
                 List(filtered) { ex in
                     Button {
                         onPick(ex); Haptic.success(); dismiss()
                     } label: {
-                        HStack(spacing: 10) {
-                            Rectangle().fill(ex.color).frame(width: 3, height: 36)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(ex.name.uppercased())
-                                    .font(.system(size: 12, weight: .black))
-                                    .kerning(0.4)
-                                    .foregroundStyle(.vLabel)
-                                Text("\(ex.muscleGroup.uppercased()) · \(ex.equipment.uppercased())")
-                                    .font(.system(size: 9, weight: .heavy))
-                                    .kerning(0.8)
-                                    .foregroundStyle(.vLabelMute)
+                        HStack(spacing: 12) {
+                            Rectangle().fill(ex.color.opacity(0.7)).frame(width: 2, height: 36)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(ex.name)
+                                    .font(Theme.Font.heading(14))
+                                    .foregroundStyle(.pearl)
+                                Text("\(ex.muscleGroup) · \(ex.equipment)")
+                                    .font(Theme.Font.body(12))
+                                    .foregroundStyle(.silver)
                             }
                             Spacer()
-                            if ex.isCompound {
-                                Chip(text: "Compound", color: .vSignal)
-                            }
+                            if ex.isCompound { Chip(text: "Compound", color: .silver) }
                         }
-                        .padding(.vertical, 4)
-                        .listRowBackground(Color.vBG)
+                        .padding(.vertical, 6)
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(Color.vBG)
-                    .listRowSeparatorTint(Color.vLine)
+                    .listRowBackground(Color.obsidian)
+                    .listRowSeparatorTint(Color.hairlineClr)
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
-                .background(Color.vBG)
+                .background(Color.obsidian)
                 .searchable(text: $search, prompt: "Search exercises")
             }
-            .background(Color.vBG.ignoresSafeArea())
+            .background(Color.obsidian.ignoresSafeArea())
             .navigationTitle("Add Exercise")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -821,18 +712,17 @@ private struct FilterChip: View {
     var body: some View {
         Button(action: { Haptic.selection(); action() }) {
             Text(label.uppercased())
-                .font(.system(size: 10, weight: .black))
-                .kerning(1.0)
-                .foregroundStyle(selected ? Color.vBG : Color.vLabelMute)
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(selected ? Color.vSignal : Color.vSurfaceHigh)
-                .overlay(Rectangle().strokeBorder(selected ? Color.clear : Color.vLine, lineWidth: 0.5))
+                .font(Theme.Font.label)
+                .kerning(0.8)
+                .foregroundStyle(selected ? Color.obsidian : Color.silver)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(selected ? Color.pearl : Color.graphite, in: Capsule())
         }
         .buttonStyle(.plain)
     }
 }
 
-// MARK: - Workout complete data (consumed by WorkoutCompleteView)
+// MARK: - Workout complete data
 
 struct WorkoutCompleteData: Identifiable {
     let id = UUID()

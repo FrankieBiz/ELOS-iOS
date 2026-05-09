@@ -12,15 +12,19 @@ struct OnboardingFlow: View {
 
     var body: some View {
         ZStack {
-            Color.vBG.ignoresSafeArea()
+            Color.obsidian.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                topBar.padding(.top, 50)
+                pageIndicator
+                    .padding(.top, 60)
+                    .padding(.horizontal, Theme.Space.md)
+
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+
                 bottomBar
                     .padding(.horizontal, Theme.Space.md)
-                    .padding(.bottom, 28)
+                    .padding(.bottom, 36)
             }
         }
         .preferredColorScheme(.dark)
@@ -32,35 +36,16 @@ struct OnboardingFlow: View {
         }
     }
 
-    // MARK: top status bar
+    // MARK: Page indicator — 4 thin rules
 
-    private var topBar: some View {
-        VStack(spacing: 14) {
-            HStack {
-                HStack(spacing: 6) {
-                    Rectangle().fill(Color.vSignal).frame(width: 12, height: 2)
-                    Text("ELOS · VIGIL")
-                        .font(.system(size: 10, weight: .black))
-                        .kerning(2.0)
-                        .foregroundStyle(.vLabelMute)
-                }
-                Spacer()
-                Text(String(format: "%02d / 04", page + 1))
-                    .font(Theme.Font.mono(10, .black))
-                    .foregroundStyle(.vLabelMute)
+    private var pageIndicator: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<4, id: \.self) { i in
+                Rectangle()
+                    .fill(i <= page ? Color.pearl : Color.mist)
+                    .frame(height: 1.5)
+                    .animation(Theme.Motion.silk, value: page)
             }
-            .padding(.horizontal, Theme.Space.md)
-
-            // Progress indicator (segments)
-            HStack(spacing: 4) {
-                ForEach(0..<4, id: \.self) { i in
-                    Rectangle()
-                        .fill(i <= page ? Color.vSignal : Color.vSurfaceHigh)
-                        .frame(height: 3)
-                        .animation(Theme.Motion.snappy, value: page)
-                }
-            }
-            .padding(.horizontal, Theme.Space.md)
         }
     }
 
@@ -80,46 +65,49 @@ struct OnboardingFlow: View {
     }
 
     private var bottomBar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             if page > 0 {
                 Button {
-                    withAnimation(Theme.Motion.snappy) { page -= 1 }
+                    withAnimation(Theme.Motion.silk) { page -= 1 }
                     Haptic.light()
                 } label: {
                     Image(systemName: "arrow.left")
-                        .font(.system(size: 14, weight: .black))
-                        .foregroundStyle(.vLabel)
-                        .frame(width: 52, height: 52)
-                        .background(Color.vSurface)
-                        .overlay(Rectangle().strokeBorder(Color.vLineHigh, lineWidth: 0.5))
+                        .font(.system(size: 15, weight: .thin))
+                        .foregroundStyle(.silver)
+                        .frame(width: 56, height: 56)
+                        .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+                        .edgeHighlight(radius: Theme.Radius.md)
                 }
-                .buttonStyle(.pressable(scale: 0.94, haptic: .none))
+                .buttonStyle(.pressable(scale: 0.94, haptic: .none, glow: false))
             }
 
             Button {
                 handleNext()
             } label: {
-                HStack(spacing: 8) {
-                    Text(page == 3 ? "ENTER" : "CONTINUE")
-                        .font(.system(size: 13, weight: .black))
-                        .kerning(1.6)
+                HStack(spacing: 10) {
+                    Text(page == 3 ? "Get started" : "Continue")
+                        .font(Theme.Font.title(17))
                     Image(systemName: page == 3 ? "checkmark" : "arrow.right")
-                        .font(.system(size: 12, weight: .black))
+                        .font(.system(size: 14, weight: .thin))
                 }
-                .foregroundStyle(.vBG)
+                .foregroundStyle(Color.obsidian)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .background(Color.vSignal)
+                .frame(height: 56)
+                .background(
+                    LinearGradient(colors: [Color.pearl.opacity(0.97), .pearl], startPoint: .top, endPoint: .bottom),
+                    in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
+                )
+                .breathGlow(minIntensity: 0.10, maxIntensity: 0.28, radius: 16)
             }
-            .buttonStyle(.pressable(scale: 0.98, haptic: .heavy))
+            .buttonStyle(.pressable(scale: 0.985, haptic: .none, glow: true, glowRadius: 20))
             .disabled(page == 1 && name.trimmingCharacters(in: .whitespaces).isEmpty)
-            .opacity(page == 1 && name.trimmingCharacters(in: .whitespaces).isEmpty ? 0.4 : 1.0)
+            .opacity(page == 1 && name.trimmingCharacters(in: .whitespaces).isEmpty ? 0.35 : 1.0)
         }
     }
 
     private func handleNext() {
         if page < 3 {
-            withAnimation(Theme.Motion.snappy) { page += 1 }
+            withAnimation(Theme.Motion.silk) { page += 1 }
             Haptic.medium()
         } else {
             appState.displayName = name
@@ -130,7 +118,7 @@ struct OnboardingFlow: View {
             appState.activeProgramId = programId
             appState.programStartDate = .now
             Haptic.success()
-            withAnimation(.easeInOut(duration: 0.4)) {
+            withAnimation(Theme.Motion.glide) {
                 appState.hasCompletedOnboarding = true
             }
         }
@@ -146,86 +134,57 @@ private struct WelcomePage: View {
         VStack(alignment: .leading, spacing: 0) {
             Spacer()
 
-            // Logo block
-            VStack(alignment: .leading, spacing: 16) {
-                ZStack {
-                    Rectangle()
-                        .fill(Color.vSignal)
-                        .frame(width: 64, height: 64)
-                    Image(systemName: "dumbbell.fill")
-                        .font(.system(size: 28, weight: .black))
-                        .foregroundStyle(.vBG)
-                }
-                .scaleEffect(phase >= 1 ? 1 : 0.6)
-                .opacity(phase >= 1 ? 1 : 0)
-
-                VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 28) {
+                // Wordmark
+                VStack(alignment: .leading, spacing: 8) {
                     Text("ELOS")
-                        .font(Theme.Font.display(72))
-                        .foregroundStyle(.vLabel)
-                        .kerning(-1)
-                    HStack(spacing: 6) {
-                        Rectangle().fill(Color.vSignal).frame(width: 12, height: 2)
-                        Text("VIGIL EDITION")
-                            .font(.system(size: 11, weight: .heavy))
-                            .kerning(2.4)
-                            .foregroundStyle(.vSignal)
-                    }
+                        .font(.system(size: 72, weight: .ultraLight, design: .default))
+                        .foregroundStyle(.pearl)
+                        .kerning(6)
+                        .opacity(phase >= 1 ? 1 : 0)
+                        .offset(y: phase >= 1 ? 0 : 16)
+
+                    Rectangle()
+                        .fill(Color.pearl.opacity(0.2))
+                        .frame(height: 0.5)
+                        .scaleEffect(x: phase >= 2 ? 1 : 0, anchor: .leading)
                 }
-                .opacity(phase >= 2 ? 1 : 0)
-                .offset(y: phase >= 2 ? 0 : 14)
-            }
-            .padding(.horizontal, Theme.Space.lg)
 
-            Spacer().frame(height: 40)
-
-            VStack(alignment: .leading, spacing: 0) {
-                bullet(n: 1, title: "Smart Progressive Overload", sub: "Personalized weight suggestions every set")
-                Hairline()
-                bullet(n: 2, title: "Auto PR Detection", sub: "Captured the moment you break a record")
-                Hairline()
-                bullet(n: 3, title: "Tactical Analytics", sub: "Volume, streaks, and 1RM trends")
+                // Feature lines
+                VStack(alignment: .leading, spacing: 16) {
+                    featureLine("Smart progressive overload",   "Personalized weight, every set")
+                    featureLine("Personal record detection",    "Captured the moment you break one")
+                    featureLine("Performance analytics",        "Volume, streaks, and 1RM trends")
+                }
+                .opacity(phase >= 3 ? 1 : 0)
+                .offset(y: phase >= 3 ? 0 : 12)
             }
-            .background(Color.vSurface)
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Radius.sm)
-                    .strokeBorder(Color.vLine, lineWidth: 0.5)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
             .padding(.horizontal, Theme.Space.md)
-            .opacity(phase >= 3 ? 1 : 0)
-            .offset(y: phase >= 3 ? 0 : 14)
 
             Spacer()
         }
         .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) { phase = 1 }
+            withAnimation(Theme.Motion.silk) { phase = 1 }
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 200_000_000)
-                withAnimation(.spring(response: 0.55, dampingFraction: 0.75)) { phase = 2 }
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                withAnimation(Theme.Motion.glide) { phase = 2 }
             }
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 450_000_000)
-                withAnimation(.spring(response: 0.55, dampingFraction: 0.8)) { phase = 3 }
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                withAnimation(Theme.Motion.silk) { phase = 3 }
             }
         }
     }
 
-    private func bullet(n: Int, title: String, sub: String) -> some View {
-        HStack(spacing: 12) {
-            IndexBadge(n: n, active: true, size: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title.uppercased())
-                    .font(.system(size: 12, weight: .black))
-                    .kerning(0.6)
-                    .foregroundStyle(.vLabel)
-                Text(sub)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.vLabelMute)
-            }
-            Spacer()
+    private func featureLine(_ title: String, _ sub: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(Theme.Font.heading(15))
+                .foregroundStyle(.pearl)
+            Text(sub)
+                .font(Theme.Font.body(13))
+                .foregroundStyle(.silver)
         }
-        .padding(.horizontal, 12).padding(.vertical, 12)
     }
 }
 
@@ -236,38 +195,45 @@ private struct NamePage: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 0) {
             Spacer()
-            Text("CALL SIGN")
-                .font(.system(size: 10, weight: .heavy))
-                .kerning(2.4)
-                .foregroundStyle(.vSignal)
-            Text("WHAT SHOULD\nWE CALL YOU?")
-                .font(Theme.Font.display(40))
-                .foregroundStyle(.vLabel)
-                .kerning(-0.5)
-                .lineSpacing(-4)
-            Text("Shown on your dashboard.")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.vLabelMute)
 
-            Spacer().frame(height: 16)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("What should we\ncall you?")
+                    .font(Theme.Font.display(40))
+                    .foregroundStyle(.pearl)
+                    .lineSpacing(4)
 
-            TextField("", text: $name, prompt: Text("YOUR NAME").foregroundStyle(Color.vLabelFaint))
-                .font(Theme.Font.mono(22, .black))
-                .foregroundStyle(.vLabel)
-                .padding(.horizontal, 14).padding(.vertical, 16)
-                .background(Color.vSurface)
-                .overlay(Rectangle().strokeBorder(Color.vSignal, lineWidth: 1))
-                .focused($focused)
-                .submitLabel(.done)
+                Text("Shown on your dashboard.")
+                    .font(Theme.Font.body(14))
+                    .foregroundStyle(.silver)
+            }
+            .padding(.horizontal, Theme.Space.md)
+
+            Spacer().frame(height: 32)
+
+            // Underline-only input
+            VStack(spacing: 0) {
+                TextField("", text: $name, prompt: Text("Your name").foregroundStyle(Color.shadowTxt))
+                    .font(Theme.Font.title(28))
+                    .foregroundStyle(.pearl)
+                    .focused($focused)
+                    .submitLabel(.done)
+                    .padding(.horizontal, Theme.Space.md)
+                    .padding(.bottom, 12)
+
+                Rectangle()
+                    .fill(focused ? Color.pearl : Color.mist)
+                    .frame(height: 0.75)
+                    .padding(.horizontal, Theme.Space.md)
+                    .animation(Theme.Motion.silk, value: focused)
+            }
 
             Spacer()
         }
-        .padding(.horizontal, Theme.Space.md)
         .onAppear {
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 250_000_000)
+                try? await Task.sleep(nanoseconds: 300_000_000)
                 focused = true
             }
         }
@@ -284,52 +250,52 @@ private struct BodyPage: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("PROFILE")
-                        .font(.system(size: 10, weight: .heavy))
-                        .kerning(2.4)
-                        .foregroundStyle(.vSignal)
-                    Text("CONFIGURE\nLOADOUT")
+            VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Configure\nyour profile")
                         .font(Theme.Font.display(36))
-                        .foregroundStyle(.vLabel)
-                        .kerning(-0.5)
-                        .lineSpacing(-4)
-                    Text("Used for plate calc and analytics.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.vLabelMute)
+                        .foregroundStyle(.pearl)
+                        .lineSpacing(4)
+                    Text("Used for plate calculations and analytics.")
+                        .font(Theme.Font.body(13))
+                        .foregroundStyle(.silver)
                 }
                 .padding(.top, 20)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    label("Units")
-                    HStack(spacing: 0) {
-                        unitChip("LBS", selected: units == .imperial) { units = .imperial }
-                        unitChip("KG",  selected: units == .metric)   { units = .metric   }
-                    }
-                    .overlay(Rectangle().strokeBorder(Color.vLine, lineWidth: 0.5))
+                // Units
+                fieldLabel("Units")
+                HStack(spacing: 0) {
+                    unitChip("lbs", selected: units == .imperial) { units = .imperial }
+                    unitChip("kg",  selected: units == .metric)   { units = .metric }
+                }
+                .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+                .edgeHighlight(radius: Theme.Radius.md)
+
+                // Bodyweight
+                VStack(alignment: .leading, spacing: 10) {
+                    fieldLabel("Bodyweight (\(units.label))")
+                    underlineField(value: $bodyweight)
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    label("Bodyweight (\(units.label))")
-                    onboardingNumberField(value: $bodyweight)
+                // Height
+                VStack(alignment: .leading, spacing: 10) {
+                    fieldLabel("Height (cm)")
+                    underlineField(value: $height)
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    label("Height (cm)")
-                    onboardingNumberField(value: $height)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    label("Experience")
+                // Experience
+                VStack(alignment: .leading, spacing: 10) {
+                    fieldLabel("Experience")
                     VStack(spacing: 0) {
                         ForEach(Array(Experience.allCases.enumerated()), id: \.offset) { i, e in
-                            expRow(e, last: i == Experience.allCases.count - 1)
-                            if i < Experience.allCases.count - 1 { Hairline() }
+                            expRow(e)
+                            if i < Experience.allCases.count - 1 {
+                                Hairline().padding(.horizontal, Theme.Space.md)
+                            }
                         }
                     }
-                    .background(Color.vSurface)
-                    .overlay(Rectangle().strokeBorder(Color.vLine, lineWidth: 0.5))
+                    .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+                    .edgeHighlight(radius: Theme.Radius.md)
                 }
             }
             .padding(.horizontal, Theme.Space.md)
@@ -337,58 +303,62 @@ private struct BodyPage: View {
         }
     }
 
-    private func label(_ s: String) -> some View {
+    private func fieldLabel(_ s: String) -> some View {
         Text(s.uppercased())
-            .font(.system(size: 9, weight: .heavy))
+            .font(Theme.Font.label)
             .kerning(1.4)
-            .foregroundStyle(.vLabelMute)
+            .foregroundStyle(.silver)
     }
 
     private func unitChip(_ s: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button { action(); Haptic.selection() } label: {
             Text(s)
-                .font(.system(size: 12, weight: .black))
-                .kerning(1.4)
-                .foregroundStyle(selected ? Color.vBG : Color.vLabelMute)
+                .font(Theme.Font.body(14, .medium))
+                .foregroundStyle(selected ? Color.obsidian : Color.silver)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(selected ? Color.vSignal : Color.vSurface)
+                .background(selected ? Color.pearl : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
         }
         .buttonStyle(.plain)
     }
 
-    private func expRow(_ e: Experience, last: Bool) -> some View {
+    private func expRow(_ e: Experience) -> some View {
         Button { experience = e; Haptic.selection() } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(e.label.uppercased())
-                        .font(.system(size: 12, weight: .black))
-                        .kerning(0.6)
-                        .foregroundStyle(.vLabel)
+            HStack(spacing: 14) {
+                Rectangle()
+                    .fill(experience == e ? Color.pearl : Color.clear)
+                    .frame(width: 2, height: 36)
+                    .animation(Theme.Motion.silk, value: experience == e)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(e.label)
+                        .font(Theme.Font.heading(14))
+                        .foregroundStyle(.pearl)
                     Text(e.description)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.vLabelMute)
+                        .font(Theme.Font.body(12))
+                        .foregroundStyle(.silver)
                 }
                 Spacer()
-                Image(systemName: experience == e ? "checkmark" : "circle")
-                    .font(.system(size: 13, weight: .black))
-                    .foregroundStyle(experience == e ? Color.vSignal : Color.vLabelFaint)
             }
-            .padding(.horizontal, 12).padding(.vertical, 12)
-            .background(experience == e ? Color.vSignal.opacity(0.06) : Color.clear)
+            .padding(.vertical, 14)
+            .background(experience == e ? Color.pearl.opacity(0.04) : Color.clear)
         }
         .buttonStyle(.plain)
     }
 
-    private func onboardingNumberField(value: Binding<Double>) -> some View {
-        TextField("", value: value, format: .number.precision(.fractionLength(0...1)))
-            .keyboardType(.decimalPad)
-            .multilineTextAlignment(.leading)
-            .font(Theme.Font.mono(22, .black))
-            .foregroundStyle(.vLabel)
-            .padding(.horizontal, 14).padding(.vertical, 14)
-            .background(Color.vSurface)
-            .overlay(Rectangle().strokeBorder(Color.vLineHigh, lineWidth: 0.5))
+    private func underlineField(value: Binding<Double>) -> some View {
+        VStack(spacing: 0) {
+            TextField("", value: value, format: .number.precision(.fractionLength(0...1)))
+                .keyboardType(.decimalPad)
+                .font(Theme.Font.title(26))
+                .foregroundStyle(.pearl)
+                .padding(.bottom, 10)
+
+            Rectangle()
+                .fill(Color.mist)
+                .frame(height: 0.75)
+        }
     }
 }
 
@@ -399,65 +369,58 @@ private struct ProgramPage: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("MISSION")
-                        .font(.system(size: 10, weight: .heavy))
-                        .kerning(2.4)
-                        .foregroundStyle(.vSignal)
-                    Text("PICK A\nPROGRAM")
+            VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Pick a\nprogram")
                         .font(Theme.Font.display(36))
-                        .foregroundStyle(.vLabel)
-                        .kerning(-0.5)
-                        .lineSpacing(-4)
+                        .foregroundStyle(.pearl)
+                        .lineSpacing(4)
                     Text("Change anytime in the Train tab.")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.vLabelMute)
+                        .font(Theme.Font.body(13))
+                        .foregroundStyle(.silver)
                 }
                 .padding(.top, 20)
 
                 VStack(spacing: 0) {
                     ForEach(Array(Program.library.enumerated()), id: \.element.id) { i, p in
                         Button { programId = p.id; Haptic.selection() } label: {
-                            ProgramCard(index: i + 1, program: p, selected: programId == p.id)
+                            programRow(p, selected: programId == p.id)
                         }
-                        .buttonStyle(.pressable(scale: 0.99, haptic: .none))
-                        if i < Program.library.count - 1 { Hairline().padding(.leading, 50) }
+                        .buttonStyle(.pressable(scale: 0.99, haptic: .none, glow: false))
+                        if i < Program.library.count - 1 {
+                            Hairline().padding(.horizontal, Theme.Space.md)
+                        }
                     }
                 }
-                .background(Color.vSurface)
-                .overlay(Rectangle().strokeBorder(Color.vLine, lineWidth: 0.5))
+                .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+                .edgeHighlight(radius: Theme.Radius.md)
             }
             .padding(.horizontal, Theme.Space.md)
             .padding(.bottom, 30)
         }
     }
-}
 
-private struct ProgramCard: View {
-    let index: Int
-    let program: Program
-    let selected: Bool
+    private func programRow(_ p: Program, selected: Bool) -> some View {
+        HStack(spacing: 14) {
+            Rectangle()
+                .fill(selected ? Color.pearl : Color.clear)
+                .frame(width: 2, height: 38)
+                .animation(Theme.Motion.silk, value: selected)
 
-    var body: some View {
-        HStack(spacing: 12) {
-            IndexBadge(n: index, active: selected, size: 26)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(program.name.uppercased())
-                    .font(.system(size: 12, weight: .black))
-                    .kerning(0.6)
-                    .foregroundStyle(.vLabel)
-                Text(program.subtitle.uppercased())
-                    .font(.system(size: 9, weight: .heavy))
-                    .kerning(0.8)
-                    .foregroundStyle(.vLabelMute)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(p.name)
+                    .font(Theme.Font.heading(14))
+                    .foregroundStyle(.pearl)
+                Text(p.subtitle)
+                    .font(Theme.Font.body(12))
+                    .foregroundStyle(.silver)
             }
             Spacer()
             Image(systemName: selected ? "checkmark" : "circle")
-                .font(.system(size: 13, weight: .black))
-                .foregroundStyle(selected ? Color.vSignal : Color.vLabelFaint)
+                .font(.system(size: 13, weight: .thin))
+                .foregroundStyle(selected ? Color.pearl : Color.shadowTxt)
         }
-        .padding(.horizontal, 10).padding(.vertical, 12)
-        .background(selected ? Color.vSignal.opacity(0.06) : Color.clear)
+        .padding(.vertical, 16)
+        .background(selected ? Color.pearl.opacity(0.04) : Color.clear)
     }
 }

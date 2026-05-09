@@ -1,11 +1,11 @@
 import SwiftUI
 
 // =====================================================================
-//  VIGIL · components
-//  flat surfaces · hairline borders · 4–6pt corners · zero gradients
+//  OBSIDIAN · components
+//  material surfaces · edge highlights · refined radius · quiet wealth
 // =====================================================================
 
-// MARK: - Card (formerly GlassCard / SolidCard — both kept for back-compat)
+// MARK: - Card
 
 struct GlassCard<Content: View>: View {
     var padding: CGFloat = Theme.Space.md
@@ -16,11 +16,11 @@ struct GlassCard<Content: View>: View {
     var body: some View {
         content
             .padding(padding)
-            .background(Color.vSurface, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
-            .overlay(
+            .background(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(Color.vLine, lineWidth: 0.5)
+                    .fill(Color.onyx)
             )
+            .edgeHighlight(radius: radius)
     }
 }
 
@@ -32,11 +32,11 @@ struct SolidCard<Content: View>: View {
     var body: some View {
         content
             .padding(padding)
-            .background(Color.vSurface, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
-            .overlay(
+            .background(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(Color.vLine, lineWidth: 0.5)
+                    .fill(Color.onyx)
             )
+            .edgeHighlight(radius: radius)
     }
 }
 
@@ -54,8 +54,8 @@ struct PressableStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? scaleAmount : 1.0)
             .brightness(configuration.isPressed ? 0.04 : 0)
-            .glow(active: glow && configuration.isPressed, radius: glowRadius, intensity: 0.9)
-            .animation(Theme.Motion.snappy, value: configuration.isPressed)
+            .glow(active: glow && configuration.isPressed, radius: glowRadius, intensity: 0.8)
+            .animation(Theme.Motion.press, value: configuration.isPressed)
             .onChange(of: configuration.isPressed) { _, pressed in
                 guard pressed else { return }
                 switch hapticStyle {
@@ -79,49 +79,51 @@ extension ButtonStyle where Self == PressableStyle {
     }
 }
 
-// MARK: - Primary CTA (platinum on obsidian, with aura)
+// MARK: - Primary CTA (platinum on obsidian, breath glow)
 
 struct PrimaryCTA: View {
     let title: String
     var icon: String? = nil
     var subtitle: String? = nil
     var color: Color? = nil
-    var height: CGFloat = 54
+    var height: CGFloat = 56
     var isLoading: Bool = false
     let action: () -> Void
 
     var body: some View {
-        let fill = color ?? .vSignal
-        Button(action: { Haptic.heavy(); action() }) {
+        let fill = color ?? .pearl
+        Button(action: { Haptic.medium(); action() }) {
             ZStack {
-                fill
+                LinearGradient(
+                    colors: [fill.opacity(0.98), fill],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
                 if isLoading {
-                    ProgressView().progressViewStyle(.circular).tint(.vBG)
+                    ProgressView().progressViewStyle(.circular).tint(.obsidian)
                 } else {
                     HStack(spacing: 10) {
                         if let icon {
                             Image(systemName: icon)
-                                .font(.system(size: 15, weight: .black))
+                                .font(.system(size: 15, weight: .regular))
                         }
-                        Text(title.uppercased())
-                            .font(.system(size: 14, weight: .black))
-                            .kerning(1.4)
+                        Text(title)
+                            .font(Theme.Font.title(18))
                         if let subtitle {
-                            Text(subtitle.uppercased())
-                                .font(.system(size: 11, weight: .heavy))
-                                .opacity(0.7)
-                                .kerning(0.6)
+                            Text(subtitle)
+                                .font(Theme.Font.body(13))
+                                .opacity(0.55)
                         }
                     }
-                    .foregroundStyle(Color.vBG)
+                    .foregroundStyle(Color.obsidian)
                 }
             }
             .frame(maxWidth: .infinity)
             .frame(height: height)
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
-            .glow(radius: 18, intensity: 0.45)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+            .breathGlow(minIntensity: 0.12, maxIntensity: 0.32, radius: 18)
         }
-        .buttonStyle(.pressable(scale: 0.98, haptic: .none, glow: true, glowRadius: 24))
+        .buttonStyle(.pressable(scale: 0.985, haptic: .none, glow: true, glowRadius: 22))
     }
 }
 
@@ -134,27 +136,26 @@ struct SecondaryCTA: View {
     let action: () -> Void
 
     var body: some View {
-        let c = color ?? .vSignal
+        let c = color ?? .pearl
         Button(action: { Haptic.light(); action() }) {
             HStack(spacing: 8) {
-                if let icon { Image(systemName: icon).font(.system(size: 12, weight: .heavy)) }
-                Text(title.uppercased())
-                    .font(.system(size: 12, weight: .black))
-                    .kerning(1.0)
+                if let icon { Image(systemName: icon).font(.system(size: 13, weight: .regular)) }
+                Text(title)
+                    .font(Theme.Font.body(14, .medium))
             }
             .foregroundStyle(c)
-            .padding(.horizontal, 14).padding(.vertical, 10)
-            .background(Color.vBG, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+            .padding(.horizontal, 18).padding(.vertical, 12)
+            .background(Color.obsidian, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
-                    .strokeBorder(c, lineWidth: 1)
+                RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
+                    .strokeBorder(c.opacity(0.35), lineWidth: 0.75)
             )
         }
-        .buttonStyle(.pressable(scale: 0.96, haptic: .none))
+        .buttonStyle(.pressable(scale: 0.97, haptic: .none))
     }
 }
 
-// MARK: - Ghost CTA (text-only)
+// MARK: - Ghost CTA (text link with underline border on press)
 
 struct GhostCTA: View {
     let title: String
@@ -163,27 +164,26 @@ struct GhostCTA: View {
     let action: () -> Void
 
     var body: some View {
-        let c = color ?? Color.vLabelMute
+        let c = color ?? Color.silver
         Button(action: { Haptic.light(); action() }) {
             HStack(spacing: 6) {
-                if let icon { Image(systemName: icon).font(.system(size: 11, weight: .heavy)) }
-                Text(title.uppercased())
-                    .font(.system(size: 11, weight: .heavy))
-                    .kerning(1.0)
+                if let icon { Image(systemName: icon).font(.system(size: 12, weight: .regular)) }
+                Text(title)
+                    .font(Theme.Font.body(13, .regular))
             }
             .foregroundStyle(c)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
+            .padding(.vertical, 14)
             .overlay(
-                RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
-                    .strokeBorder(Color.vLineHigh, lineWidth: 0.5)
+                RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
+                    .strokeBorder(Color.mist, lineWidth: 0.5)
             )
         }
-        .buttonStyle(.pressable(scale: 0.97, haptic: .none))
+        .buttonStyle(.pressable(scale: 0.97, haptic: .none, glow: false))
     }
 }
 
-// MARK: - Section label (caps, kerned, with optional action)
+// MARK: - Section label
 
 struct SectionLabel: View {
     let title: String
@@ -191,21 +191,25 @@ struct SectionLabel: View {
     var action: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Rectangle()
-                .fill(Color.vSignal)
-                .frame(width: 12, height: 2)
+                .fill(Color.pearl.opacity(0.18))
+                .frame(width: 16, height: 1)
             Text(title.uppercased())
                 .font(Theme.Font.label)
-                .kerning(1.4)
-                .foregroundStyle(.vLabelMute)
+                .kerning(1.6)
+                .foregroundStyle(.silver)
             Spacer()
             if let actionTitle, let action {
                 Button(action: action) {
-                    Text(actionTitle.uppercased())
-                        .font(.system(size: 10, weight: .heavy))
-                        .kerning(0.8)
-                        .foregroundStyle(.vSignal)
+                    HStack(spacing: 4) {
+                        Text(actionTitle)
+                            .font(Theme.Font.body(13))
+                            .foregroundStyle(.silver)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .regular))
+                            .foregroundStyle(.shadowTxt)
+                    }
                 }
             }
         }
@@ -215,7 +219,7 @@ struct SectionLabel: View {
     }
 }
 
-// MARK: - StatTile (dense, mono numbers)
+// MARK: - StatTile
 
 struct StatTile: View {
     let label: String
@@ -226,47 +230,42 @@ struct StatTile: View {
     var highlight: Color? = nil
 
     var body: some View {
-        let color = accent ?? .vSignal
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 9, weight: .black))
-                        .foregroundStyle(color)
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundStyle(accent ?? .silver)
                 }
                 Text(label.uppercased())
-                    .font(.system(size: 9, weight: .heavy))
-                    .kerning(1.2)
-                    .foregroundStyle(.vLabelMute)
+                    .font(Theme.Font.label)
+                    .kerning(1.4)
+                    .foregroundStyle(.silver)
             }
             Text(value)
-                .font(Theme.Font.mono(24, .black))
-                .foregroundStyle(.vLabel)
-                .minimumScaleFactor(0.7)
+                .font(Theme.Font.display(36))
+                .foregroundStyle(.pearl)
+                .minimumScaleFactor(0.6)
                 .lineLimit(1)
             if let sub {
-                Text(sub.uppercased())
-                    .font(.system(size: 9, weight: .heavy))
-                    .kerning(0.8)
-                    .foregroundStyle(.vLabelFaint)
+                Text(sub)
+                    .font(Theme.Font.body(11))
+                    .foregroundStyle(.shadowTxt)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12).padding(.vertical, 12)
-        .background(Color.vSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
-                .strokeBorder(highlight ?? Color.vLine, lineWidth: 0.5)
-        )
+        .padding(.horizontal, 14).padding(.vertical, 16)
+        .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+        .edgeHighlight(radius: Theme.Radius.md)
     }
 }
 
-// MARK: - Ring progress (sharp, single-color)
+// MARK: - Ring progress
 
 struct RingProgress: View {
     let value: Double
     var size: CGFloat = 120
-    var lineWidth: CGFloat = 8
+    var lineWidth: CGFloat = 6
     var color: Color? = nil
     var trackColor: Color? = nil
     var label: String? = nil
@@ -274,24 +273,27 @@ struct RingProgress: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(trackColor ?? Color.vLineHigh, lineWidth: lineWidth)
+            Circle().stroke(trackColor ?? Color.mist, lineWidth: lineWidth)
             Circle()
                 .trim(from: 0, to: max(0, min(value, 1)))
-                .stroke(color ?? .vSignal, style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
+                .stroke(
+                    LinearGradient(colors: [.pearl, .auraHalo], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                )
                 .rotationEffect(.degrees(-90))
-                .animation(Theme.Motion.bouncy, value: value)
+                .animation(Theme.Motion.glide, value: value)
             VStack(spacing: 2) {
                 if let label {
                     Text(label)
-                        .font(Theme.Font.mono(22, .black))
-                        .foregroundStyle(.vLabel)
+                        .font(Theme.Font.mono(22, .medium))
+                        .foregroundStyle(.pearl)
                         .minimumScaleFactor(0.5)
                 }
                 if let sublabel {
                     Text(sublabel.uppercased())
-                        .font(.system(size: 9, weight: .heavy))
+                        .font(Theme.Font.label)
                         .kerning(1.0)
-                        .foregroundStyle(.vLabelMute)
+                        .foregroundStyle(.silver)
                 }
             }
         }
@@ -299,7 +301,7 @@ struct RingProgress: View {
     }
 }
 
-// MARK: - Tag (square pill, ALL CAPS)
+// MARK: - Chip
 
 struct Chip: View {
     let text: String
@@ -308,21 +310,21 @@ struct Chip: View {
     var filled: Bool = false
 
     var body: some View {
-        let c = color ?? .vSignal
+        let c = color ?? .pearl
         HStack(spacing: 4) {
-            if let icon { Image(systemName: icon).font(.system(size: 8, weight: .black)) }
+            if let icon { Image(systemName: icon).font(.system(size: 9, weight: .regular)) }
             Text(text.uppercased())
-                .font(.system(size: 9, weight: .heavy))
+                .font(Theme.Font.label)
                 .kerning(0.8)
         }
-        .foregroundStyle(filled ? Color.vBG : c)
-        .padding(.horizontal, 7).padding(.vertical, 4)
+        .foregroundStyle(filled ? Color.obsidian : c)
+        .padding(.horizontal, 8).padding(.vertical, 5)
         .background(filled ? c : Color.clear)
         .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous)
-                .strokeBorder(c.opacity(filled ? 0 : 0.5), lineWidth: 0.5)
+            Capsule()
+                .strokeBorder(c.opacity(filled ? 0 : 0.4), lineWidth: 0.5)
         )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous))
+        .clipShape(Capsule())
     }
 }
 
@@ -336,41 +338,40 @@ struct EmptyStateCard: View {
     var action: (() -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 18) {
             ZStack {
-                Rectangle()
-                    .fill(Color.vSurfaceHigh)
-                    .frame(width: 56, height: 56)
+                RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous)
+                    .fill(Color.graphite)
+                    .frame(width: 64, height: 64)
                 Image(systemName: icon)
-                    .font(.system(size: 22, weight: .black))
-                    .foregroundStyle(.vLabelMute)
+                    .font(.system(size: 24, weight: .thin))
+                    .foregroundStyle(.silver)
             }
-            VStack(spacing: 3) {
-                Text(title.uppercased())
-                    .font(.system(size: 13, weight: .black))
-                    .kerning(1.2)
-                    .foregroundStyle(.vLabel)
+            VStack(spacing: 5) {
+                Text(title)
+                    .font(Theme.Font.heading(15))
+                    .foregroundStyle(.pearl)
                 Text(subtitle)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.vLabelMute)
+                    .font(Theme.Font.body(13))
+                    .foregroundStyle(.silver)
                     .multilineTextAlignment(.center)
             }
             if let actionTitle, let action {
                 SecondaryCTA(title: actionTitle, action: action)
             }
         }
-        .padding(28)
+        .padding(32)
         .frame(maxWidth: .infinity)
     }
 }
 
-// MARK: - Animated number (mono)
+// MARK: - Animated number
 
 struct AnimatedNumber: View {
     let value: Double
     var format: String = "%.0f"
-    var font: Font = Theme.Font.mono(48, .black)
-    var color: Color = .vLabel
+    var font: Font = Theme.Font.display(48)
+    var color: Color = .pearl
 
     @State private var current: Double = 0
 
@@ -381,42 +382,39 @@ struct AnimatedNumber: View {
             .monospacedDigit()
             .contentTransition(.numericText())
             .onAppear {
-                withAnimation(.spring(response: 0.7, dampingFraction: 0.85)) { current = value }
+                withAnimation(Theme.Motion.glide) { current = value }
             }
             .onChange(of: value) { _, new in
-                withAnimation(.spring(response: 0.55, dampingFraction: 0.8)) { current = new }
+                withAnimation(Theme.Motion.smooth) { current = new }
             }
     }
 }
 
-// MARK: - Streak badge (square, mono, no flame)
+// MARK: - Streak badge
 
 struct StreakBadge: View {
     let count: Int
     var size: CGFloat = 28
 
     var body: some View {
-        HStack(spacing: 5) {
-            Rectangle().fill(Color.vSignal).frame(width: 4, height: size * 0.55)
+        HStack(spacing: 6) {
+            Rectangle().fill(Color.pearl).frame(width: 2, height: size * 0.5)
             Text("\(count)")
-                .font(Theme.Font.mono(size * 0.55, .black))
-                .foregroundStyle(.vLabel)
-            Text("DAY")
-                .font(.system(size: size * 0.32, weight: .heavy))
-                .kerning(0.8)
-                .foregroundStyle(.vLabelMute)
+                .font(Theme.Font.mono(size * 0.5, .medium))
+                .foregroundStyle(.pearl)
+            Text("days")
+                .font(.system(size: size * 0.28, weight: .regular))
+                .foregroundStyle(.silver)
         }
-        .padding(.horizontal, 8).padding(.vertical, 5)
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.xs)
-                .strokeBorder(Color.vLineHigh, lineWidth: 0.5)
-        )
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous))
+        .edgeHighlight(radius: Theme.Radius.xs)
     }
 }
 
 typealias StreakFlame = StreakBadge
 
-// MARK: - PR flash modifier
+// MARK: - PR flash
 
 struct PRFlashModifier: ViewModifier {
     let trigger: Int
@@ -424,12 +422,12 @@ struct PRFlashModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .scaleEffect(on ? 1.06 : 1.0)
-            .brightness(on ? 0.10 : 0)
+            .brightness(on ? 0.12 : 0)
+            .glow(active: on, radius: 20, intensity: 0.7)
             .onChange(of: trigger) { _, _ in
                 guard trigger > 0 else { return }
-                withAnimation(Theme.Motion.quick) { on = true }
-                withAnimation(Theme.Motion.snappy.delay(0.16)) { on = false }
+                withAnimation(Theme.Motion.press) { on = true }
+                withAnimation(Theme.Motion.glide.delay(0.3)) { on = false }
             }
     }
 }
@@ -440,19 +438,22 @@ extension View {
     }
 }
 
-// MARK: - Hairline
+// MARK: - Hairline (gradient — feels carved)
 
 struct Hairline: View {
     var inset: CGFloat = 0
     var body: some View {
-        Rectangle()
-            .fill(Color.vLine)
-            .frame(height: 0.5)
-            .padding(.leading, inset)
+        LinearGradient(
+            colors: [.clear, Color.mist.opacity(0.6), .clear],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+        .frame(height: 0.5)
+        .padding(.leading, inset)
     }
 }
 
-// MARK: - Index badge (01, 02, 03 — tactical row markers)
+// MARK: - Index badge (kept as back-compat, visually refined)
 
 struct IndexBadge: View {
     let n: Int
@@ -461,34 +462,34 @@ struct IndexBadge: View {
 
     var body: some View {
         Text(String(format: "%02d", n))
-            .font(Theme.Font.mono(11, .black))
-            .foregroundStyle(active ? Color.vBG : .vLabelMute)
+            .font(Theme.Font.mono(10, .regular))
+            .foregroundStyle(active ? Color.obsidian : .shadowTxt)
             .frame(width: size, height: size)
-            .background(active ? Color.vSignal : Color.vSurfaceHigh)
-            .overlay(
-                Rectangle().strokeBorder(active ? Color.clear : Color.vLine, lineWidth: 0.5)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous)
+                    .fill(active ? Color.pearl : Color.graphite)
             )
     }
 }
 
-// MARK: - Status dot (filled circle, simple)
+// MARK: - Status dot
 
 struct StatusDot: View {
-    var color: Color = .vSignal
+    var color: Color = .pearl
     var size: CGFloat = 6
     var body: some View {
         Circle().fill(color).frame(width: size, height: size)
     }
 }
 
-// MARK: - Greeting helper
+// MARK: - Greeting
 
 var elosGreeting: String {
     switch Calendar.current.component(.hour, from: .now) {
-    case 0..<5:   return "On the grind"
-    case 5..<12:  return "Morning"
-    case 12..<17: return "Afternoon"
-    case 17..<21: return "Evening"
-    default:      return "Late shift"
+    case 0..<5:   return "You're up late"
+    case 5..<12:  return "Good morning"
+    case 12..<17: return "Good afternoon"
+    case 17..<21: return "Good evening"
+    default:      return "Good night"
     }
 }

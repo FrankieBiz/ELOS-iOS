@@ -18,13 +18,18 @@ struct YouView: View {
                 VStack(spacing: 0) {
                     profileHeader
                         .padding(.horizontal, Theme.Space.md)
-                        .padding(.top, Theme.Space.xs)
-
-                    Hairline().padding(.top, Theme.Space.sm)
-
-                    statRow
-                        .padding(.horizontal, Theme.Space.md)
                         .padding(.top, Theme.Space.md)
+
+                    Hairline()
+                        .padding(.top, Theme.Space.md)
+
+                    HStack(spacing: 10) {
+                        StatTile(label: "Sessions", value: "\(sessions.count)")
+                        StatTile(label: "Records", value: "\(prs.count)")
+                        StatTile(label: "Streak", value: "\(appState.currentStreak)")
+                    }
+                    .padding(.horizontal, Theme.Space.md)
+                    .padding(.top, Theme.Space.md)
 
                     SectionLabel(title: "Preferences")
                     preferencesCard.padding(.horizontal, Theme.Space.md)
@@ -38,16 +43,40 @@ struct YouView: View {
                     SectionLabel(title: "Integrations")
                     integrationsCard.padding(.horizontal, Theme.Space.md)
 
-                    SectionLabel(title: "Danger Zone")
-                    dangerCard.padding(.horizontal, Theme.Space.md)
+                    // Danger — understated, tertiary
+                    VStack(spacing: 0) {
+                        Button {
+                            resetConfirm = true
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 12, weight: .thin))
+                                    .foregroundStyle(.crimson)
+                                Text("Reset onboarding")
+                                    .font(Theme.Font.body(14))
+                                    .foregroundStyle(.crimson)
+                                Spacer()
+                            }
+                            .padding(.horizontal, Theme.Space.md)
+                            .padding(.vertical, 14)
+                        }
+                        .buttonStyle(.pressable(scale: 0.99, haptic: .none, glow: false))
+                    }
+                    .padding(.horizontal, Theme.Space.md)
+                    .padding(.top, Theme.Space.xl)
+                    .alert("Reset onboarding?", isPresented: $resetConfirm) {
+                        Button("Reset", role: .destructive) { appState.hasCompletedOnboarding = false }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("Your data is kept. You'll just see the welcome screens again.")
+                    }
 
                     aboutFooter
-
-                    Spacer(minLength: 80)
+                    Spacer(minLength: 100)
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Color.vBG.ignoresSafeArea())
+            .background(Color.obsidian.ignoresSafeArea())
             .navigationTitle("You")
             .navigationBarTitleDisplayMode(.large)
             .sheet(isPresented: $showEditProfile) { EditProfileSheet() }
@@ -58,127 +87,107 @@ struct YouView: View {
     // MARK: Profile header
 
     private var profileHeader: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 16) {
             ZStack {
-                Rectangle()
-                    .fill(Color.vSignal)
-                    .frame(width: 64, height: 64)
+                Circle()
+                    .fill(Color.graphite)
+                    .frame(width: 60, height: 60)
+                    .edgeHighlight(radius: 30)
                 Text(initials)
-                    .font(Theme.Font.mono(22, .black))
-                    .foregroundStyle(.vBG)
+                    .font(Theme.Font.mono(20, .regular))
+                    .foregroundStyle(.pearl)
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(appState.displayName.isEmpty ? "SET YOUR NAME" : appState.displayName.uppercased())
-                    .font(.system(size: 18, weight: .black))
-                    .kerning(0.6)
-                    .foregroundStyle(.vLabel)
+                Text(appState.displayName.isEmpty ? "Set your name" : appState.displayName)
+                    .font(Theme.Font.title(22))
+                    .foregroundStyle(.pearl)
                     .lineLimit(1)
-                HStack(spacing: 4) {
-                    StatusDot(color: .vSignal, size: 5)
-                    Text("\(appState.experience.label.uppercased()) · OPERATOR")
-                        .font(.system(size: 9, weight: .heavy))
+                HStack(spacing: 6) {
+                    StatusDot(color: .pearl, size: 4)
+                    Text("\(appState.experience.label) · Member".uppercased())
+                        .font(Theme.Font.label)
                         .kerning(1.0)
-                        .foregroundStyle(.vLabelMute)
+                        .foregroundStyle(.silver)
                 }
             }
             Spacer()
             Button { showEditProfile = true } label: {
                 Image(systemName: "pencil")
-                    .font(.system(size: 12, weight: .black))
-                    .foregroundStyle(.vSignal)
+                    .font(.system(size: 13, weight: .thin))
+                    .foregroundStyle(.silver)
                     .frame(width: 36, height: 36)
-                    .overlay(Rectangle().strokeBorder(Color.vLineHigh, lineWidth: 0.5))
+                    .background(Color.graphite, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+                    .edgeHighlight(radius: Theme.Radius.sm)
             }
-            .buttonStyle(.pressable(scale: 0.92, haptic: .light))
+            .buttonStyle(.pressable(scale: 0.92, haptic: .light, glow: false))
         }
     }
 
     private var initials: String {
         let parts = appState.displayName.split(separator: " ")
-        let letters = parts.prefix(2).compactMap { $0.first.map(String.init) }
-        let s = letters.joined().uppercased()
-        return s.isEmpty ? "OP" : s
+        let s = parts.prefix(2).compactMap { $0.first.map(String.init) }.joined().uppercased()
+        return s.isEmpty ? "ME" : s
     }
 
-    // MARK: Stats row
-
-    private var statRow: some View {
-        HStack(spacing: 8) {
-            StatTile(label: "Workouts", value: "\(sessions.count)", icon: "checkmark")
-            StatTile(label: "PRs", value: "\(prs.count)", icon: "rosette")
-            StatTile(label: "Streak", value: "\(appState.currentStreak)", icon: "bolt")
-        }
-    }
-
-    // MARK: Preferences
+    // MARK: Settings cards
 
     private var preferencesCard: some View {
         @Bindable var s = appState
         return VStack(spacing: 0) {
             row("Units", icon: "scalemass") {
                 Picker("", selection: $s.units) {
-                    Text("LBS").tag(WeightUnit.imperial)
-                    Text("KG").tag(WeightUnit.metric)
+                    Text("lbs").tag(WeightUnit.imperial)
+                    Text("kg").tag(WeightUnit.metric)
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 100)
             }
-            Hairline().padding(.leading, 44)
+            Hairline().padding(.horizontal, Theme.Space.md)
             row("Haptics", icon: "iphone.radiowaves.left.and.right") {
-                Toggle("", isOn: $s.hapticsEnabled).labelsHidden().tint(.vSignal)
+                Toggle("", isOn: $s.hapticsEnabled).labelsHidden().tint(.pearl)
             }
-            Hairline().padding(.leading, 44)
+            Hairline().padding(.horizontal, Theme.Space.md)
             row("Sounds", icon: "speaker.wave.2") {
-                Toggle("", isOn: $s.soundsEnabled).labelsHidden().tint(.vSignal)
+                Toggle("", isOn: $s.soundsEnabled).labelsHidden().tint(.pearl)
             }
         }
-        .background(Color.vSurface)
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.sm)
-                .strokeBorder(Color.vLine, lineWidth: 0.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
+        .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+        .edgeHighlight(radius: Theme.Radius.md)
     }
 
     private var workoutCard: some View {
         @Bindable var s = appState
         return VStack(spacing: 0) {
-            row("Default Rest", icon: "clock") {
+            row("Default rest", icon: "clock") {
                 Stepper(value: $s.defaultRestSeconds, in: 30...300, step: 15) {
                     Text("\(s.defaultRestSeconds)s")
-                        .font(Theme.Font.mono(13, .black))
-                        .foregroundStyle(.vLabel)
+                        .font(Theme.Font.mono(13, .regular))
+                        .foregroundStyle(.pearl)
                 }
                 .labelsHidden()
             }
-            Hairline().padding(.leading, 44)
-            row("Plate Setup", icon: "circle.grid.2x2") {
-                Button {
-                    showPlateSetup = true
-                } label: {
-                    Text("EDIT")
-                        .font(.system(size: 10, weight: .black))
-                        .kerning(1.0)
-                        .foregroundStyle(.vSignal)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .overlay(Rectangle().strokeBorder(Color.vSignal, lineWidth: 1))
+            Hairline().padding(.horizontal, Theme.Space.md)
+            row("Plate setup", icon: "circle.grid.2x2") {
+                Button { showPlateSetup = true } label: {
+                    Text("Edit")
+                        .font(Theme.Font.body(13))
+                        .foregroundStyle(.silver)
+                        .padding(.horizontal, 12).padding(.vertical, 5)
+                        .background(Color.graphite, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+                        .edgeHighlight(radius: Theme.Radius.sm)
                 }
                 .buttonStyle(.plain)
             }
-            Hairline().padding(.leading, 44)
-            row("Bar Weight", icon: "minus") {
-                Text("\(s.units.from(kg: s.barWeightKg).prettyWeight) \(s.units.label.uppercased())")
-                    .font(Theme.Font.mono(13, .black))
-                    .foregroundStyle(.vLabel)
+            Hairline().padding(.horizontal, Theme.Space.md)
+            row("Bar weight", icon: "minus") {
+                Text("\(s.units.from(kg: s.barWeightKg).prettyWeight) \(s.units.label)")
+                    .font(Theme.Font.mono(13, .regular))
+                    .foregroundStyle(.silver)
             }
         }
-        .background(Color.vSurface)
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.sm)
-                .strokeBorder(Color.vLine, lineWidth: 0.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
+        .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+        .edgeHighlight(radius: Theme.Radius.md)
     }
 
     private var bodyCard: some View {
@@ -191,130 +200,82 @@ struct YouView: View {
                         set: { s.bodyweightKg = s.units.toKg($0) }
                     ), format: .number)
                     .keyboardType(.decimalPad)
-                    .font(Theme.Font.mono(13, .black))
-                    .foregroundStyle(.vLabel)
+                    .font(Theme.Font.mono(13, .regular))
+                    .foregroundStyle(.pearl)
                     .multilineTextAlignment(.trailing)
                     .frame(width: 60)
-                    Text(s.units.label.uppercased())
-                        .font(.system(size: 9, weight: .heavy))
-                        .foregroundStyle(.vLabelMute)
+                    Text(s.units.label)
+                        .font(Theme.Font.label)
+                        .foregroundStyle(.silver)
                 }
             }
-            Hairline().padding(.leading, 44)
+            Hairline().padding(.horizontal, Theme.Space.md)
             row("Height", icon: "ruler") {
                 HStack(spacing: 4) {
                     TextField("", value: $s.heightCm, format: .number)
                         .keyboardType(.decimalPad)
-                        .font(Theme.Font.mono(13, .black))
-                        .foregroundStyle(.vLabel)
+                        .font(Theme.Font.mono(13, .regular))
+                        .foregroundStyle(.pearl)
                         .multilineTextAlignment(.trailing)
                         .frame(width: 60)
-                    Text("CM")
-                        .font(.system(size: 9, weight: .heavy))
-                        .foregroundStyle(.vLabelMute)
+                    Text("cm")
+                        .font(Theme.Font.label)
+                        .foregroundStyle(.silver)
                 }
             }
-            Hairline().padding(.leading, 44)
+            Hairline().padding(.horizontal, Theme.Space.md)
             row("Experience", icon: "star") {
                 Picker("", selection: $s.experience) {
                     ForEach(Experience.allCases, id: \.self) { e in
-                        Text(e.label.capitalized).tag(e)
+                        Text(e.label).tag(e)
                     }
                 }
-                .pickerStyle(.menu).labelsHidden().tint(.vSignal)
+                .pickerStyle(.menu).labelsHidden().tint(.pearl)
             }
         }
-        .background(Color.vSurface)
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.sm)
-                .strokeBorder(Color.vLine, lineWidth: 0.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
+        .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+        .edgeHighlight(radius: Theme.Radius.md)
     }
 
     private var integrationsCard: some View {
         @Bindable var s = appState
         return VStack(spacing: 0) {
             row("Apple Health", icon: "heart") {
-                Toggle("", isOn: $s.healthKitEnabled).labelsHidden().tint(.vSignal)
+                Toggle("", isOn: $s.healthKitEnabled).labelsHidden().tint(.pearl)
             }
         }
-        .background(Color.vSurface)
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.sm)
-                .strokeBorder(Color.vLine, lineWidth: 0.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
-    }
-
-    private var dangerCard: some View {
-        Button {
-            resetConfirm = true
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "arrow.counterclockwise")
-                    .font(.system(size: 11, weight: .black))
-                    .foregroundStyle(.vDanger)
-                    .frame(width: 30, height: 30)
-                    .background(Color.vDanger.opacity(0.10))
-                Text("RESET ONBOARDING")
-                    .font(.system(size: 11, weight: .black))
-                    .kerning(1.0)
-                    .foregroundStyle(.vDanger)
-                Spacer()
-            }
-            .padding(.horizontal, 12).padding(.vertical, 14)
-            .background(Color.vSurface)
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.Radius.sm)
-                    .strokeBorder(Color.vDanger.opacity(0.3), lineWidth: 0.5)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
-        }
-        .buttonStyle(.pressable(scale: 0.98, haptic: .heavy))
-        .alert("Reset onboarding?", isPresented: $resetConfirm) {
-            Button("Reset", role: .destructive) { appState.hasCompletedOnboarding = false }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Your data is kept; you'll just see the welcome screens again.")
-        }
+        .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+        .edgeHighlight(radius: Theme.Radius.md)
     }
 
     private var aboutFooter: some View {
-        VStack(spacing: 4) {
-            Rectangle().fill(Color.vSignal).frame(width: 24, height: 2)
-                .padding(.bottom, 6)
-            Text("ELOS · VIGIL")
-                .font(.system(size: 11, weight: .black))
-                .kerning(2.0)
-                .foregroundStyle(.vLabel)
-            Text("BUILT NATIVELY IN SWIFTUI · V1.0")
-                .font(.system(size: 9, weight: .heavy))
-                .kerning(1.4)
-                .foregroundStyle(.vLabelFaint)
+        VStack(spacing: 6) {
+            Rectangle()
+                .fill(Color.pearl.opacity(0.15))
+                .frame(width: 28, height: 1)
+                .padding(.bottom, 4)
+            Text("ELOS · Member · v1.0".uppercased())
+                .font(Theme.Font.label)
+                .kerning(1.6)
+                .foregroundStyle(.shadowTxt)
         }
-        .padding(.top, 30)
+        .padding(.top, 36)
     }
-
-    // MARK: helper
 
     @ViewBuilder
     private func row<Trail: View>(_ title: String, icon: String, @ViewBuilder trail: () -> Trail) -> some View {
-        HStack(spacing: 10) {
-            ZStack {
-                Rectangle().fill(Color.vSurfaceHigh)
-                Image(systemName: icon).font(.system(size: 11, weight: .black))
-                    .foregroundStyle(.vLabelMute)
-            }
-            .frame(width: 26, height: 26)
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .black))
-                .kerning(0.6)
-                .foregroundStyle(.vLabel)
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .thin))
+                .foregroundStyle(.silver)
+                .frame(width: 20)
+            Text(title)
+                .font(Theme.Font.body(14))
+                .foregroundStyle(.pearl)
             Spacer()
             trail()
         }
-        .padding(.horizontal, 12).padding(.vertical, 11)
+        .padding(.horizontal, Theme.Space.md).padding(.vertical, 13)
     }
 }
 
@@ -333,7 +294,7 @@ struct EditProfileSheet: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Color.vBG)
+            .background(Color.obsidian)
             .navigationTitle("Edit Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -366,11 +327,11 @@ struct PlateSetupSheet: View {
                 Section {
                     Stepper(value: $s.barWeightKg, in: 5...30, step: 2.5) {
                         HStack {
-                            Text("Bar Weight")
+                            Text("Bar weight")
                             Spacer()
                             Text(formatKg(s.barWeightKg))
-                                .font(Theme.Font.mono(13, .black))
-                                .foregroundStyle(.vLabelMute)
+                                .font(Theme.Font.mono(13, .regular))
+                                .foregroundStyle(.silver)
                         }
                     }
                 } header: { Text("Olympic Bar") }
@@ -389,12 +350,13 @@ struct PlateSetupSheet: View {
                                 }
                             }
                         ))
+                        .tint(.pearl)
                     }
-                } header: { Text("Plates Available (per side)") }
-                  footer: { Text("These are used to calculate the plates you need to load on the bar.") }
+                } header: { Text("Plates (per side)") }
+                  footer: { Text("Used to calculate the plates you load on the bar.") }
             }
             .scrollContentBackground(.hidden)
-            .background(Color.vBG)
+            .background(Color.obsidian)
             .navigationTitle("Plate Setup")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -404,7 +366,6 @@ struct PlateSetupSheet: View {
     }
 
     private func formatKg(_ kg: Double) -> String {
-        let v = appState.units.from(kg: kg)
-        return "\(v.prettyWeight) \(appState.units.label)"
+        "\(appState.units.from(kg: kg).prettyWeight) \(appState.units.label)"
     }
 }

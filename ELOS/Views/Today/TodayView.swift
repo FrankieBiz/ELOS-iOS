@@ -25,160 +25,161 @@ struct TodayView: View {
 
     private var firstName: String {
         let trimmed = appState.displayName.trimmingCharacters(in: .whitespaces)
-        return trimmed.components(separatedBy: " ").first ?? (trimmed.isEmpty ? "Operator" : trimmed)
+        return trimmed.components(separatedBy: " ").first ?? (trimmed.isEmpty ? "there" : trimmed)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    statusBar
-                        .padding(.horizontal, Theme.Space.md)
-                        .padding(.top, Theme.Space.xs)
+                    // Greeting
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(elosGreeting + ", " + firstName)
+                            .font(Theme.Font.display(34))
+                            .foregroundStyle(.pearl)
 
-                    Hairline().padding(.top, Theme.Space.sm)
+                        HStack(spacing: 10) {
+                            Rectangle()
+                                .fill(Color.pearl.opacity(0.18))
+                                .frame(width: 16, height: 1)
+                            Text(Date.now.prettyDay.uppercased())
+                                .font(Theme.Font.label)
+                                .kerning(1.4)
+                                .foregroundStyle(.silver)
+                            Spacer()
+                            if appState.currentStreak > 0 {
+                                StreakBadge(count: appState.currentStreak, size: 26)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Theme.Space.md)
+                    .padding(.top, Theme.Space.md)
 
-                    missionCard
+                    // Session card
+                    sessionCard
                         .padding(.horizontal, Theme.Space.md)
                         .padding(.top, Theme.Space.lg)
 
+                    // Week strip
                     SectionLabel(title: "This Week")
                     weekStrip
                         .padding(.horizontal, Theme.Space.md)
                         .padding(.top, Theme.Space.xs)
 
-                    statRow
-                        .padding(.horizontal, Theme.Space.md)
-                        .padding(.top, Theme.Space.md)
+                    // Stats
+                    HStack(spacing: 10) {
+                        StatTile(label: "Sets", value: "\(weeklySetCount)", sub: "this week")
+                        StatTile(label: "Volume", value: displayVolume, sub: "this week")
+                        StatTile(label: "PRs", value: "\(personalRecords.count)", sub: "all time")
+                    }
+                    .padding(.horizontal, Theme.Space.md)
+                    .padding(.top, Theme.Space.md)
 
+                    // PRs
                     if !personalRecords.isEmpty {
                         SectionLabel(title: "Personal Records")
                         prList.padding(.horizontal, Theme.Space.md)
                     }
 
-                    Spacer(minLength: 80)
+                    Spacer(minLength: 100)
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Color.vBG.ignoresSafeArea())
+            .background(Color.obsidian.ignoresSafeArea())
             .navigationBarHidden(true)
         }
     }
 
-    // MARK: Status bar
+    // MARK: Session card
 
-    private var statusBar: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Date.now.prettyDay)
-                    .font(.system(size: 10, weight: .heavy))
-                    .kerning(1.6)
-                    .foregroundStyle(.vLabelMute)
-                Text(elosGreeting + ", " + firstName.uppercased())
-                    .font(Theme.Font.title(22))
-                    .foregroundStyle(.vLabel)
-                    .kerning(0.5)
-            }
-            Spacer()
-            if appState.currentStreak > 0 {
-                StreakBadge(count: appState.currentStreak, size: 28)
-            }
-        }
-    }
-
-    // MARK: Mission card (today's workout)
-
-    private var missionCard: some View {
-        let dayNumber = workoutDayNumber()
-        return VStack(alignment: .leading, spacing: 0) {
-            // Top row: program tag + day index
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 6) {
-                        StatusDot(color: todayDay.isRest ? .vLabelMute : .vSignal)
-                        Text(program.name.uppercased())
-                            .font(.system(size: 10, weight: .heavy))
-                            .kerning(1.4)
-                            .foregroundStyle(.vLabelMute)
-                    }
-                    Text(todayDay.isRest ? "REST" : todayDay.title.uppercased())
-                        .font(Theme.Font.display(54))
-                        .foregroundStyle(.vLabel)
-                        .minimumScaleFactor(0.6)
-                        .lineLimit(1)
-                        .kerning(-0.5)
-                    Text(todayDay.focus.uppercased())
-                        .font(.system(size: 11, weight: .heavy))
-                        .kerning(1.2)
-                        .foregroundStyle(.vLabelMute)
-                }
+    private var sessionCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Program label
+            HStack(spacing: 6) {
+                StatusDot(color: todayDay.isRest ? .silver : .pearl, size: 5)
+                Text(program.name.uppercased())
+                    .font(Theme.Font.label)
+                    .kerning(1.4)
+                    .foregroundStyle(.silver)
                 Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("DAY")
-                        .font(.system(size: 9, weight: .heavy))
-                        .kerning(1.6)
-                        .foregroundStyle(.vLabelFaint)
-                    Text(String(format: "%02d", dayNumber))
-                        .font(Theme.Font.mono(28, .black))
-                        .foregroundStyle(.vSignal)
-                }
+                Text("Day \(workoutDayNumber())")
+                    .font(Theme.Font.mono(11, .regular))
+                    .foregroundStyle(.shadowTxt)
             }
 
-            // Stats sub-row
+            Spacer().frame(height: 14)
+
+            // Session title
+            Text(todayDay.isRest ? "Rest day" : todayDay.title)
+                .font(Theme.Font.display(44))
+                .foregroundStyle(.pearl)
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+
+            Text(todayDay.isRest ? "Recovery is part of the work." : todayDay.focus)
+                .font(Theme.Font.body(14))
+                .foregroundStyle(.silver)
+                .padding(.top, 4)
+
+            // Metrics
             if !todayDay.isRest {
-                Hairline().padding(.vertical, Theme.Space.md)
+                Hairline()
+                    .padding(.vertical, Theme.Space.md)
+
                 HStack(spacing: 0) {
-                    metric(label: "Exercises", value: "\(todayExercises.count)")
-                    Rectangle().fill(Color.vLine).frame(width: 0.5, height: 32)
-                    metric(label: "Sets",      value: "\(todayExercises.count * 4)")
-                    Rectangle().fill(Color.vLine).frame(width: 0.5, height: 32)
-                    metric(label: "Min",       value: "~\(todayExercises.count * 11)")
+                    metricCell(label: "Exercises", value: "\(todayExercises.count)")
+                    metricDivider()
+                    metricCell(label: "Sets",      value: "\(todayExercises.count * 4)")
+                    metricDivider()
+                    metricCell(label: "Min",       value: "~\(todayExercises.count * 11)")
                 }
-            } else {
-                Hairline().padding(.vertical, Theme.Space.md)
-                Text("Recovery is part of the protocol.")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.vLabelMute)
             }
 
             // CTA
             Button {
                 if todayDay.isRest { startEmptyWorkout() } else { startWorkout() }
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: todayDay.isRest ? "plus" : "play.fill")
-                        .font(.system(size: 13, weight: .black))
-                    Text(todayDay.isRest ? "FREE WORKOUT" : "BEGIN MISSION")
-                        .font(.system(size: 13, weight: .black))
-                        .kerning(1.6)
+                HStack(spacing: 10) {
+                    Image(systemName: todayDay.isRest ? "plus" : "arrow.right")
+                        .font(.system(size: 14, weight: .thin))
+                    Text(todayDay.isRest ? "Free session" : "Begin session")
+                        .font(Theme.Font.title(17))
                 }
-                .foregroundStyle(.vBG)
+                .foregroundStyle(.obsidian)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Color.vSignal, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
+                .frame(height: 52)
+                .background(
+                    LinearGradient(colors: [Color.pearl.opacity(0.97), .pearl], startPoint: .top, endPoint: .bottom),
+                    in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
+                )
+                .breathGlow(minIntensity: 0.10, maxIntensity: 0.28, radius: 16)
             }
-            .buttonStyle(.pressable(scale: 0.98, haptic: .heavy))
+            .buttonStyle(.pressable(scale: 0.985, haptic: .heavy, glow: true, glowRadius: 20))
             .padding(.top, Theme.Space.md)
         }
         .padding(Theme.Space.md)
-        .background(Color.vSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
-                .strokeBorder(Color.vLine, lineWidth: 0.5)
-        )
+        .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
+        .edgeHighlight(radius: Theme.Radius.lg)
     }
 
-    private func metric(label: String, value: String) -> some View {
-        VStack(spacing: 2) {
+    private func metricCell(label: String, value: String) -> some View {
+        VStack(spacing: 3) {
             Text(value)
-                .font(Theme.Font.mono(20, .black))
-                .foregroundStyle(.vLabel)
+                .font(Theme.Font.mono(22, .regular))
+                .foregroundStyle(.pearl)
             Text(label.uppercased())
-                .font(.system(size: 9, weight: .heavy))
-                .kerning(1.2)
-                .foregroundStyle(.vLabelMute)
+                .font(Theme.Font.label)
+                .kerning(1.0)
+                .foregroundStyle(.silver)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private func metricDivider() -> some View {
+        Rectangle()
+            .fill(Color.mist.opacity(0.6))
+            .frame(width: 0.5, height: 34)
     }
 
     // MARK: Week strip
@@ -189,125 +190,99 @@ struct TodayView: View {
         let days = (0..<7).map { cal.date(byAdding: .day, value: $0, to: weekStart)! }
         let trained: Set<String> = Set(thisWeekSessions.map { $0.date.dayKey })
 
-        return HStack(spacing: 4) {
-            ForEach(Array(days.enumerated()), id: \.offset) { idx, day in
-                dayCell(day: day, trained: trained.contains(day.dayKey),
-                        isToday: cal.isDateInToday(day))
+        return HStack(spacing: 6) {
+            ForEach(Array(days.enumerated()), id: \.offset) { _, day in
+                dayBar(day: day,
+                       trained: trained.contains(day.dayKey),
+                       isToday: cal.isDateInToday(day))
             }
         }
     }
 
-    private func dayCell(day: Date, trained: Bool, isToday: Bool) -> some View {
+    private func dayBar(day: Date, trained: Bool, isToday: Bool) -> some View {
         let f = DateFormatter(); f.dateFormat = "EEE"
-        let dn = DateFormatter(); dn.dateFormat = "d"
-        return VStack(spacing: 4) {
-            Text(f.string(from: day).uppercased())
-                .font(.system(size: 9, weight: .heavy))
-                .kerning(0.8)
-                .foregroundStyle(isToday ? .vSignal : .vLabelFaint)
-            Text(dn.string(from: day))
-                .font(Theme.Font.mono(15, .black))
-                .foregroundStyle(trained ? .vBG : (isToday ? .vSignal : .vLabel))
-            Rectangle()
-                .fill(trained ? Color.vSignal : Color.vLine)
-                .frame(height: 2)
+        return VStack(spacing: 6) {
+            // Vertical bar
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(trained ? Color.pearl : (isToday ? Color.pearl.opacity(0.3) : Color.mist))
+                .frame(height: 32)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .strokeBorder(isToday && !trained ? Color.pearl.opacity(0.5) : Color.clear, lineWidth: 0.75)
+                )
+                .glow(active: trained, radius: 8, intensity: 0.3)
+
+            Text(f.string(from: day).prefix(1))
+                .font(Theme.Font.label)
+                .kerning(0.5)
+                .foregroundStyle(isToday ? Color.pearl : Color.shadowTxt)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(trained ? Color.vSignal : Color.vSurface)
-        .overlay(
-            Rectangle().strokeBorder(isToday ? Color.vSignal : Color.vLine, lineWidth: isToday ? 1 : 0.5)
-        )
-    }
-
-    // MARK: Stat row
-
-    private var statRow: some View {
-        HStack(spacing: 8) {
-            StatTile(label: "Sets", value: "\(weeklySetCount)",
-                     sub: "this week", icon: "list.number")
-            StatTile(label: "Volume", value: displayVolume,
-                     sub: "this week", icon: "scalemass")
-            StatTile(label: "PRs", value: "\(personalRecords.count)",
-                     sub: "all time", icon: "rosette")
-        }
-    }
-
-    private var displayVolume: String {
-        let v = appState.units.from(kg: weeklyVolumeKg)
-        if v >= 10000 { return String(format: "%.0fK", v/1000) }
-        if v >= 1000  { return String(format: "%.1fK", v/1000) }
-        return String(format: "%.0f", v)
     }
 
     // MARK: PR list
 
     private var prList: some View {
         VStack(spacing: 0) {
-            ForEach(Array(personalRecords.prefix(4).enumerated()), id: \.element.id) { i, pr in
-                prRow(idx: i + 1, pr: pr)
-                if i < min(personalRecords.count, 4) - 1 {
-                    Hairline().padding(.leading, 38)
+            ForEach(Array(personalRecords.prefix(5).enumerated()), id: \.element.id) { i, pr in
+                prRow(pr: pr)
+                if i < min(personalRecords.count, 5) - 1 {
+                    Hairline().padding(.horizontal, Theme.Space.md)
                 }
             }
         }
-        .background(Color.vSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
-                .strokeBorder(Color.vLine, lineWidth: 0.5)
-        )
+        .background(Color.onyx, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
+        .edgeHighlight(radius: Theme.Radius.md)
     }
 
-    private func prRow(idx: Int, pr: PersonalRecord) -> some View {
-        HStack(spacing: 10) {
-            IndexBadge(n: idx, active: false, size: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(pr.exerciseName.uppercased())
-                    .font(.system(size: 13, weight: .black))
-                    .kerning(0.4)
-                    .foregroundStyle(.vLabel)
+    private func prRow(_ pr: PersonalRecord) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(pr.exerciseName)
+                    .font(Theme.Font.heading(14))
+                    .foregroundStyle(.pearl)
                     .lineLimit(1)
-                Text("\(pr.reps) REP\(pr.reps == 1 ? "" : "S") · \(pr.dateAchieved.shortDate.uppercased())")
-                    .font(.system(size: 9, weight: .heavy))
-                    .kerning(0.8)
-                    .foregroundStyle(.vLabelMute)
+                Text("\(pr.reps) rep\(pr.reps == 1 ? "" : "s") · \(pr.dateAchieved.shortDate)")
+                    .font(Theme.Font.body(12))
+                    .foregroundStyle(.silver)
             }
             Spacer()
-            Text(appState.units.from(kg: pr.weightKg).prettyWeight)
-                .font(Theme.Font.mono(18, .black))
-                .foregroundStyle(.vSignal)
-            Text(appState.units.label.uppercased())
-                .font(.system(size: 9, weight: .heavy))
-                .foregroundStyle(.vLabelMute)
+            HStack(alignment: .lastTextBaseline, spacing: 3) {
+                Text(appState.units.from(kg: pr.weightKg).prettyWeight)
+                    .font(Theme.Font.mono(18, .medium))
+                    .foregroundStyle(.pearl)
+                Text(appState.units.label)
+                    .font(Theme.Font.label)
+                    .foregroundStyle(.silver)
+            }
         }
-        .padding(.horizontal, 12).padding(.vertical, 10)
+        .padding(.horizontal, Theme.Space.md)
+        .padding(.vertical, 14)
     }
 
     // MARK: Helpers
 
+    private var displayVolume: String {
+        let v = appState.units.from(kg: weeklyVolumeKg)
+        if v >= 10000 { return String(format: "%.0fK", v / 1000) }
+        if v >= 1000  { return String(format: "%.1fK", v / 1000) }
+        return String(format: "%.0f", v)
+    }
+
     private func workoutDayNumber() -> Int {
-        let days = Calendar.current.dateComponents([.day], from: appState.programStartDate, to: .now).day ?? 0
-        return max(1, days + 1)
+        max(1, (Calendar.current.dateComponents([.day], from: appState.programStartDate, to: .now).day ?? 0) + 1)
     }
 
     private func startWorkout() {
-        let drafts: [DraftExercise] = todayExercises.map { ex in
-            DraftExercise(name: ex.name, muscleGroup: ex.muscleGroup, targetSets: 4, targetReps: 8)
+        let drafts: [DraftExercise] = todayExercises.map {
+            DraftExercise(name: $0.name, muscleGroup: $0.muscleGroup, targetSets: 4, targetReps: 8)
         }
-        appState.activeWorkout = ActiveWorkout(
-            title: todayDay.title,
-            subtitle: todayDay.focus,
-            exercises: drafts
-        )
+        appState.activeWorkout = ActiveWorkout(title: todayDay.title, subtitle: todayDay.focus, exercises: drafts)
         Haptic.heavy()
     }
 
     private func startEmptyWorkout() {
-        appState.activeWorkout = ActiveWorkout(
-            title: "Free Workout",
-            subtitle: "Build as you go",
-            exercises: []
-        )
+        appState.activeWorkout = ActiveWorkout(title: "Free Session", subtitle: "Build as you go", exercises: [])
         Haptic.heavy()
     }
 }

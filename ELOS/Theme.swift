@@ -1,54 +1,68 @@
 import SwiftUI
 
 // =====================================================================
-//  VIGIL  ·  the only design system this app has.
-//  obsidian black · platinum white · sharp · luxe · aura glow
+//  OBSIDIAN  ·  the only design system this app has.
+//  material black · platinum white · restrained · wealth · aura
 // =====================================================================
 
 // MARK: - Color tokens
 
 extension Color {
-    // Surfaces — all sit on pure black
-    static let vBG          = Color(hex: "#000000") // void
-    static let vSurface     = Color(hex: "#0A0A0A") // card
-    static let vSurfaceHigh = Color(hex: "#121212") // elevated card
-    static let vInk         = Color(hex: "#181818") // pressable ink
-    static let vInset       = Color(hex: "#0E0E0E") // input fields
+    // Surfaces — warm-leaning blacks for material depth
+    static let obsidian     = Color(hex: "#050505") // root background
+    static let onyx         = Color(hex: "#0B0B0D") // primary card surface
+    static let graphite     = Color(hex: "#14141A") // elevated surface
+    static let smoke        = Color(hex: "#1C1C24") // input / inset
+    static let mist         = Color(hex: "#2A2A33") // hairline high / emphasized border
+    static let hairlineClr  = Color(hex: "#1A1A20") // default hairline
 
-    // Lines
-    static let vLine        = Color(hex: "#1F1F1F") // hairline
-    static let vLineHigh    = Color(hex: "#2D2D2D") // emphasized border
+    // Text — warm whites, never pure
+    static let pearl        = Color(hex: "#F2F2F4") // primary text
+    static let silver       = Color(hex: "#A8A8B0") // secondary text
+    static let shadowTxt    = Color(hex: "#5A5A62") // tertiary / disabled
 
-    // Text
-    static let vLabel       = Color(hex: "#F5F5F5") // primary
-    static let vLabelMute   = Color(hex: "#8A8A8A") // secondary
-    static let vLabelFaint  = Color(hex: "#4A4A4A") // tertiary
+    // Aura — the glow, slightly cool
+    static let auraCore     = Color(hex: "#FFFFFF")
+    static let auraHalo     = Color(hex: "#E8EEFF") // blue-white premium halo
 
-    // Signal (the one accent — pure platinum white)
-    static let vSignal      = Color(hex: "#FFFFFF") // platinum
-    static let vSignalDeep  = Color(hex: "#BFBFBF") // pressed/dim
-    static let vSignalSoft  = Color(hex: "#FFFFFF").opacity(0.10)
-    static let vAura        = Color(hex: "#FFFFFF") // glow halo color
+    // Status
+    static let crimson      = Color(hex: "#E04848") // destructive only
+    static let sterling     = Color(hex: "#D4D4DA") // success / positive
+    static let amber        = Color(hex: "#C9A86A") // warning — used sparingly
 
-    // Status — desaturated to fit the monochrome luxe palette
-    static let vDanger      = Color(hex: "#FF4D4D")
-    static let vSuccess     = Color(hex: "#E8E8E8")
-    static let vWarn        = Color(hex: "#CFCFCF")
+    // Legacy vBG / vSurface / vSignal aliases (all non-touched files keep compiling)
+    static let vBG          = obsidian
+    static let vSurface     = onyx
+    static let vSurfaceHigh = graphite
+    static let vInk         = smoke
+    static let vInset       = smoke
+    static let vLine        = hairlineClr
+    static let vLineHigh    = mist
+    static let vLabel       = pearl
+    static let vLabelMute   = silver
+    static let vLabelFaint  = shadowTxt
+    static let vSignal      = pearl        // was yellow, now platinum
+    static let vSignalDeep  = silver
+    static let vSignalSoft  = Color(hex: "#FFFFFF").opacity(0.08)
+    static let vAura        = auraCore
+    static let vDanger      = crimson
+    static let vSuccess     = sterling
+    static let vWarn        = amber
 }
 
-// Backwards-compat aliases (so non-touched files still compile)
+// Back-compat brand aliases
 extension Color {
-    static let brand        = vSignal
-    static let brandSuccess = vSuccess
-    static let brandWarn    = vWarn
-    static let brandDanger  = vDanger
-    static let brandInfo    = vSignal
-    static let brandTrophy  = vSignal
+    static let brand        = pearl
+    static let brandSuccess = sterling
+    static let brandWarn    = amber
+    static let brandDanger  = crimson
+    static let brandInfo    = pearl
+    static let brandTrophy  = amber
 
-    static let surfaceBG     = vBG
-    static let surfaceRaised = vSurface
-    static let surfaceInset  = vInset
-    static let hairline      = vLine
+    static let surfaceBG     = obsidian
+    static let surfaceRaised = onyx
+    static let surfaceInset  = smoke
+    static let hairline      = hairlineClr
 }
 
 extension ShapeStyle where Self == Color {
@@ -63,20 +77,30 @@ extension ShapeStyle where Self == Color {
     static var surfaceInset:  Color { .surfaceInset }
     static var hairline:      Color { .hairline }
 
-    static var vSignal:       Color { .vSignal }
-    static var vLabel:        Color { .vLabel }
-    static var vLabelMute:    Color { .vLabelMute }
-    static var vLabelFaint:   Color { .vLabelFaint }
-    static var vBG:           Color { .vBG }
-    static var vSurface:      Color { .vSurface }
-    static var vSurfaceHigh:  Color { .vSurfaceHigh }
-    static var vInk:          Color { .vInk }
-    static var vInset:        Color { .vInset }
-    static var vLine:         Color { .vLine }
-    static var vLineHigh:     Color { .vLineHigh }
-    static var vDanger:       Color { .vDanger }
-    static var vSuccess:      Color { .vSuccess }
-    static var vWarn:         Color { .vWarn }
+    static var vSignal:      Color { .vSignal }
+    static var vLabel:       Color { .vLabel }
+    static var vLabelMute:   Color { .vLabelMute }
+    static var vLabelFaint:  Color { .vLabelFaint }
+    static var vBG:          Color { .vBG }
+    static var vSurface:     Color { .vSurface }
+    static var vSurfaceHigh: Color { .vSurfaceHigh }
+    static var vInk:         Color { .vInk }
+    static var vInset:       Color { .vInset }
+    static var vLine:        Color { .vLine }
+    static var vLineHigh:    Color { .vLineHigh }
+    static var vDanger:      Color { .vDanger }
+    static var vSuccess:     Color { .vSuccess }
+    static var vWarn:        Color { .vWarn }
+    static var pearl:        Color { .pearl }
+    static var silver:       Color { .silver }
+    static var obsidian:     Color { .obsidian }
+    static var onyx:         Color { .onyx }
+    static var graphite:     Color { .graphite }
+    static var smoke:        Color { .smoke }
+    static var mist:         Color { .mist }
+    static var crimson:      Color { .crimson }
+    static var sterling:     Color { .sterling }
+    static var amber:        Color { .amber }
 }
 
 // MARK: - Hex init
@@ -97,94 +121,164 @@ extension Color {
     }
 }
 
-// MARK: - Theme namespace (back-compat alias retained)
+// MARK: - Theme namespace
 
 enum Theme {
     enum Space {
         static let xxs: CGFloat = 4
-        static let xs:  CGFloat = 8
-        static let sm:  CGFloat = 12
-        static let md:  CGFloat = 16
-        static let lg:  CGFloat = 20
-        static let xl:  CGFloat = 28
-        static let xxl: CGFloat = 40
+        static let xs:  CGFloat = 10
+        static let sm:  CGFloat = 14
+        static let md:  CGFloat = 20
+        static let lg:  CGFloat = 28
+        static let xl:  CGFloat = 40
+        static let xxl: CGFloat = 56
     }
 
     enum Radius {
         static let none: CGFloat = 0
-        static let xs:   CGFloat = 2
-        static let sm:   CGFloat = 4
-        static let md:   CGFloat = 6
-        static let lg:   CGFloat = 8
-        static let xl:   CGFloat = 12
+        static let xs:   CGFloat = 4
+        static let sm:   CGFloat = 8
+        static let md:   CGFloat = 12
+        static let lg:   CGFloat = 16
+        static let xl:   CGFloat = 22
         static let pill: CGFloat = 999
     }
 
     enum Font {
-        // Display: huge condensed black
-        static func display(_ size: CGFloat = 64) -> SwiftUI.Font {
-            .system(size: size, weight: .black, design: .default)
+        // Display — SF Pro Display, light, tight tracking
+        static func display(_ size: CGFloat = 56) -> SwiftUI.Font {
+            .system(size: size, weight: .light, design: .default)
         }
-        // Title: page titles
+        // Title — regular weight
         static func title(_ size: CGFloat = 28) -> SwiftUI.Font {
-            .system(size: size, weight: .black, design: .default)
+            .system(size: size, weight: .regular, design: .default)
         }
-        // Heading: card titles
+        // Heading — medium
         static func heading(_ size: CGFloat = 16) -> SwiftUI.Font {
-            .system(size: size, weight: .heavy, design: .default)
+            .system(size: size, weight: .medium, design: .default)
         }
         // Body
-        static func body(_ size: CGFloat = 14, _ weight: SwiftUI.Font.Weight = .medium) -> SwiftUI.Font {
+        static func body(_ size: CGFloat = 15, _ weight: SwiftUI.Font.Weight = .regular) -> SwiftUI.Font {
             .system(size: size, weight: weight, design: .default)
         }
-        // Mono — numbers/codes
-        static func mono(_ size: CGFloat = 14, _ weight: SwiftUI.Font.Weight = .heavy) -> SwiftUI.Font {
+        // Mono — tabular numbers only
+        static func mono(_ size: CGFloat = 14, _ weight: SwiftUI.Font.Weight = .regular) -> SwiftUI.Font {
             .system(size: size, weight: weight, design: .monospaced)
         }
-        // Tag — tiny all-caps
-        static let tag:   SwiftUI.Font = .system(size: 9,  weight: .heavy)
-        static let micro: SwiftUI.Font = .system(size: 10, weight: .heavy)
-        static let label: SwiftUI.Font = .system(size: 11, weight: .heavy)
-        static let section: SwiftUI.Font = .system(size: 11, weight: .heavy)
+        // Label — the only ALL CAPS usage (micro text, nav, section headers)
+        static let tag:     SwiftUI.Font = .system(size: 9,  weight: .semibold)
+        static let micro:   SwiftUI.Font = .system(size: 10, weight: .semibold)
+        static let label:   SwiftUI.Font = .system(size: 10, weight: .semibold)
+        static let section: SwiftUI.Font = .system(size: 10, weight: .semibold)
     }
 
     enum Motion {
-        static let snappy   = Animation.spring(response: 0.22, dampingFraction: 0.86)
-        static let quick    = Animation.easeOut(duration: 0.14)
-        static let smooth   = Animation.easeInOut(duration: 0.20)
-        static let bouncy   = Animation.spring(response: 0.34, dampingFraction: 0.70)
-        static let celebrate = Animation.spring(response: 0.40, dampingFraction: 0.62)
+        static let silk      = Animation.easeOut(duration: 0.45)
+        static let glide     = Animation.easeInOut(duration: 0.55)
+        static let press     = Animation.easeOut(duration: 0.18)
+        static let snappy    = Animation.easeOut(duration: 0.22) // back-compat
+        static let quick     = Animation.easeOut(duration: 0.14)
+        static let smooth    = Animation.easeInOut(duration: 0.30)
+        static let bouncy    = Animation.spring(response: 0.40, dampingFraction: 0.75) // back-compat
+        static let celebrate = Animation.spring(response: 0.50, dampingFraction: 0.70)
+        static let breath    = Animation.easeInOut(duration: 2.4).repeatForever(autoreverses: true)
     }
 }
 
-// MARK: - Glow (the aura)
-//
-// Layered white shadows produce a clean halo against pure black.
-// Use .glow(active:) to fade it in on tap, focus, or selection.
+// MARK: - Material fill (subtle vertical gradient for depth)
+
+struct MaterialFill: ShapeStyle {
+    func resolve(in environment: EnvironmentValues) -> some ShapeStyle {
+        LinearGradient(
+            colors: [
+                Color.onyx.opacity(0.98),
+                Color.onyx
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+}
+
+// MARK: - Glow modifier (layered white shadows = halo aura)
 
 struct GlowModifier: ViewModifier {
     var active: Bool = true
     var radius: CGFloat = 14
-    var color: Color = .vAura
+    var color: Color = .auraCore
     var intensity: Double = 1.0
 
     func body(content: Content) -> some View {
         content
-            .shadow(color: color.opacity(active ? 0.55 * intensity : 0), radius: radius * 0.5, x: 0, y: 0)
-            .shadow(color: color.opacity(active ? 0.30 * intensity : 0), radius: radius,        x: 0, y: 0)
-            .shadow(color: color.opacity(active ? 0.18 * intensity : 0), radius: radius * 1.8,  x: 0, y: 0)
+            .shadow(color: color.opacity(active ? 0.50 * intensity : 0), radius: radius * 0.4, x: 0, y: 0)
+            .shadow(color: color.opacity(active ? 0.28 * intensity : 0), radius: radius,        x: 0, y: 0)
+            .shadow(color: color.opacity(active ? 0.14 * intensity : 0), radius: radius * 2.0,  x: 0, y: 0)
             .animation(Theme.Motion.smooth, value: active)
+            .animation(Theme.Motion.smooth, value: intensity)
     }
 }
 
 extension View {
-    /// Soft white halo around the view. Defaults to always on; pass `active:` to gate it.
-    func glow(active: Bool = true, radius: CGFloat = 14, color: Color = .vAura, intensity: Double = 1.0) -> some View {
+    func glow(active: Bool = true, radius: CGFloat = 14, color: Color = .auraCore, intensity: Double = 1.0) -> some View {
         modifier(GlowModifier(active: active, radius: radius, color: color, intensity: intensity))
     }
 }
 
-// MARK: - Skin (single Vigil skin — kept for environment compatibility)
+// MARK: - Breath glow (ambient, looping)
+
+struct BreathGlowModifier: ViewModifier {
+    @State private var breathing = false
+    var minIntensity: Double = 0.15
+    var maxIntensity: Double = 0.38
+    var radius: CGFloat = 20
+
+    func body(content: Content) -> some View {
+        content
+            .shadow(color: Color.auraCore.opacity(breathing ? maxIntensity : minIntensity), radius: radius * 0.5, x: 0, y: 0)
+            .shadow(color: Color.auraHalo.opacity(breathing ? maxIntensity * 0.6 : minIntensity * 0.4), radius: radius, x: 0, y: 0)
+            .shadow(color: Color.auraCore.opacity(breathing ? maxIntensity * 0.3 : 0), radius: radius * 2, x: 0, y: 0)
+            .onAppear {
+                withAnimation(Theme.Motion.breath) { breathing = true }
+            }
+    }
+}
+
+extension View {
+    func breathGlow(minIntensity: Double = 0.15, maxIntensity: Double = 0.38, radius: CGFloat = 20) -> some View {
+        modifier(BreathGlowModifier(minIntensity: minIntensity, maxIntensity: maxIntensity, radius: radius))
+    }
+}
+
+// MARK: - Edge highlight (milled surface feel)
+
+struct EdgeHighlightModifier: ViewModifier {
+    var radius: CGFloat = Theme.Radius.md
+
+    func body(content: Content) -> some View {
+        content.overlay(
+            RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.06),
+                            Color.black.opacity(0.25)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+        )
+    }
+}
+
+extension View {
+    func edgeHighlight(radius: CGFloat = Theme.Radius.md) -> some View {
+        modifier(EdgeHighlightModifier(radius: radius))
+    }
+}
+
+// MARK: - Skin (kept for environment compatibility)
 
 struct ThemeSkin {
     let background: Color
@@ -202,29 +296,28 @@ struct ThemeSkin {
     let colorScheme: ColorScheme
 
     static let vigil = ThemeSkin(
-        background:   .vBG,
-        surface:      .vSurface,
-        surfaceHigh:  .vSurfaceHigh,
-        accent:       .vSignal,
+        background:   .obsidian,
+        surface:      .onyx,
+        surfaceHigh:  .graphite,
+        accent:       .pearl,
         accentSubtle: .vSignalSoft,
-        onAccent:     .vBG,
-        label:        .vLabel,
-        labelSub:     .vLabelMute,
-        labelFaint:   .vLabelFaint,
-        hairline:     .vLine,
-        destructive:  .vDanger,
-        success:      .vSuccess,
+        onAccent:     .obsidian,
+        label:        .pearl,
+        labelSub:     .silver,
+        labelFaint:   .shadowTxt,
+        hairline:     .hairlineClr,
+        destructive:  .crimson,
+        success:      .sterling,
         colorScheme:  .dark
     )
 
     static func forMode(_ mode: ThemeMode) -> ThemeSkin { .vigil }
 }
 
-// Single theme. Enum kept for back-compat with AppState persistence.
 enum ThemeMode: String, CaseIterable, Codable {
     case vigil
-    var label: String       { "Vigil" }
-    var description: String { "Pure black. Signal yellow. The only theme." }
+    var label: String       { "Obsidian" }
+    var description: String { "Material black. Platinum white. The only theme." }
     var icon: String        { "moon.stars.fill" }
     var isDark: Bool        { true }
     var colorScheme: ColorScheme { .dark }
@@ -262,7 +355,7 @@ extension Date {
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: self)
     }
     var prettyDay: String {
-        let f = DateFormatter(); f.dateFormat = "EEEE · MMM d"; return f.string(from: self).uppercased()
+        let f = DateFormatter(); f.dateFormat = "EEEE · MMM d"; return f.string(from: self)
     }
     var shortDate: String {
         let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .none; return f.string(from: self)
