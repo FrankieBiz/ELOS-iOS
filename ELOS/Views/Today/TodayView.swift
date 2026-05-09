@@ -225,7 +225,7 @@ struct TodayView: View {
     private var prList: some View {
         VStack(spacing: 0) {
             ForEach(Array(personalRecords.prefix(5).enumerated()), id: \.element.id) { i, pr in
-                prRow(pr: pr)
+                prRow(pr)
                 if i < min(personalRecords.count, 5) - 1 {
                     Hairline().padding(.horizontal, Theme.Space.md)
                 }
