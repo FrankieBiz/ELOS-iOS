@@ -122,6 +122,22 @@ extension Color {
     static let hairline        = Theme.Palette.hairline
 }
 
+// MARK: - ShapeStyle bridge so `.brand` works in foregroundStyle/fill/tint contexts
+
+extension ShapeStyle where Self == Color {
+    static var brand:        Color { .brand }
+    static var brandSuccess: Color { .brandSuccess }
+    static var brandWarn:    Color { .brandWarn }
+    static var brandDanger:  Color { .brandDanger }
+    static var brandInfo:    Color { .brandInfo }
+    static var brandTrophy:  Color { .brandTrophy }
+
+    static var surfaceBG:     Color { .surfaceBG }
+    static var surfaceRaised: Color { .surfaceRaised }
+    static var surfaceInset:  Color { .surfaceInset }
+    static var hairline:      Color { .hairline }
+}
+
 // MARK: - Hex initializer (used for habit color hex strings)
 
 extension Color {
