@@ -586,7 +586,7 @@ private struct ActiveExerciseCard: View {
             } label: {
                 Image(systemName: "circle.grid.2x2.fill")
                     .font(.system(size: 14, weight: .heavy))
-                    .foregroundStyle(showPlates ? .white : .brand)
+                    .foregroundStyle(showPlates ? Color.white : Color.brand)
                     .frame(width: 44, height: 40)
                     .background(showPlates ? Color.brand : Color.brand.opacity(0.14),
                                 in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -835,7 +835,7 @@ private struct FilterChip: View {
         Button(action: { Haptic.selection(); action() }) {
             Text(label)
                 .font(.system(size: 13, weight: .heavy, design: .rounded))
-                .foregroundStyle(selected ? .white : .primary)
+                .foregroundStyle(selected ? Color.white : Color.primary)
                 .padding(.horizontal, 14).padding(.vertical, 7)
                 .background(selected ? Color.brand : Color.surfaceRaised, in: Capsule())
                 .overlay(

@@ -182,7 +182,7 @@ struct RPESelector: View {
                         value = nil; Haptic.selection()
                     }
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(value == nil ? .white : .secondary)
+                    .foregroundStyle(value == nil ? Color.white : Color.secondary)
                     .frame(width: 42, height: 36)
                     .background(value == nil ? Color.secondary : Color.surfaceInset, in: Capsule())
 

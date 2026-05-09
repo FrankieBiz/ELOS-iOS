@@ -71,7 +71,7 @@ struct TrainView: View {
                 } label: {
                     Text(s.label)
                         .font(.system(size: 14, weight: .heavy, design: .rounded))
-                        .foregroundStyle(section == s ? .white : .secondary)
+                        .foregroundStyle(section == s ? Color.white : Color.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .background(
@@ -263,7 +263,7 @@ private struct DayRow: View {
         HStack(spacing: 12) {
             Text("\(index + 1)")
                 .font(.system(size: 16, weight: .black, design: .rounded))
-                .foregroundStyle(day.isRest ? .secondary : .white)
+                .foregroundStyle(day.isRest ? Color.secondary : Color.white)
                 .frame(width: 38, height: 38)
                 .background(
                     Circle().fill(day.isRest ? Color.surfaceInset : accent)
@@ -345,7 +345,7 @@ private struct LibFilterChip: View {
         Button(action: { Haptic.selection(); action() }) {
             Text(label)
                 .font(.system(size: 13, weight: .heavy, design: .rounded))
-                .foregroundStyle(selected ? .white : .primary)
+                .foregroundStyle(selected ? Color.white : Color.primary)
                 .padding(.horizontal, 14).padding(.vertical, 7)
                 .background(selected ? Color.brand : Color.surfaceRaised, in: Capsule())
         }

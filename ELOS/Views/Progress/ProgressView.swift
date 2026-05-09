@@ -100,7 +100,7 @@ struct ProgressDashboardView: View {
                 } label: {
                     Text(r.rawValue)
                         .font(.system(size: 13, weight: .heavy, design: .rounded))
-                        .foregroundStyle(range == r ? .white : .secondary)
+                        .foregroundStyle(range == r ? Color.white : Color.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                         .background(range == r ? Color.brand : Color.clear, in: Capsule())
