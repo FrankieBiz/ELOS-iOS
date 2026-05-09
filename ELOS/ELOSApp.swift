@@ -23,9 +23,10 @@ struct ELOSApp: App {
         WindowGroup {
             RootShell()
                 .environment(appState)
+                .environment(\.skin, ThemeSkin.forMode(appState.themeMode))
                 .modelContainer(container)
                 .preferredColorScheme(appState.colorScheme)
-                .tint(.brand)
+                .tint(ThemeSkin.forMode(appState.themeMode).accent)
                 .onAppear { appState.touchStreakOnLaunch() }
         }
     }

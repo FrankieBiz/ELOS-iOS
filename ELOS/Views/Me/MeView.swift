@@ -3,6 +3,7 @@ import SwiftData
 
 struct YouView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.skin) private var skin
     @Environment(\.modelContext) private var ctx
 
     @Query(sort: \WorkoutSession.date, order: .reverse) private var sessions: [WorkoutSession]
@@ -42,7 +43,7 @@ struct YouView: View {
                     Spacer(minLength: 50)
                 }
             }
-            .background(Color.surfaceBG.ignoresSafeArea())
+            .background(skin.background.ignoresSafeArea())
             .navigationTitle("You")
             .navigationBarTitleDisplayMode(.large)
             .sheet(isPresented: $showEditProfile) { EditProfileSheet() }
@@ -108,11 +109,14 @@ struct YouView: View {
         @Bindable var s = appState
         return SolidCard(padding: 0) {
             VStack(spacing: 0) {
-                row("Theme", icon: "circle.lefthalf.filled") {
-                    Picker("", selection: $s.themeMode) {
-                        ForEach(ThemeMode.allCases, id: \.self) { m in Text(m.label).tag(m) }
+                row("Theme", icon: "swatchpalette.fill") {
+                    HStack(spacing: 10) {
+                        ForEach(ThemeMode.allCases, id: \.self) { mode in
+                            ThemeSwatch(mode: mode, isSelected: s.themeMode == mode) {
+                                s.themeMode = mode; Haptic.selection()
+                            }
+                        }
                     }
-                    .pickerStyle(.menu).labelsHidden()
                 }
                 Hairline(inset: 16)
                 row("Units", icon: "scalemass") {
@@ -275,6 +279,34 @@ struct YouView: View {
             trail()
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
+    }
+}
+
+// MARK: - Theme swatch
+
+private struct ThemeSwatch: View {
+    let mode: ThemeMode
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        let sk = ThemeSkin.forMode(mode)
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(sk.background == Color(hex: "#F5F5F7") ? sk.background : Color(hex: "#1C1C1E"))
+                Circle()
+                    .fill(sk.accent)
+                    .scaleEffect(0.45)
+                if isSelected {
+                    Circle().strokeBorder(sk.accent, lineWidth: 2)
+                } else {
+                    Circle().strokeBorder(Color(hex: "#48484A"), lineWidth: 0.5)
+                }
+            }
+            .frame(width: 32, height: 32)
+        }
+        .buttonStyle(.plain)
     }
 }
 

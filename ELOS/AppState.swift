@@ -13,7 +13,7 @@ final class AppState {
     var experience: Experience = .intermediate { didSet { save() } }
 
     // MARK: Preferences
-    var themeMode: ThemeMode = .system { didSet { save() } }
+    var themeMode: ThemeMode = .inferno { didSet { save() } }
     var units: WeightUnit = .imperial { didSet { save() } }
     var defaultRestSeconds: Int = 90 { didSet { save() } }
     var hapticsEnabled: Bool = true { didSet { save() } }
@@ -43,14 +43,7 @@ final class AppState {
     var availablePlatesKg: [Double] = [25, 20, 15, 10, 5, 2.5, 1.25] { didSet { save() } }
     var barWeightKg: Double = 20 { didSet { save() } }
 
-    // MARK: Color scheme passthrough
-    var colorScheme: ColorScheme? {
-        switch themeMode {
-        case .light:  return .light
-        case .dark:   return .dark
-        case .system: return nil
-        }
-    }
+    var colorScheme: ColorScheme { themeMode.colorScheme }
 
     init() { load() }
 
@@ -132,7 +125,7 @@ final class AppState {
         bodyweightKg      = d.double(forKey: "bodyweightKg").nonZero ?? 75
         heightCm          = d.double(forKey: "heightCm").nonZero ?? 178
         experience        = Experience(rawValue: d.string(forKey: "experience") ?? "") ?? .intermediate
-        themeMode         = ThemeMode(rawValue: d.string(forKey: "themeMode") ?? "") ?? .system
+        themeMode         = ThemeMode(rawValue: d.string(forKey: "themeMode") ?? "") ?? .inferno
         units             = WeightUnit(rawValue: d.string(forKey: "units") ?? "") ?? .imperial
         defaultRestSeconds = d.integer(forKey: "defaultRestSeconds").nonZero ?? 90
         hapticsEnabled    = (d.object(forKey: "hapticsEnabled") as? Bool) ?? true
@@ -159,23 +152,6 @@ final class AppState {
 
 // MARK: - Supporting enums
 
-enum ThemeMode: String, CaseIterable {
-    case system, light, dark
-    var label: String {
-        switch self {
-        case .system: return "System"
-        case .light:  return "Light"
-        case .dark:   return "Dark"
-        }
-    }
-    var icon: String {
-        switch self {
-        case .system: return "iphone"
-        case .light:  return "sun.max.fill"
-        case .dark:   return "moon.fill"
-        }
-    }
-}
 
 enum WeightUnit: String, CaseIterable {
     case imperial, metric

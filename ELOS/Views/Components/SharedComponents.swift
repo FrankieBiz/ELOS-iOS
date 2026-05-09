@@ -1,8 +1,9 @@
 import SwiftUI
 
-// MARK: - Glass Card (translucent material with subtle border)
+// MARK: - Flat Card (replaces GlassCard — no blur, flat surface + hairline)
 
 struct GlassCard<Content: View>: View {
+    @Environment(\.skin) private var skin
     var padding: CGFloat = Theme.Space.md
     var radius: CGFloat = Theme.Radius.lg
     var tint: Color? = nil
@@ -11,13 +12,10 @@ struct GlassCard<Content: View>: View {
     var body: some View {
         content
             .padding(padding)
-            .background(
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(.regularMaterial)
-            )
+            .background(skin.surface, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(Color.hairline.opacity(0.5), lineWidth: 0.5)
+                    .strokeBorder(skin.hairline, lineWidth: 0.5)
             )
             .overlay(
                 tint.map {
@@ -29,9 +27,10 @@ struct GlassCard<Content: View>: View {
     }
 }
 
-// MARK: - Solid Card (opaque, raised surface)
+// MARK: - Ground Card (replaces SolidCard — elevated surface)
 
 struct SolidCard<Content: View>: View {
+    @Environment(\.skin) private var skin
     var padding: CGFloat = Theme.Space.md
     var radius: CGFloat = Theme.Radius.lg
     @ViewBuilder var content: Content
@@ -39,15 +38,15 @@ struct SolidCard<Content: View>: View {
     var body: some View {
         content
             .padding(padding)
-            .background(Color.surfaceRaised, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .background(skin.surfaceHigh, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(Color.hairline.opacity(0.4), lineWidth: 0.5)
+                    .strokeBorder(skin.hairline, lineWidth: 0.5)
             )
     }
 }
 
-// MARK: - Pressable Button Style — squishy press with haptic
+// MARK: - Pressable Button Style
 
 struct PressableStyle: ButtonStyle {
     var scaleAmount: CGFloat = 0.96
@@ -58,17 +57,16 @@ struct PressableStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? scaleAmount : 1.0)
-            .opacity(configuration.isPressed ? 0.92 : 1.0)
+            .opacity(configuration.isPressed ? 0.88 : 1.0)
             .animation(Theme.Motion.snappy, value: configuration.isPressed)
             .onChange(of: configuration.isPressed) { _, pressed in
-                if pressed {
-                    switch hapticStyle {
-                    case .light:  Haptic.light()
-                    case .soft:   Haptic.soft()
-                    case .medium: Haptic.medium()
-                    case .heavy:  Haptic.heavy()
-                    case .none:   break
-                    }
+                guard pressed else { return }
+                switch hapticStyle {
+                case .light:  Haptic.light()
+                case .soft:   Haptic.soft()
+                case .medium: Haptic.medium()
+                case .heavy:  Haptic.heavy()
+                case .none:   break
                 }
             }
     }
@@ -81,104 +79,108 @@ extension ButtonStyle where Self == PressableStyle {
     }
 }
 
-// MARK: - Primary CTA — the big, satisfying button
+// MARK: - Primary CTA
 
 struct PrimaryCTA: View {
+    @Environment(\.skin) private var skin
     let title: String
     var icon: String? = nil
     var subtitle: String? = nil
-    var color: Color = .brand
-    var height: CGFloat = 60
+    var color: Color? = nil
+    var height: CGFloat = 56
     var isLoading: Bool = false
     let action: () -> Void
 
     var body: some View {
+        let fill = color ?? skin.accent
         Button(action: { Haptic.heavy(); action() }) {
             ZStack {
-                LinearGradient(
-                    colors: [color, color.opacity(0.85)],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                )
+                fill
                 if isLoading {
-                    ProgressView().progressViewStyle(.circular).tint(.white)
+                    ProgressView().progressViewStyle(.circular).tint(skin.onAccent)
                 } else {
                     HStack(spacing: 10) {
                         if let icon {
                             Image(systemName: icon)
-                                .font(.system(size: 20, weight: .heavy))
+                                .font(.system(size: 17, weight: .heavy))
                         }
                         VStack(spacing: 1) {
                             Text(title)
-                                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                                .font(.system(size: 16, weight: .heavy))
                             if let subtitle {
                                 Text(subtitle)
                                     .font(.system(size: 11, weight: .semibold))
-                                    .opacity(0.85)
+                                    .opacity(0.80)
                             }
                         }
                     }
-                    .foregroundStyle(.white)
+                    .foregroundStyle(skin.onAccent)
                 }
             }
             .frame(maxWidth: .infinity)
             .frame(height: height)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .shadow(color: color.opacity(0.35), radius: 20, x: 0, y: 12)
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
         }
         .buttonStyle(.pressable(scale: 0.97, haptic: .none))
     }
 }
 
-// MARK: - Secondary button (filled tint)
+// MARK: - Secondary CTA
 
 struct SecondaryCTA: View {
+    @Environment(\.skin) private var skin
     let title: String
     var icon: String? = nil
-    var color: Color = .brand
+    var color: Color? = nil
     let action: () -> Void
 
     var body: some View {
+        let c = color ?? skin.accent
         Button(action: { Haptic.light(); action() }) {
             HStack(spacing: 8) {
-                if let icon { Image(systemName: icon).font(.system(size: 14, weight: .bold)) }
-                Text(title).font(.system(size: 15, weight: .heavy, design: .rounded))
+                if let icon { Image(systemName: icon).font(.system(size: 13, weight: .bold)) }
+                Text(title).font(.system(size: 14, weight: .heavy))
             }
-            .foregroundStyle(color)
-            .padding(.horizontal, 16).padding(.vertical, 12)
-            .background(color.opacity(0.14), in: Capsule())
+            .foregroundStyle(c)
+            .padding(.horizontal, 16).padding(.vertical, 11)
+            .background(c.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
         }
         .buttonStyle(.pressable(scale: 0.95, haptic: .none))
     }
 }
 
-// MARK: - Ghost button (outlined)
+// MARK: - Ghost CTA
 
 struct GhostCTA: View {
+    @Environment(\.skin) private var skin
     let title: String
     var icon: String? = nil
-    var color: Color = .brand
+    var color: Color? = nil
     let action: () -> Void
 
     var body: some View {
+        let c = color ?? skin.accent
         Button(action: { Haptic.light(); action() }) {
             HStack(spacing: 8) {
-                if let icon { Image(systemName: icon).font(.system(size: 14, weight: .bold)) }
-                Text(title).font(.system(size: 15, weight: .heavy, design: .rounded))
+                if let icon { Image(systemName: icon).font(.system(size: 13, weight: .bold)) }
+                Text(title).font(.system(size: 14, weight: .heavy))
             }
-            .foregroundStyle(color)
+            .foregroundStyle(c)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
+            .padding(.vertical, 13)
             .overlay(
-                Capsule().strokeBorder(color.opacity(0.35), lineWidth: 1.5)
+                RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous)
+                    .strokeBorder(c.opacity(0.4), lineWidth: 1)
             )
         }
         .buttonStyle(.pressable(scale: 0.97, haptic: .none))
     }
 }
 
-// MARK: - Section Header (uppercase tracked + optional action)
+// MARK: - Section Label
 
 struct SectionLabel: View {
+    @Environment(\.skin) private var skin
     let title: String
     var actionTitle: String? = nil
     var action: (() -> Void)? = nil
@@ -187,13 +189,13 @@ struct SectionLabel: View {
         HStack {
             Text(title.uppercased())
                 .font(Theme.Font.section)
-                .foregroundStyle(.secondary)
-                .kerning(0.6)
+                .foregroundStyle(skin.labelSub)
+                .kerning(0.8)
             Spacer()
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.brand)
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(skin.accent)
             }
         }
         .padding(.horizontal, Theme.Space.lg)
@@ -205,48 +207,51 @@ struct SectionLabel: View {
 // MARK: - Stat Tile
 
 struct StatTile: View {
+    @Environment(\.skin) private var skin
     let label: String
     let value: String
     var sub: String? = nil
     var icon: String? = nil
-    var accent: Color = .primary
+    var accent: Color? = nil
     var highlight: Color? = nil
 
     var body: some View {
+        let color = accent ?? skin.accent
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 if let icon {
                     Image(systemName: icon)
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(accent)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(color)
                 }
                 Text(label.uppercased())
-                    .font(.system(size: 10, weight: .heavy))
-                    .kerning(0.6)
-                    .foregroundStyle(.secondary)
+                    .font(Theme.Font.label)
+                    .kerning(0.8)
+                    .foregroundStyle(skin.labelSub)
             }
             Text(value)
-                .font(.system(size: 26, weight: .black, design: .rounded))
-                .foregroundStyle(accent)
+                .font(Theme.Font.mono(26, .black))
+                .foregroundStyle(color)
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
             if let sub {
                 Text(sub)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(skin.labelFaint)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
-                .fill(Color.surfaceRaised)
-        )
+        .background(skin.surface, in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
         .overlay(
             highlight.map { c in
                 RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
                     .strokeBorder(c.opacity(0.5), lineWidth: 1)
             }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)
+                .strokeBorder(skin.hairline, lineWidth: 0.5)
         )
     }
 }
@@ -254,33 +259,34 @@ struct StatTile: View {
 // MARK: - Ring Progress
 
 struct RingProgress: View {
-    let value: Double           // 0...1
+    @Environment(\.skin) private var skin
+    let value: Double
     var size: CGFloat = 120
-    var lineWidth: CGFloat = 12
-    var color: Color = .brand
-    var trackColor: Color = Color(.systemGray5)
+    var lineWidth: CGFloat = 10
+    var color: Color? = nil
+    var trackColor: Color? = nil
     var label: String? = nil
     var sublabel: String? = nil
 
     var body: some View {
         ZStack {
-            Circle().stroke(trackColor, lineWidth: lineWidth)
+            Circle().stroke(trackColor ?? skin.hairline, lineWidth: lineWidth)
             Circle()
                 .trim(from: 0, to: max(0, min(value, 1)))
-                .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .stroke(color ?? skin.accent, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(Theme.Motion.bouncy, value: value)
             VStack(spacing: 2) {
                 if let label {
                     Text(label)
-                        .font(.system(size: 28, weight: .black, design: .rounded))
-                        .foregroundStyle(.primary)
+                        .font(Theme.Font.mono(26, .black))
+                        .foregroundStyle(skin.label)
                         .minimumScaleFactor(0.5)
                 }
                 if let sublabel {
                     Text(sublabel)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(skin.labelSub)
                 }
             }
             .padding(.horizontal, lineWidth + 4)
@@ -292,28 +298,28 @@ struct RingProgress: View {
 // MARK: - Chip
 
 struct Chip: View {
+    @Environment(\.skin) private var skin
     let text: String
     var icon: String? = nil
-    var color: Color = .brand
+    var color: Color? = nil
     var filled: Bool = false
 
     var body: some View {
+        let c = color ?? skin.accent
         HStack(spacing: 5) {
-            if let icon { Image(systemName: icon).font(.system(size: 10, weight: .bold)) }
-            Text(text)
-                .font(.system(size: 11, weight: .heavy, design: .rounded))
+            if let icon { Image(systemName: icon).font(.system(size: 9, weight: .bold)) }
+            Text(text).font(.system(size: 11, weight: .heavy))
         }
-        .foregroundStyle(filled ? .white : color)
+        .foregroundStyle(filled ? skin.onAccent : c)
         .padding(.horizontal, 9).padding(.vertical, 5)
-        .background(
-            Capsule().fill(filled ? color : color.opacity(0.14))
-        )
+        .background(filled ? c : c.opacity(0.12), in: Capsule())
     }
 }
 
 // MARK: - Empty State
 
 struct EmptyStateCard: View {
+    @Environment(\.skin) private var skin
     let icon: String
     let title: String
     let subtitle: String
@@ -323,16 +329,20 @@ struct EmptyStateCard: View {
     var body: some View {
         VStack(spacing: 14) {
             ZStack {
-                Circle().fill(Color.brand.opacity(0.12)).frame(width: 76, height: 76)
+                Circle()
+                    .fill(skin.accentSubtle)
+                    .frame(width: 72, height: 72)
                 Image(systemName: icon)
-                    .font(.system(size: 30, weight: .medium))
-                    .foregroundStyle(Color.brand)
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(skin.accent)
             }
             VStack(spacing: 4) {
-                Text(title).font(.system(size: 18, weight: .bold, design: .rounded))
+                Text(title)
+                    .font(.system(size: 17, weight: .heavy))
+                    .foregroundStyle(skin.label)
                 Text(subtitle)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(skin.labelSub)
                     .multilineTextAlignment(.center)
             }
             if let actionTitle, let action {
@@ -344,20 +354,21 @@ struct EmptyStateCard: View {
     }
 }
 
-// MARK: - Animated big number (counts up smoothly)
+// MARK: - Animated Number
 
 struct AnimatedNumber: View {
     let value: Double
     var format: String = "%.0f"
-    var font: Font = .system(size: 48, weight: .black, design: .rounded)
-    var color: Color = .primary
+    var font: Font = Theme.Font.mono(48, .black)
+    var color: Color? = nil
 
+    @Environment(\.skin) private var skin
     @State private var current: Double = 0
 
     var body: some View {
         Text(String(format: format, current))
             .font(font)
-            .foregroundStyle(color)
+            .foregroundStyle(color ?? skin.label)
             .monospacedDigit()
             .contentTransition(.numericText())
             .onAppear {
@@ -369,41 +380,62 @@ struct AnimatedNumber: View {
     }
 }
 
-// MARK: - Streak flame
+// MARK: - Streak Badge (replaces animated flame — clean and direct)
 
-struct StreakFlame: View {
+struct StreakBadge: View {
+    @Environment(\.skin) private var skin
     let count: Int
     var size: CGFloat = 36
-    @State private var flicker = false
 
     var body: some View {
         HStack(spacing: 6) {
-            ZStack {
-                Image(systemName: "flame.fill")
-                    .font(.system(size: size, weight: .black))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Color(hex: "#FF453A"), Color(hex: "#FF9F0A"), Color(hex: "#FFD60A")],
-                            startPoint: .bottom, endPoint: .top
-                        )
-                    )
-                    .scaleEffect(flicker ? 1.05 : 0.97)
-                    .animation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true), value: flicker)
-                    .onAppear { flicker = true }
-            }
+            Image(systemName: "bolt.fill")
+                .font(.system(size: size * 0.6, weight: .heavy))
+                .foregroundStyle(skin.accent)
             Text("\(count)")
-                .font(.system(size: size * 0.9, weight: .black, design: .rounded))
-                .foregroundStyle(.primary)
+                .font(Theme.Font.mono(size, .black))
+                .foregroundStyle(skin.label)
         }
     }
 }
 
-// MARK: - Hairline divider
+// kept for call-site compatibility — just a typealias of StreakBadge
+typealias StreakFlame = StreakBadge
+
+// MARK: - PR Flash (replaces confetti — sharp scale burst)
+
+struct PRFlashModifier: ViewModifier {
+    let trigger: Int
+    @State private var isFlashing = false
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(isFlashing ? 1.07 : 1.0)
+            .brightness(isFlashing ? 0.12 : 0)
+            .onChange(of: trigger) { _, _ in
+                guard trigger > 0 else { return }
+                withAnimation(Theme.Motion.quick) { isFlashing = true }
+                withAnimation(Theme.Motion.snappy.delay(0.14)) { isFlashing = false }
+            }
+    }
+}
+
+extension View {
+    func prFlash(trigger: Int) -> some View {
+        modifier(PRFlashModifier(trigger: trigger))
+    }
+}
+
+// MARK: - Hairline
 
 struct Hairline: View {
+    @Environment(\.skin) private var skin
     var inset: CGFloat = 0
     var body: some View {
-        Rectangle().fill(Color.hairline.opacity(0.6)).frame(height: 0.5).padding(.leading, inset)
+        Rectangle()
+            .fill(skin.hairline)
+            .frame(height: 0.5)
+            .padding(.leading, inset)
     }
 }
 

@@ -3,6 +3,7 @@ import SwiftData
 
 struct TrainView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.skin) private var skin
     @Environment(\.modelContext) private var ctx
 
     @State private var section: Section = .programs
@@ -38,7 +39,7 @@ struct TrainView: View {
                 }
                 .transition(.opacity)
             }
-            .background(Color.surfaceBG.ignoresSafeArea())
+            .background(skin.background.ignoresSafeArea())
             .navigationTitle("Train")
             .navigationBarTitleDisplayMode(.large)
             .searchable(text: $search,

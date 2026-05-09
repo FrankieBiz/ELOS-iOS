@@ -3,6 +3,7 @@ import SwiftData
 
 struct TodayView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.skin) private var skin
     @Environment(\.modelContext) private var ctx
 
     @Query(sort: \WorkoutSession.date, order: .reverse) private var sessions: [WorkoutSession]
@@ -71,7 +72,7 @@ struct TodayView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Color.surfaceBG.ignoresSafeArea())
+            .background(skin.background.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
         }
     }

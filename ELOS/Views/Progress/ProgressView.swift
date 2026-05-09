@@ -4,6 +4,7 @@ import Charts
 
 struct ProgressDashboardView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.skin) private var skin
     @Environment(\.modelContext) private var ctx
 
     @Query(sort: \WorkoutSession.date, order: .reverse) private var sessions: [WorkoutSession]
@@ -80,7 +81,7 @@ struct ProgressDashboardView: View {
                     Spacer(minLength: 60)
                 }
             }
-            .background(Color.surfaceBG.ignoresSafeArea())
+            .background(skin.background.ignoresSafeArea())
             .navigationTitle("Progress")
             .navigationBarTitleDisplayMode(.large)
             .sheet(isPresented: $showAddBodyMetric) {
