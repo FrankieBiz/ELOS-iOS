@@ -271,7 +271,7 @@ struct YouView: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
         }
-        .buttonStyle(.pressable(scale: 0.98, haptic: .warning))
+        .buttonStyle(.pressable(scale: 0.98, haptic: .heavy))
         .alert("Reset onboarding?", isPresented: $resetConfirm) {
             Button("Reset", role: .destructive) { appState.hasCompletedOnboarding = false }
             Button("Cancel", role: .cancel) {}
