@@ -1,0 +1,492 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AA000000000000000000201A /* ELOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000101A /* ELOSApp.swift */; };
+		AA000000000000000000202A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000102A /* AppState.swift */; };
+		AA000000000000000000203A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000103A /* ContentView.swift */; };
+		AA000000000000000000204A /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000104A /* Theme.swift */; };
+		AA000000000000000000205A /* ELOSModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000105A /* ELOSModels.swift */; };
+		AA000000000000000000206A /* ExerciseData.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000106A /* ExerciseData.swift */; };
+		AA000000000000000000207A /* ProgramLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000107A /* ProgramLibrary.swift */; };
+		AA000000000000000000208A /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000108A /* APIService.swift */; };
+		AA000000000000000000209A /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000109A /* OnboardingFlow.swift */; };
+		AA000000000000000000210A /* TodayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000110A /* TodayView.swift */; };
+		AA000000000000000000211A /* TrainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000111A /* TrainView.swift */; };
+		AA000000000000000000212A /* ActiveSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000112A /* ActiveSessionView.swift */; };
+		AA000000000000000000213A /* WorkoutCompleteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000113A /* WorkoutCompleteView.swift */; };
+		AA000000000000000000214A /* ProgressView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000114A /* ProgressView.swift */; };
+		AA000000000000000000215A /* MeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000115A /* MeView.swift */; };
+		AA000000000000000000216A /* EatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000116A /* EatView.swift */; };
+		AA000000000000000000217A /* PlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000117A /* PlanView.swift */; };
+		AA000000000000000000218A /* SharedComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000118A /* SharedComponents.swift */; };
+		AA000000000000000000219A /* Steppers.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000119A /* Steppers.swift */; };
+		AA000000000000000000220A /* RestTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000120A /* RestTimer.swift */; };
+		AA000000000000000000221A /* PlateCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000121A /* PlateCalculator.swift */; };
+		AA000000000000000000222A /* Confetti.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000122A /* Confetti.swift */; };
+		AA000000000000000000231A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA000000000000000000131A /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		AA000000000000000000014A /* ELOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ELOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA000000000000000000101A /* ELOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ELOSApp.swift; sourceTree = "<group>"; };
+		AA000000000000000000102A /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		AA000000000000000000103A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		AA000000000000000000104A /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		AA000000000000000000105A /* ELOSModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ELOSModels.swift; sourceTree = "<group>"; };
+		AA000000000000000000106A /* ExerciseData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExerciseData.swift; sourceTree = "<group>"; };
+		AA000000000000000000107A /* ProgramLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgramLibrary.swift; sourceTree = "<group>"; };
+		AA000000000000000000108A /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
+		AA000000000000000000109A /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
+		AA000000000000000000110A /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
+		AA000000000000000000111A /* TrainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainView.swift; sourceTree = "<group>"; };
+		AA000000000000000000112A /* ActiveSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveSessionView.swift; sourceTree = "<group>"; };
+		AA000000000000000000113A /* WorkoutCompleteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutCompleteView.swift; sourceTree = "<group>"; };
+		AA000000000000000000114A /* ProgressView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressView.swift; sourceTree = "<group>"; };
+		AA000000000000000000115A /* MeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeView.swift; sourceTree = "<group>"; };
+		AA000000000000000000116A /* EatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EatView.swift; sourceTree = "<group>"; };
+		AA000000000000000000117A /* PlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanView.swift; sourceTree = "<group>"; };
+		AA000000000000000000118A /* SharedComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedComponents.swift; sourceTree = "<group>"; };
+		AA000000000000000000119A /* Steppers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Steppers.swift; sourceTree = "<group>"; };
+		AA000000000000000000120A /* RestTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestTimer.swift; sourceTree = "<group>"; };
+		AA000000000000000000121A /* PlateCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlateCalculator.swift; sourceTree = "<group>"; };
+		AA000000000000000000122A /* Confetti.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Confetti.swift; sourceTree = "<group>"; };
+		AA000000000000000000131A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AA000000000000000000006A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AA000000000000000000002A = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000015A /* ELOS */,
+				AA000000000000000000003A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AA000000000000000000003A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000014A /* ELOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000015A /* ELOS */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000101A /* ELOSApp.swift */,
+				AA000000000000000000102A /* AppState.swift */,
+				AA000000000000000000103A /* ContentView.swift */,
+				AA000000000000000000104A /* Theme.swift */,
+				AA000000000000000000131A /* Assets.xcassets */,
+				AA000000000000000000016A /* Models */,
+				AA000000000000000000017A /* Services */,
+				AA000000000000000000018A /* Views */,
+			);
+			path = ELOS;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000016A /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000105A /* ELOSModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000017A /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000106A /* ExerciseData.swift */,
+				AA000000000000000000107A /* ProgramLibrary.swift */,
+				AA000000000000000000108A /* APIService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000018A /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000019A /* Onboarding */,
+				AA000000000000000000020A /* Today */,
+				AA000000000000000000021A /* Train */,
+				AA000000000000000000022A /* Progress */,
+				AA000000000000000000023A /* Me */,
+				AA000000000000000000024A /* Eat */,
+				AA000000000000000000025A /* Plan */,
+				AA000000000000000000026A /* Components */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000019A /* Onboarding */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000109A /* OnboardingFlow.swift */,
+			);
+			path = Onboarding;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000020A /* Today */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000110A /* TodayView.swift */,
+			);
+			path = Today;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000021A /* Train */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000111A /* TrainView.swift */,
+				AA000000000000000000112A /* ActiveSessionView.swift */,
+				AA000000000000000000113A /* WorkoutCompleteView.swift */,
+			);
+			path = Train;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000022A /* Progress */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000114A /* ProgressView.swift */,
+			);
+			path = Progress;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000023A /* Me */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000115A /* MeView.swift */,
+			);
+			path = Me;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000024A /* Eat */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000116A /* EatView.swift */,
+			);
+			path = Eat;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000025A /* Plan */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000117A /* PlanView.swift */,
+			);
+			path = Plan;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000026A /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000118A /* SharedComponents.swift */,
+				AA000000000000000000119A /* Steppers.swift */,
+				AA000000000000000000120A /* RestTimer.swift */,
+				AA000000000000000000121A /* PlateCalculator.swift */,
+				AA000000000000000000122A /* Confetti.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AA000000000000000000004A /* ELOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA000000000000000000009A /* Build configuration list for PBXNativeTarget "ELOS" */;
+			buildPhases = (
+				AA000000000000000000005A /* Sources */,
+				AA000000000000000000006A /* Frameworks */,
+				AA000000000000000000007A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ELOS;
+			productName = ELOS;
+			productReference = AA000000000000000000014A /* ELOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AA000000000000000000001A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					AA000000000000000000004A = {
+						CreatedOnToolsVersion = 15.0;
+					};
+				};
+			};
+			buildConfigurationList = AA000000000000000000008A /* Build configuration list for PBXProject "ELOS" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = AA000000000000000000002A;
+			productRefGroup = AA000000000000000000003A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AA000000000000000000004A /* ELOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AA000000000000000000007A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA000000000000000000231A /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AA000000000000000000005A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA000000000000000000201A /* ELOSApp.swift in Sources */,
+				AA000000000000000000202A /* AppState.swift in Sources */,
+				AA000000000000000000203A /* ContentView.swift in Sources */,
+				AA000000000000000000204A /* Theme.swift in Sources */,
+				AA000000000000000000205A /* ELOSModels.swift in Sources */,
+				AA000000000000000000206A /* ExerciseData.swift in Sources */,
+				AA000000000000000000207A /* ProgramLibrary.swift in Sources */,
+				AA000000000000000000208A /* APIService.swift in Sources */,
+				AA000000000000000000209A /* OnboardingFlow.swift in Sources */,
+				AA000000000000000000210A /* TodayView.swift in Sources */,
+				AA000000000000000000211A /* TrainView.swift in Sources */,
+				AA000000000000000000212A /* ActiveSessionView.swift in Sources */,
+				AA000000000000000000213A /* WorkoutCompleteView.swift in Sources */,
+				AA000000000000000000214A /* ProgressView.swift in Sources */,
+				AA000000000000000000215A /* MeView.swift in Sources */,
+				AA000000000000000000216A /* EatView.swift in Sources */,
+				AA000000000000000000217A /* PlanView.swift in Sources */,
+				AA000000000000000000218A /* SharedComponents.swift in Sources */,
+				AA000000000000000000219A /* Steppers.swift in Sources */,
+				AA000000000000000000220A /* RestTimer.swift in Sources */,
+				AA000000000000000000221A /* PlateCalculator.swift in Sources */,
+				AA000000000000000000222A /* Confetti.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		AA000000000000000000010A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		AA000000000000000000011A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		AA000000000000000000012A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.elos.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA000000000000000000013A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.elos.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AA000000000000000000008A /* Build configuration list for PBXProject "ELOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA000000000000000000010A /* Debug */,
+				AA000000000000000000011A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA000000000000000000009A /* Build configuration list for PBXNativeTarget "ELOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA000000000000000000012A /* Debug */,
+				AA000000000000000000013A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = AA000000000000000000001A /* Project object */;
+}
