@@ -1,100 +1,86 @@
 # ELOS — Native iOS Gym App
 
-Pure SwiftUI + SwiftData. No web views, no npm, no CocoaPods. Just open and run.
+Pure SwiftUI + SwiftData. No npm, no CocoaPods, no web views.
 
 ---
 
-## Setup (5 steps)
+## Setup
 
-### Step 1 — Clone the repo
+### 1. Clone the repo
 
-Open **Terminal** on your Mac and run:
+Open **Terminal** and run:
 
 ```bash
 cd ~/Desktop
 git clone https://github.com/FrankieBiz/ELOS-iOS.git
 ```
 
-Wait for it to finish. You'll see a folder called `ELOS-iOS` appear on your Desktop.
-
----
-
-### Step 2 — Open in Xcode
-
-In Terminal, run:
+### 2. Open in Xcode
 
 ```bash
 open ~/Desktop/ELOS-iOS/ELOS.xcodeproj
 ```
 
-Xcode opens with everything already wired up. All 22 Swift files are already in the project — you don't need to drag or add anything.
+### 3. Sign in with your Apple ID
+
+1. In the left sidebar, click **ELOS** (the blue icon at the top)
+2. Select the **ELOS** target
+3. Click **Signing & Capabilities**
+4. Under **Team**, select your Apple ID from the dropdown
+   - If it's not listed: click **Add an Account...**, sign in, then select it
+
+### 4. Select a simulator or your iPhone
+
+- **Simulator**: In the top bar next to the ▶ button, click the device picker → choose **iPhone 15 Pro**
+- **Real iPhone**: Plug it in via USB → tap **Trust** on your phone → select it from the picker
+
+### 5. Build and run
+
+Press **⌘R**
+
+First build takes ~30–60 seconds. The app launches into the ELOS onboarding screen.
 
 ---
 
-### Step 3 — Sign in with your Apple ID
+## If you already have it cloned and just want the latest changes
 
-1. In Xcode, click **ELOS** in the left sidebar (the blue icon at the very top)
-2. In the middle panel, click the **ELOS** target (under "Targets")
-3. Click the **Signing & Capabilities** tab
-4. Under **Team**, click the dropdown and select your Apple ID
-   - If you don't see your Apple ID: click **Add an Account...**, sign in, then select it
-5. Xcode will automatically handle code signing
+```bash
+cd ~/Desktop/ELOS-iOS
+git pull
+```
 
----
-
-### Step 4 — Pick a simulator
-
-At the top of Xcode, next to the Play button, there's a device selector.  
-Click it and choose **iPhone 15 Pro** (or any iPhone simulator listed).
+Then in Xcode: **⇧⌘K** (Clean Build Folder) → **⌘R** (Run)
 
 ---
 
-### Step 5 — Run it
+## Troubleshooting
 
-Press **⌘R** (or click the ▶ Play button).
-
-Xcode builds the app (first build takes ~30–60 seconds) and launches the simulator.  
-You'll see the ELOS onboarding screen.
+| Problem | Fix |
+|---------|-----|
+| "Requires a development team" | Signing & Capabilities → pick your Apple ID under Team |
+| Play button greyed out | Press **⌘B** to build first, then **⌘R** |
+| Red build errors | **⇧⌘K** to clean, then **⌘B** to rebuild |
+| "Untrusted Developer" on iPhone | Settings → General → VPN & Device Management → your Apple ID → Trust |
+| Simulator missing | Xcode → Settings → Platforms → download iOS 17 |
 
 ---
 
 ## Running on a real iPhone
 
-1. Plug your iPhone into your Mac with a USB cable
-2. Xcode will ask you to **trust** the Mac on your phone — tap Trust
-3. In the device selector (top of Xcode), choose your iPhone instead of a simulator
-4. Press **⌘R**
+1. Plug your iPhone into your Mac via USB
+2. Select your iPhone from the device picker at the top of Xcode
+3. Press **⌘R**
+4. If prompted on your phone: tap **Trust This Computer**
+5. If you see "Untrusted Developer": Settings → General → VPN & Device Management → tap your Apple ID → Trust
 
-If you get **"Untrusted Developer"** on your iPhone:  
-Go to **Settings → General → VPN & Device Management → [your Apple ID] → Trust**
-
-> Note: Running on a real device requires a free Apple ID. Uploading to the App Store requires a paid developer account ($99/year).
+> A free Apple ID works for personal device testing. You only need a paid account ($99/yr) to submit to the App Store.
 
 ---
 
-## What's in the app
+## Uploading to TestFlight
 
-| Tab | What it does |
-|-----|-------------|
-| **Today** | Your program's workout for today, streak tracker, week calendar, recent PRs |
-| **Train** | 5 built-in programs, 70+ exercise library, full workout history |
-| **Progress** | Volume charts, muscle breakdown, bodyweight trend (Apple Charts) |
-| **You** | Profile, units, haptics, rest timer, plate setup, HealthKit |
-
-**Active workout:**
-- Smart weight suggestions based on your last session
-- Rest timer with animated ring + haptic countdown
-- Plate calculator with IPF color coding
-- Auto PR detection with confetti
-
----
-
-## If anything goes wrong
-
-| Problem | Fix |
-|---------|-----|
-| "No account for team" | Go to Signing & Capabilities → add your Apple ID |
-| Red errors in Xcode | Press **⇧⌘K** (Clean), then **⌘B** (Build) |
-| Simulator not listed | Xcode → Settings → Platforms → download iOS 17 simulator |
-| Build says "iOS 17 required" | Click ELOS target → General → set Minimum Deployments to iOS 17.0 |
-| App crashes instantly | Make sure you selected iOS 17+ simulator, not an older one |
+1. In the device picker, select **Any iOS Device (arm64)**
+2. **Product → Archive**
+3. Xcode Organizer opens → click **Distribute App**
+4. Choose **TestFlight & App Store → Next → Upload**
+5. Go to [appstoreconnect.apple.com](https://appstoreconnect.apple.com) → TestFlight → add yourself as a tester
