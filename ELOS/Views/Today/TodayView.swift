@@ -372,34 +372,6 @@ private struct SmallStat: View {
     }
 }
 
-private struct StreakBadge: View {
-    let count: Int
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ZStack {
-                Image(systemName: "flame.fill")
-                    .font(.system(size: 16, weight: .black))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Color(hex: "#FF453A"), Color(hex: "#FF9F0A")],
-                            startPoint: .bottom, endPoint: .top
-                        )
-                    )
-            }
-            Text("\(count)")
-                .font(.system(size: 17, weight: .black, design: .rounded))
-                .foregroundStyle(.primary)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(
-            Capsule().fill(Color.brand.opacity(0.14))
-        )
-        .overlay(
-            Capsule().strokeBorder(Color.brand.opacity(0.35), lineWidth: 1)
-        )
-    }
-}
 
 private struct PRRow: View {
     let pr: PersonalRecord

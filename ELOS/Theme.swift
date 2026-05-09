@@ -163,11 +163,15 @@ enum Theme {
         static let sm:   CGFloat = 8
         static let md:   CGFloat = 10
         static let lg:   CGFloat = 14
+        static let xl:   CGFloat = 20
         static let pill: CGFloat = 999
     }
 
     enum Font {
         static func display(_ size: CGFloat = 56) -> SwiftUI.Font {
+            .system(size: size, weight: .black)
+        }
+        static func title(_ size: CGFloat = 28) -> SwiftUI.Font {
             .system(size: size, weight: .black)
         }
         static func heading(_ size: CGFloat = 22) -> SwiftUI.Font {
