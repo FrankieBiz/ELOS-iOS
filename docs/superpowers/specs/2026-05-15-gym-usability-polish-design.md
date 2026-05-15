@@ -264,7 +264,8 @@ All expected values below are computed against the greedy-fit algorithm with the
 - `breakdown(targetLb: 135, barLb: 45)` → 1×45 PS; achieved = 135; isExact = true
 - `breakdown(targetLb: 45, barLb: 45)` → empty plates; achieved = 45; isExact = true (just the bar)
 - `breakdown(targetLb: 40, barLb: 45)` → empty plates; achieved = 45; isExact = false (caller renders "below bar")
-- `breakdown(targetLb: 226, barLb: 45)` → 1×45 + 1×35 + 1×10 PS; achieved = 225; isExact = false (short by 1)
+- `breakdown(targetLb: 226, barLb: 45)` → 2×45 PS; achieved = 225; isExact = false (short by 1). Greedy: remaining/side = 90.5 → take 45 (45.5 left) → take 45 (0.5 left) → 0.5 < 2.5 so stop.
+- `breakdown(targetLb: 185, barLb: 45)` → 1×45 + 1×25 PS; achieved = 185; isExact = true. Verifies the algorithm correctly emits mixed denominations: remaining/side = 70 → take 45 (25 left) → 35 > 25 skip → take 25 (0 left) → done.
 - `breakdown(targetLb: 137.5, barLb: 45)` → 1×45 PS; achieved = 135; isExact = false (short by 2.5). Greedy: remaining/side = 46.25 → take 45 (1.25 left) → 1.25 < 2.5 so stop.
 - `breakdown(targetLb: 100, barLb: 20)` → 1×35 + 1×5 PS; achieved = 100; isExact = true. Greedy: remaining/side = 40 → take 35 (5 left) → take 5 (0 left) → done.
 - `breakdown(targetLb: 405, barLb: 45)` → 4×45 PS (grouped display: `4 × 45 lb`); achieved = 405; isExact = true. Verifies the algorithm emits multiple plates of the same denomination and that the grouped count is correct.
