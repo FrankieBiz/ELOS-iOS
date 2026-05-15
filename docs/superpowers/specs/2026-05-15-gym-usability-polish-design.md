@@ -40,16 +40,18 @@ All four features are UI-layer additions confined to the iOS app. No new SwiftDa
 - `apps/elos-mobile/Elos/Elos/Features/Train/TrainViewModel.swift` — one new method (`deleteExerciseFromSession`) for cascading set deletes
 - **New:** `apps/elos-mobile/Elos/Elos/Features/Train/PlateCalculator/PlateCalculatorSheet.swift` — sheet view + computation
 - **New:** `apps/elos-mobile/Elos/Elos/Features/Train/PlateCalculator/PlateMath.swift` — pure plate-breakdown algorithm (separately testable)
+- **New:** `apps/elos-mobile/Elos/ElosTests/PlateMathTests.swift` — unit tests added to existing `ElosTests` target
 
 **State additions inside `ActiveSessionView`:**
 
 ```swift
 @State private var plateCalcTarget: PlateCalcTarget? = nil   // Identifiable; nil = sheet closed
 @State private var showDeleteConfirm: DeleteConfirm? = nil   // Identifiable; nil = no alert
-@State private var hasFiredRestEndAlert = false              // dedupes the haptic+sound on the 1→0 tick
 ```
 
 `PlateCalcTarget` and `DeleteConfirm` are small `Identifiable` wrappers so the sheet/alert APIs can use the `item:` overload (avoids two booleans per state).
+
+The rest-end alert is self-deduped: the `if restSeconds == 0` block flips `restActive = false` in the same tick, so subsequent ticks short-circuit before re-entering the alert path. No dedupe flag needed.
 
 ## Feature 1 — Copy Previous Set
 
@@ -65,7 +67,7 @@ A new `↺` (SF Symbol `arrow.uturn.down`) icon button sits between the row numb
 
 When no previous set exists at index `i`, the icon is hidden (not just disabled) to keep the row clean for new exercises.
 
-A second affordance — **"Copy all from last session"** — is added to the exercise card footer alongside `+ Add set` and `Swap`. Tapping it fills every set in that exercise's previous-session record in one tap. If a set already has user-entered values, those are preserved (don't overwrite manual input).
+A second affordance — **"Copy all from last session"** — is added to the exercise card footer alongside `+ Add set` and `Swap`. Tapping it fills every set in that exercise's previous-session record in one tap. If a set already has user-entered values, those are preserved (don't overwrite manual input). The button is **hidden** (not just disabled) when `previousSets.isEmpty`, mirroring the `↺` icon rule.
 
 ### Data flow
 
@@ -95,11 +97,22 @@ A small `scalemass` SF Symbol icon button is added to the exercise card header r
 - Header: "Plate Calculator"
 - Target weight `TextField` (decimal pad, lb), prefilled with the most recent non-empty `weight` value from that exercise's sets, or empty if none
 - Bar weight segmented picker: 45 / 35 / 20 / 15 / Custom (Custom reveals a number field)
-- Plate breakdown display: large numeric weight at top, "per side" subtitle, then a vertical list of plate rows like `2 × 45 lb`, `1 × 25 lb`, `1 × 2.5 lb`
+- Plate breakdown display: large numeric weight at top, "per side" subtitle, then a vertical list of plate rows. **Plates are grouped by denomination** in descending order: e.g., `4 × 45 lb`, `1 × 25 lb`, `1 × 2.5 lb` — never expanded as four separate `1 × 45 lb` rows.
 - Footer status:
-  - Green checkmark + "Exact" when the target is achievable
-  - Orange warning + "Closest: 222.5 lb (target 225)" when not achievable
+  - Green checkmark + "Exact" when `achievedWeightLb == targetLb`
+  - Orange warning + "Best fit: 225 lb (target 226 — short by 1 lb)" when the greedy fit rounds down
 - Bar-weight selection persists to `UserDefaults.standard.set(_, forKey: "elos.plateCalculator.barWeightLb")`
+
+**Plate supply assumption:** unlimited supply of each denomination. The algorithm does not model a finite plate set (real-world counterexamples — e.g., racks running out of 45s — are out of scope).
+
+**Input validation:**
+
+- Empty target field: display is blank ("Enter a target weight" placeholder), no plates, no status chrome.
+- Non-numeric target (e.g., user pastes "abc"): treated as empty per above. `Double(target) ?? nil` drives the empty-state path.
+- Negative target or `0`: same empty-state.
+- `target > 0 && target < barLb`: show "Below bar weight (bar is X lb)" inline; no plates.
+- `target == barLb`: show "Just the bar" message; empty plate list; status = Exact.
+- Custom bar weight ≤ 0, empty, or non-numeric: validate inline; the segmented picker remains on the previously valid selection until the custom value is fixed.
 
 ### Algorithm (`PlateMath.swift`)
 
@@ -119,14 +132,21 @@ enum PlateMath {
 }
 ```
 
-Greedy descent: `remaining = (target - bar) / 2`, take largest plate ≤ remaining, repeat until `remaining < smallest plate`. The `achievedWeightLb` reflects what the algorithm produced (may be < target if no exact match). Pure function, deterministic, no dependencies.
+**Greedy fit (rounds down).** Algorithm:
+
+1. `remainingPerSide = (target - bar) / 2`
+2. For each plate denomination in descending order, while `plate ≤ remainingPerSide`: emit one plate, subtract from `remainingPerSide`.
+3. Stop when no remaining plate fits. `achievedWeightLb = target - 2 × remainingPerSide`.
+
+This is **not** a closest-fit search — it only produces values ≤ target. With the standard set `[45, 35, 25, 10, 5, 2.5]`, the smallest non-zero increment per side is 2.5 lb (so 5 lb total), and any target that's a 5-lb multiple ≥ bar is achievable exactly. For non-5-lb targets the achieved weight is the largest 5-lb multiple ≤ target. Documented limitation; users who want odd weights can use micro-plates not modeled here.
+
+Pure function, deterministic, no dependencies.
 
 ### Error handling
 
-- `targetLb < barLb`: show "Below bar weight" inline; no plates displayed.
-- `targetLb == barLb`: show "Just the bar" message; empty plate list.
-- Unachievable target (e.g., 226 lb with standard plates): show closest achievable + a "Δ 1 lb" indicator.
-- Custom bar weight ≤ 0 or non-numeric: validate the input field, disable the picker until valid.
+All input edge cases are enumerated in the **Input validation** subsection above. There are no runtime exceptions to handle — `PlateMath.breakdown` is total over `Double` inputs and clamps via the validation rules at the view layer.
+
+For targets that don't land on a 5-lb boundary, the sheet shows the greedy fit (≤ target) and the "short by X lb" footer described above. There is no second-pass closest-search — that's an explicit non-goal.
 
 ## Feature 3 — Delete + Reorder Mid-Session
 
@@ -159,20 +179,19 @@ Delete tapped
        └─> trainVM.deleteExerciseFromSession(name: exerciseName, ownerID: vm.currentUserID)
             ├─ fetch ExerciseSetRecord predicate(sessionID == currentSession.id, exerciseName == name)
             ├─ subtract their volume from currentSession.totalVolume
-            ├─ context.delete(each), context.save()
-            └─ (best-effort) DELETE /sessions/:id/sets for each — backend route already exists per spec, otherwise log to logger and rely on next session sync
+            └─ context.delete(each), context.save()
 
 Move Up / Move Down
   └─> vm.exercises.swapAt(index, index ± 1)
 ```
 
-`deleteExerciseFromSession` is a new method on `TrainViewModel` that mirrors the existing `unlogCompletedSet` pattern but works in bulk for a named exercise.
+`deleteExerciseFromSession` is a new method on `TrainViewModel` that mirrors the existing `unlogCompletedSet` pattern but works in bulk for a named exercise. **No backend call is made** — there is no `DELETE /sessions/:id/sets` route today (`apps/elos-api/src/routes/sessions.ts` exposes only POST/GET on that path). Local SwiftData is treated as the source of truth for the in-progress session, matching how `unlogCompletedSet` already behaves. Adding a server-side delete would expand backend scope and is deferred.
 
 ### Error handling
 
 - Move at boundary: menu items disabled, no-op.
 - Delete on already-finished session: should not be reachable (context menu only shown while `vm.showingSession` is true), but guard with `currentSession != nil`.
-- API delete failure: log silently; local state is the source of truth in the session.
+- SwiftData save failure: surface via existing `vm.showError(_:)` banner so the user knows the delete didn't fully persist; in-memory `vm.exercises` is already mutated and reflects the user's intent for the rest of the session.
 
 ## Feature 4 — Rest Timer Alerts + Keep Screen On
 
@@ -210,6 +229,8 @@ private func fireRestEndAlert() {
 
 Both default to enabled. The settings keys (`elos.rest.haptic`, `elos.rest.sound`) are reserved now so a future SettingsView toggle can flip them without a migration. **No settings UI in v1** — defaults are correct for the common case.
 
+**Skip button does not fire the alert.** The existing Skip handler sets `restActive = false; restSeconds = 0; restPaused = false` directly. Because the alert fires from inside the timer-tick branch (only when `restActive && !restPaused` and the countdown reaches 0 via decrement), manually setting `restSeconds = 0` from outside that branch never executes `fireRestEndAlert()`. This is the desired behavior — Skip means "I'm ready, don't bother me."
+
 ### Keep screen on
 
 ```swift
@@ -233,17 +254,20 @@ Both default to enabled. The settings keys (`elos.rest.haptic`, `elos.rest.sound
 
 ## Testing
 
-No XCTest suite exists for this app today; a small one is added for `PlateMath` only (pure function, easy to unit-test) and everything else is manual.
+An `ElosTests` XCTest target already exists at `apps/elos-mobile/Elos/ElosTests/` (referenced in `project.pbxproj` via `BUNDLE_LOADER = "$(TEST_HOST)"`). The new test file `PlateMathTests.swift` is added to that existing target — no new target setup needed. All other features are validated manually per the plan below.
 
-### Unit tests — `PlateMathTests.swift` (new)
+### Unit tests — `apps/elos-mobile/Elos/ElosTests/PlateMathTests.swift` (new)
 
-- `breakdown(targetLb: 225, barLb: 45)` → 1×45, 1×45 per side; exact = true
-- `breakdown(targetLb: 135, barLb: 45)` → 1×45 per side; exact = true
-- `breakdown(targetLb: 45, barLb: 45)` → empty plates; exact = true (just the bar)
-- `breakdown(targetLb: 40, barLb: 45)` → empty plates; achieved = 45; exact = false (below bar)
-- `breakdown(targetLb: 226, barLb: 45)` → 1×45 + 1×35 + 1×10 per side = 225; exact = false (closest)
-- `breakdown(targetLb: 137.5, barLb: 45)` → 1×45 + 1×1.25... actually no, 2.5 is smallest, so 1×45 + 1×2.5 per side = 95 + 45 = 140 — verify algorithm picks 1×45 + smallest fit; document expected result in test
-- `breakdown(targetLb: 100, barLb: 20)` (kg-style bar) → 1×35 + 1×5 per side = 90 + 20 = 110; verify achieved = 110
+All expected values below are computed against the greedy-fit algorithm with the standard plate set `[45, 35, 25, 10, 5, 2.5]`. "PS" = per side.
+
+- `breakdown(targetLb: 225, barLb: 45)` → 2×45 PS; achieved = 225; isExact = true
+- `breakdown(targetLb: 135, barLb: 45)` → 1×45 PS; achieved = 135; isExact = true
+- `breakdown(targetLb: 45, barLb: 45)` → empty plates; achieved = 45; isExact = true (just the bar)
+- `breakdown(targetLb: 40, barLb: 45)` → empty plates; achieved = 45; isExact = false (caller renders "below bar")
+- `breakdown(targetLb: 226, barLb: 45)` → 1×45 + 1×35 + 1×10 PS; achieved = 225; isExact = false (short by 1)
+- `breakdown(targetLb: 137.5, barLb: 45)` → 1×45 PS; achieved = 135; isExact = false (short by 2.5). Greedy: remaining/side = 46.25 → take 45 (1.25 left) → 1.25 < 2.5 so stop.
+- `breakdown(targetLb: 100, barLb: 20)` → 1×35 + 1×5 PS; achieved = 100; isExact = true. Greedy: remaining/side = 40 → take 35 (5 left) → take 5 (0 left) → done.
+- `breakdown(targetLb: 405, barLb: 45)` → 4×45 PS (grouped display: `4 × 45 lb`); achieved = 405; isExact = true. Verifies the algorithm emits multiple plates of the same denomination and that the grouped count is correct.
 
 ### Manual test plan
 
