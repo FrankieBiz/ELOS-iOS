@@ -1,6 +1,6 @@
 # Split Finder — Design Spec
 **Date:** 2026-05-23
-**Status:** Approved
+**Status:** Approved (rev 2 — spec-review fixes applied)
 
 ## Overview
 
@@ -16,7 +16,7 @@ Add a `wand.and.stars` toolbar button to `TrainView` (top-right, alongside exist
 
 ## Survey Flow
 
-`SplitFinderView` is a multi-step form with a linear progress bar across the top. `SplitFinderViewModel` (`@StateObject`) owns all state and drives step transitions via `currentStep: Int`.
+`SplitFinderView` is a multi-step form with a linear progress bar across the top. `SplitFinderViewModel` (`@StateObject`) owns all state and drives step transitions via `currentStep: Int`. **All answers are preserved when navigating back** — the view model is never reset mid-survey.
 
 ### Steps
 
@@ -25,34 +25,63 @@ Add a `wand.and.stars` toolbar button to `TrainView` (top-right, alongside exist
 | 1 | Primary goal | 4 tappable cards: Hypertrophy / Strength / Athletic / General |
 | 2 | Days per week | Segmented picker: 2 / 3 / 4 / 5 / 6 |
 | 3 | Session length | Stepped slider: 30 / 45 / 60 / 75 / 90 min |
-| 4 | Equipment lean | 3 sliders (Machine, Dumbbell, Barbell), each 0–100; auto-normalized so they always sum to 100% |
+| 4 | Equipment lean | 3 sliders (Machine, Dumbbell, Barbell) — see normalization rules below |
 | 5 | Gym type | 2 tappable cards: Commercial (full rack room) / Small or Home |
-| 6 | Sport training | Toggle. If on: 12-sport grid picker + focus scale slider (0 = plays as hobby, 100 = peak athlete performance) |
-| 7 | Injuries | Toggle. If on: body-part chip multi-select (Shoulder / Knee / Lower Back / Wrist / Elbow / Hip / Ankle) + per-part severity segmented picker (Mild / Moderate / Avoid entirely) |
+| 6 | Sport training | Toggle. If on: 12-sport grid picker + 5-step focus picker (see below) |
+| 7 | Injuries | Toggle. If on: body-part chip multi-select + per-part severity segmented picker (Mild / Moderate / Avoid) |
 | 8 | Warmups | Toggle. If on: style cards (Dynamic / Static Stretching / Both) |
 
-Navigation: "Next" / "Back" buttons at the bottom of each step. Step 6–8 can be skipped if the toggle is off (counts as answered). After step 8, the view transitions to the results screen.
+Navigation: "Next" / "Back" buttons at the bottom of each step. Steps 6–8 advance immediately when their toggle is left off (the sub-form is not shown). After step 8, the view transitions to `SplitFinderResultsView`.
 
 ### Sports List (Step 6)
-Basketball, Football, Soccer, Baseball, Tennis, Swimming, MMA/Boxing, Wrestling, Track & Field, Volleyball, Hockey, Golf, Lacrosse — displayed as a scrollable grid of icon+label chips.
+Basketball, Football, Soccer, Baseball, Tennis, Swimming, MMA/Boxing, Wrestling, Track & Field, Volleyball, Hockey, Golf, Lacrosse — displayed as a scrollable grid of icon+label chips. Only one sport can be selected.
+
+**Sport focus:** 5-step discrete picker below the sport grid:
+`Hobby → Enthusiast → Competitive → Semi-Pro → Elite`
+Maps internally to `sportFocusRatio`: 0.0 / 0.25 / 0.5 / 0.75 / 1.0
+
+### Equipment Slider Normalization (Step 4)
+Each of the three sliders (Machine, Dumbbell, Barbell) runs 0–100. Normalization fires on drag release:
+
+1. Sum all three values.
+2. If sum == 0, set all to 33 (equal split).
+3. Else divide each by sum and multiply by 100 to normalize proportionally.
+4. The moved slider's value is normalized last and receives any rounding remainder.
+
+**Example:** User drags Machine to 60, Dumbbell is 20, Barbell is 20 → sum = 100, all stay. User then drags Barbell to 0 → sum = 80 → Machine = 75, Dumbbell = 25, Barbell = 0.
 
 ---
 
 ## Data Model (`SplitFinderModels.swift`)
 
 ```swift
-enum TrainingGoal    { case hypertrophy, strength, athletic, general }
-enum GymSize         { case commercial, small }
-enum WarmupStyle     { case dynamic, staticStretch, both }
-enum InjuredPart     { case shoulder, knee, lowerBack, wrist, elbow, hip, ankle }
-enum InjurySeverity  { case mild, moderate, avoid }
-enum SplitStyle      { case fullBody, upperLower, pushPullLegs, arnold, broSplit, athletic }
+enum TrainingGoal: String, CaseIterable {
+    case hypertrophy, strength, athletic, general
+}
+
+enum GymSize { case commercial, small }
+
+enum WarmupStyle { case dynamic, staticStretch, both }
+
+enum InjuredPart: String, CaseIterable {
+    case shoulder, knee, lowerBack, wrist, elbow, hip, ankle
+}
+
+enum InjurySeverity { case mild, moderate, avoid }
+
+enum SplitStyle: String {
+    case fullBody, upperLower, pushPullLegs, arnold, broSplit, athletic
+}
+
+enum Sport: String, CaseIterable {
+    case basketball, football, soccer, baseball, tennis, swimming
+    case mmaBoxing, wrestling, trackAndField, volleyball, hockey, golf, lacrosse
+}
 
 struct EquipmentProfile {
-    var machineRatio: Double    // 0.0–1.0
+    var machineRatio: Double    // 0.0–1.0, always normalized with others to sum 1.0
     var dumbbellRatio: Double
     var barbellRatio: Double
-    // always normalized so the three sum to 1.0
 }
 
 struct InjuryEntry {
@@ -61,47 +90,47 @@ struct InjuryEntry {
 }
 
 struct SplitFinderInput {
-    var goal: TrainingGoal
-    var daysPerWeek: Int            // 2–6
-    var sessionMinutes: Int         // 30 / 45 / 60 / 75 / 90
-    var equipment: EquipmentProfile
-    var gymSize: GymSize
-    var sport: Sport?               // nil if no sport selected
-    var sportFocusRatio: Double     // 0.0–1.0
-    var injuries: [InjuryEntry]
-    var includeWarmups: Bool
-    var warmupStyle: WarmupStyle?
+    var goal: TrainingGoal          = .hypertrophy
+    var daysPerWeek: Int            = 4
+    var sessionMinutes: Int         = 60
+    var equipment: EquipmentProfile = EquipmentProfile(machineRatio: 0.33, dumbbellRatio: 0.34, barbellRatio: 0.33)
+    var gymSize: GymSize            = .commercial
+    var sport: Sport?               = nil
+    var sportFocusRatio: Double     = 0.0      // 0.0–1.0 via 5-step picker
+    var injuries: [InjuryEntry]     = []
+    var includeWarmups: Bool        = false
+    var warmupStyle: WarmupStyle?   = nil
 }
 
 struct SplitRecommendation: Identifiable {
-    var id: UUID
-    var name: String
+    var id: UUID = UUID()
+    var name: String                // e.g. "4-Day Push Pull Legs"
     var style: SplitStyle
-    var days: [RecommendedDay]
-    var estimatedMinutes: Int
-    var matchScore: Double          // 0.0–1.0, used for internal ranking only
-    var matchTags: [String]         // e.g. "Great for hypertrophy", "Shoulder-safe"
+    var days: [RecommendedDay]      // count == daysPerWeek + rest days to fill 7
+    var estimatedMinutes: Int       // working minutes + warmup minutes
+    var matchScore: Double          // 0.0–1.0, internal only (not shown to user)
+    var matchTags: [String]         // e.g. ["Great for hypertrophy", "Shoulder-safe"]
 }
 
 struct RecommendedDay: Identifiable {
-    var id: UUID
-    var label: String               // "Push", "Upper", "Full Body A", etc.
+    var id: UUID = UUID()
+    var label: String               // "Push", "Upper A", "Full Body", "Rest"
     var isRest: Bool
     var exercises: [RecommendedExercise]
-    var warmupBlock: [WarmupExercise]
+    var warmupBlock: [WarmupExercise]  // empty if !includeWarmups or isRest
 }
 
 struct RecommendedExercise: Identifiable {
-    var id: UUID
+    var id: UUID = UUID()
     var name: String
     var sets: Int
-    var reps: String                // e.g. "8–10"
-    var equipment: String           // "Barbell" / "Dumbbell" / "Machine" / "Bodyweight"
-    var primaryMuscle: String
+    var reps: String                // e.g. "8–10" or "5"
+    var equipment: String           // "Barbell" | "Dumbbell" | "Machine" | "Bodyweight"
+    var primaryMuscle: String       // e.g. "chest", "quads" — used by substitution engine
 }
 
 struct WarmupExercise: Identifiable {
-    var id: UUID
+    var id: UUID = UUID()
     var name: String
     var duration: String            // e.g. "30s" or "10 reps"
 }
@@ -111,80 +140,172 @@ struct WarmupExercise: Identifiable {
 
 ## Recommendation Engine (`SplitRecommender.swift`)
 
-Pure Swift struct — no side effects, no network calls. Input: `SplitFinderInput`. Output: `[SplitRecommendation]` (always exactly 3, distinct styles when possible).
+Pure Swift struct — no side effects, no network calls, no SwiftData access. Input: `SplitFinderInput`. Output: `[SplitRecommendation]` (exactly 3; see fallback rules).
 
 ### Candidate Templates
 
-Static templates defined per `(SplitStyle, daysPerWeek)`:
+Static templates defined per `(SplitStyle, [Int])` (compatible day counts). Each template contains day labels + a base exercise list per day (name, default sets, reps string, equipment tag, primaryMuscle).
 
-| Style | Compatible day counts |
-|-------|-----------------------|
-| Full Body | 2, 3 |
-| Upper / Lower | 3, 4 |
-| Push / Pull / Legs | 3, 4, 5, 6 |
-| Arnold (Push A/B + Pull A/B + Legs) | 3, 6 |
-| Bro Split (1 muscle group/day) | 5 |
-| Athletic (compound-first, power emphasis) | 3, 4, 5 |
-
-Each template defines day labels + a base exercise list per day (name, default sets/reps, equipment tag).
+| Style | Compatible day counts | Best goal match |
+|-------|-----------------------|-----------------|
+| Full Body | 2, 3 | general |
+| Upper / Lower | 3, 4 | strength |
+| Push / Pull / Legs | 3, 4, 5, 6 | hypertrophy |
+| Arnold (PPL A/B variant) | 3, 6 | hypertrophy |
+| Bro Split (1 muscle/day) | 5 | hypertrophy |
+| Athletic (compound-first) | 3, 4, 5 | athletic |
 
 ### Scoring Pipeline
 
-Run for every eligible candidate (day count matches):
+Run for every candidate whose day count matches `daysPerWeek`:
 
-1. **Eligibility filter** — if `gymSize == .small` and template requires `barbellRatio > 0.5`, skip candidate.
-2. **Goal score** — PPL/Arnold → best for hypertrophy; Athletic → best for athletic; Upper/Lower → best for strength; Full Body → best for general. Scored 0–1.
-3. **Sport modifier** — if `sportFocusRatio > 0.3`, boost Athletic-style by up to 0.3. Increases weight on explosive compound movements in exercise selection.
-4. **Equipment score** — for each exercise in the candidate's base list, check if it matches the user's `EquipmentProfile` (within ±20% tolerance). Score = fraction of exercises satisfied.
-5. **Injury penalty** — for each injury with `.avoid` severity, count how many base exercises target that body part. Subtract 0.05 per unavoidable exercise.
-6. **Final score** = goal score × 0.4 + equipment score × 0.35 + sport modifier × 0.15 − injury penalty × 0.1
+**1. Eligibility filter (hard gates — candidate is excluded if any fails):**
+- Day count must match exactly.
+- If `gymSize == .small` AND `equipment.barbellRatio > 0.5`, exclude barbell-dominant templates.
+- If `gymSize == .small`, exclude Bro Split (requires 5+ different cable/machine stations).
 
-Top 3 unique-style candidates returned (if fewer than 3 styles exist for the given day count, allow one duplicate style).
+**2. Goal score** (lookup table, 0.0–1.0):
 
-### Match Tags
+| Style \ Goal | Hypertrophy | Strength | Athletic | General |
+|--------------|-------------|----------|----------|---------|
+| Full Body | 0.5 | 0.6 | 0.6 | 1.0 |
+| Upper/Lower | 0.7 | 1.0 | 0.7 | 0.7 |
+| PPL | 1.0 | 0.6 | 0.5 | 0.6 |
+| Arnold | 0.95 | 0.5 | 0.4 | 0.5 |
+| Bro Split | 0.85 | 0.5 | 0.3 | 0.5 |
+| Athletic | 0.4 | 0.7 | 1.0 | 0.6 |
 
-Generated from scores:
-- Score ≥ 0.85 → "Excellent match"
-- Goal score ≥ 0.9 → "Great for [goal]"
-- Equipment score ≥ 0.9 → "Equipment-friendly"
-- Any injury with `.avoid` + 0 unavoidable exercises → "Shoulder-safe" (etc., per body part)
-- `gymSize == .small` and candidate passes eligibility → "Works in any gym"
+**3. Sport modifier** (added to goal score before weighting):
+- If `sport == nil` or `sportFocusRatio == 0`: +0.0
+- If `sportFocusRatio > 0` and style == `.athletic`: +`(sportFocusRatio × 0.3)`
+- If `sportFocusRatio > 0.5` and style != `.athletic`: −0.1 (penalizes non-functional splits for competitive athletes)
+
+**4. Equipment score** (0.0–1.0):
+For each exercise in the candidate template, check its `equipment` tag against `EquipmentProfile`. An exercise "matches" if its equipment ratio in the profile is ≥ 0.2. Score = `matchingExercises / totalExercises`.
+
+**5. Injury penalty** (subtracted):
+For each injury entry with severity `.avoid`: count exercises in the template whose `primaryMuscle` is directly loaded by that body part (mapping defined below). Penalty = `avoidConflicts × 0.05`, capped at 0.25.
+
+Body part → primary muscles loaded:
+- shoulder: `["front_delts", "side_delts", "rear_delts"]`
+- knee: `["quads", "hamstrings"]`
+- lowerBack: `["lower_back", "glutes"]`
+- wrist: `["forearms"]`
+- elbow: `["biceps", "triceps"]`
+- hip: `["hip_flexors", "glutes"]`
+- ankle: `["calves"]`
+
+**6. Final score:**
+```
+score = (goalScore + sportModifier) × 0.40
+      + equipmentScore × 0.35
+      + (1.0 − injuryPenalty) × 0.25
+```
+
+**7. Rank and return top 3:**
+- Prefer distinct styles. If fewer than 3 styles pass eligibility, allow a second instance of the highest-scoring style with a different day arrangement.
+- If only 1 or 2 candidates pass eligibility (e.g., very restrictive inputs), return 1 or 2 results. The results screen handles an array of 1–3 items.
+
+### Match Tags (generated from scores)
+
+| Condition | Tag |
+|-----------|-----|
+| finalScore ≥ 0.85 | "Excellent match" |
+| goalScore ≥ 0.9 | "Great for [goal.rawValue]" |
+| equipmentScore ≥ 0.9 | "Equipment-friendly" |
+| any injury `.avoid` + zero avoid-conflicts | "[Part]-safe" (e.g., "Shoulder-safe") |
+| gymSize == .small and passes eligibility | "Works in any gym" |
+| sportFocusRatio ≥ 0.5 and style == .athletic | "Sport performance focus" |
 
 ---
 
 ## Injury Substitution Engine (`InjurySubstitutionEngine.swift`)
 
-Applied to all 3 candidates after scoring, before presenting results.
+Applied to all 3 candidates after scoring, before the results screen is shown. Mutates the `[RecommendedExercise]` array on each `RecommendedDay`.
 
 ### Substitution Map
 
-Static dictionary: `[String: [InjuryCondition: String?]]`
+`static let map: [String: [InjuryKey: String?]]`
 
-`InjuryCondition` is a struct of `(part: InjuredPart, severity: InjurySeverity)`. Value is the substitute exercise name, or `nil` meaning remove entirely.
+`InjuryKey` is a struct `(part: InjuredPart, severity: InjurySeverity)`. Value is the substitute name, or `nil` = remove.
 
-**Sample entries (~40 total, covering all 7 body parts):**
+**Full substitution table (~40 entries):**
 
-| Original Exercise | Condition | Substitute |
-|-------------------|-----------|------------|
-| Barbell Overhead Press | Shoulder + mild | Dumbbell Lateral Raise |
-| Barbell Overhead Press | Shoulder + moderate | Cable Face Pull |
-| Barbell Overhead Press | Shoulder + avoid | *(removed)* |
-| Barbell Back Squat | Knee + mild | Leg Press |
-| Barbell Back Squat | Knee + moderate | Goblet Squat |
-| Barbell Back Squat | Knee + avoid | *(removed)* |
-| Barbell Deadlift | Lower Back + mild | Romanian Deadlift |
-| Barbell Deadlift | Lower Back + moderate | Cable Pull-Through |
-| Barbell Deadlift | Lower Back + avoid | *(removed)* |
-| Barbell Curl | Wrist + mild | Hammer Curl |
-| Barbell Curl | Wrist + moderate | Cable Curl |
-| Skull Crushers | Elbow + mild | Cable Tricep Pushdown |
-| Skull Crushers | Elbow + moderate | Tricep Dips (assisted) |
-| Hip Thrust | Hip + mild | Glute Bridge |
-| Hip Thrust | Hip + avoid | *(removed)* |
-| Box Jump | Ankle + mild | Step-Up |
-| Box Jump | Ankle + avoid | *(removed)* |
+| Original | Condition | Substitute |
+|----------|-----------|------------|
+| Barbell Overhead Press | shoulder + mild | Dumbbell Lateral Raise |
+| Barbell Overhead Press | shoulder + moderate | Cable Face Pull |
+| Barbell Overhead Press | shoulder + avoid | *(remove)* |
+| Dumbbell Shoulder Press | shoulder + mild | Dumbbell Lateral Raise |
+| Dumbbell Shoulder Press | shoulder + moderate | Band Pull-Apart |
+| Dumbbell Shoulder Press | shoulder + avoid | *(remove)* |
+| Barbell Back Squat | knee + mild | Leg Press |
+| Barbell Back Squat | knee + moderate | Goblet Squat |
+| Barbell Back Squat | knee + avoid | *(remove)* |
+| Leg Press | knee + moderate | Seated Leg Extension |
+| Leg Press | knee + avoid | *(remove)* |
+| Barbell Deadlift | lowerBack + mild | Romanian Deadlift |
+| Barbell Deadlift | lowerBack + moderate | Cable Pull-Through |
+| Barbell Deadlift | lowerBack + avoid | *(remove)* |
+| Romanian Deadlift | lowerBack + mild | Cable Pull-Through |
+| Romanian Deadlift | lowerBack + avoid | *(remove)* |
+| Barbell Curl | wrist + mild | Hammer Curl |
+| Barbell Curl | wrist + moderate | Cable Curl |
+| Barbell Curl | wrist + avoid | *(remove)* |
+| Dumbbell Curl | wrist + moderate | Cable Curl |
+| Barbell Row | lowerBack + mild | Cable Row |
+| Barbell Row | lowerBack + avoid | *(remove)* |
+| Skull Crushers | elbow + mild | Cable Tricep Pushdown |
+| Skull Crushers | elbow + moderate | Tricep Dips (Assisted) |
+| Skull Crushers | elbow + avoid | *(remove)* |
+| Tricep Dips | elbow + moderate | Cable Tricep Pushdown |
+| Tricep Dips | elbow + avoid | *(remove)* |
+| Hip Thrust | hip + mild | Glute Bridge |
+| Hip Thrust | hip + moderate | Glute Bridge |
+| Hip Thrust | hip + avoid | *(remove)* |
+| Barbell Hip Thrust | hip + mild | Dumbbell Glute Bridge |
+| Barbell Hip Thrust | hip + avoid | *(remove)* |
+| Box Jump | ankle + mild | Step-Up |
+| Box Jump | ankle + avoid | *(remove)* |
+| Jump Rope | ankle + mild | Rowing Machine |
+| Jump Rope | ankle + avoid | *(remove)* |
+| Calf Raise | ankle + mild | Seated Calf Raise |
+| Calf Raise | ankle + avoid | *(remove)* |
+| Lateral Lunge | knee + mild | Sumo Squat |
+| Lateral Lunge | knee + avoid | *(remove)* |
 
-When an exercise is removed with no substitute and the day would have fewer than the minimum exercise count, the engine backfills from a safe-exercise pool filtered to the same muscle group and equipment profile.
+### Safe-Exercise Backfill Pool
+
+Defined as a static array in `InjurySubstitutionEngine.swift`. Used when an exercise is removed and the day would fall below the minimum exercise count for that session length (see Warmup Library section).
+
+```swift
+static let safePool: [RecommendedExercise] = [
+    // Chest (safe for all injuries)
+    RecommendedExercise(name: "Machine Chest Press", sets: 3, reps: "10–12", equipment: "Machine", primaryMuscle: "chest"),
+    RecommendedExercise(name: "Cable Fly", sets: 3, reps: "12–15", equipment: "Machine", primaryMuscle: "chest"),
+    // Back
+    RecommendedExercise(name: "Lat Pulldown", sets: 3, reps: "10–12", equipment: "Machine", primaryMuscle: "lats"),
+    RecommendedExercise(name: "Seated Cable Row", sets: 3, reps: "10–12", equipment: "Machine", primaryMuscle: "lats"),
+    // Quads (knee-safe)
+    RecommendedExercise(name: "Leg Extension", sets: 3, reps: "12–15", equipment: "Machine", primaryMuscle: "quads"),
+    RecommendedExercise(name: "Wall Sit", sets: 3, reps: "30s", equipment: "Bodyweight", primaryMuscle: "quads"),
+    // Hamstrings
+    RecommendedExercise(name: "Leg Curl", sets: 3, reps: "12–15", equipment: "Machine", primaryMuscle: "hamstrings"),
+    // Glutes (lower-back-safe)
+    RecommendedExercise(name: "Cable Kickback", sets: 3, reps: "15", equipment: "Machine", primaryMuscle: "glutes"),
+    // Shoulders (shoulder-safe)
+    RecommendedExercise(name: "Band Pull-Apart", sets: 3, reps: "20", equipment: "Bodyweight", primaryMuscle: "rear_delts"),
+    RecommendedExercise(name: "Face Pull", sets: 3, reps: "15", equipment: "Machine", primaryMuscle: "rear_delts"),
+    // Arms
+    RecommendedExercise(name: "Cable Curl", sets: 3, reps: "12", equipment: "Machine", primaryMuscle: "biceps"),
+    RecommendedExercise(name: "Tricep Pushdown", sets: 3, reps: "12–15", equipment: "Machine", primaryMuscle: "triceps"),
+    // Core
+    RecommendedExercise(name: "Plank", sets: 3, reps: "30s", equipment: "Bodyweight", primaryMuscle: "core"),
+    RecommendedExercise(name: "Dead Bug", sets: 3, reps: "10/side", equipment: "Bodyweight", primaryMuscle: "core"),
+]
+```
+
+Backfill selects from the pool by matching `primaryMuscle` to the removed exercise's `primaryMuscle`. If no muscle match, selects the first pool exercise that satisfies the day's equipment profile. If pool is exhausted, the slot is left empty (acceptable — session is shorter than intended, no crash).
 
 ---
 
@@ -194,90 +315,145 @@ Static lookup keyed by `(goal: TrainingGoal, style: WarmupStyle)`.
 
 ### Session Budget Split
 
-| Session Length | Warmup Budget | Working Time |
-|----------------|---------------|--------------|
-| 30 min | 5 min | 25 min |
-| 45 min | 8 min | 37 min |
-| 60 min | 10 min | 50 min |
-| 75 min | 10 min | 65 min |
-| 90 min | 12 min | 78 min |
+| Session (min) | Warmup budget | Min exercises/day |
+|---------------|---------------|-------------------|
+| 30 | 5 | 3 |
+| 45 | 8 | 4 |
+| 60 | 10 | 5 |
+| 75 | 10 | 6 |
+| 90 | 12 | 6–7 |
 
-Working time → set count per exercise (assume ~3 min/set including rest):
-- 25 min → 3 exercises × 3 sets
-- 37 min → 4 exercises × 3 sets
-- 50 min → 5 exercises × 3–4 sets
-- 65 min → 6 exercises × 3–4 sets
-- 78 min → 6–7 exercises × 4–5 sets
+Working time = `sessionMinutes − warmupMinutes`. Assume 3 min per set (including rest). Set count per exercise comes from the template (3–5 sets). Total sets that fit = `floor(workingTime / 3)`. Exercises per day = `totalSets / templateSetCount`, capped by the min-exercise floor above.
 
-### Warmup Blocks (examples)
+### Warmup Block Definitions
 
-**Dynamic (hypertrophy/strength day):** Band pull-aparts × 15, Leg swings × 10/side, Hip circles × 10/side, Cat-cow × 10, Shoulder circles × 10/side — 5–8 min total.
+**Dynamic (hypertrophy/strength):**
+- Band Pull-Apart × 15 (30s)
+- Leg Swings × 10/side (45s)
+- Hip Circles × 10/side (30s)
+- Cat-Cow × 10 (30s)
+- Shoulder Circles × 10/side (30s)
+Total ≈ 5 min
 
-**Dynamic (athletic day):** High knees 30s, Lateral shuffles 30s, Arm circles, Inchworm × 5, Jump rope 60s — 8–10 min total.
+**Dynamic (athletic):**
+- High Knees × 30s
+- Lateral Shuffles × 30s
+- Arm Circles × 20
+- Inchworm × 5 (60s)
+- Jump Rope × 60s
+Total ≈ 8 min
 
-**Static:** Chest opener 30s, Hip flexor stretch 30s/side, Hamstring stretch 30s/side, Thoracic rotation 30s/side — 5 min total.
+**Static (any goal):**
+- Chest Opener 30s/side
+- Hip Flexor Stretch 30s/side
+- Hamstring Stretch 30s/side
+- Thoracic Rotation 30s/side
+Total ≈ 5 min
 
-**Both:** Dynamic block first (as above, shortened), static block post-session.
+**Both:** Dynamic block first (full duration), static block recommended post-session (noted in day description, not baked into pre-session budget).
 
 ---
 
 ## Results Screen (`SplitFinderResultsView.swift`)
 
-Shows after survey completes. Displays 3 `SplitRecommendationCard` views in a `ScrollView`.
+Shown after survey completes. `SplitFinderViewModel.recommendations: [SplitRecommendation]` is populated by calling `SplitRecommender.recommend(input:)` followed by `InjurySubstitutionEngine.apply(to:input:)`.
 
 ### Recommendation Card
 
+Each card shows:
 - Split name (large, bold) + style badge pill
-- Row: days/week · estimated session time · warmup indicator (flame icon if included)
-- Match tags as small pill chips
-- Collapsible day-by-day preview: each day label + first 3 exercise names
-- "Use This Split" filled button at bottom
+- Row: `X days/week` · `~Y min/session` · flame icon if warmups included
+- Match tag chips (up to 3)
+- Collapsible section "See Schedule": lists each non-rest day label + first 3 exercise names separated by commas (e.g. "Push — Bench Press, OHP, Tricep Pushdown"). Rest days shown as "Rest". Warmup exercises not shown in preview.
+- "Use This Split" filled button
+
+If only 1 or 2 recommendations are returned (very restrictive input), render only those cards — no placeholder for the missing slot.
 
 ---
 
-## Subscribe Flow (`SplitSubscribeSheet.swift`)
+## Subscribe Flow
 
-Presented as a sheet when the user taps "Use This Split".
+### Deferred Activation — Data Model
 
-### Step 1 — Conflict Resolution (skip if no active split)
-Bottom half-sheet: "You're currently on **[Split Name]**"
-- "Switch Now" — replaces immediately
-- "Start Next Monday" — schedules; current split stays active until then
+`UserSplitRecord` gains one new optional field: `scheduledStartAt: Date?`.
 
-### Step 2 — Day Assignment
-7-day grid (Mon–Sun). Pre-populated with recommended days based on `daysPerWeek`:
-- 2 days → Mon, Thu
-- 3 days → Mon, Wed, Fri
-- 4 days → Mon, Tue, Thu, Fri
-- 5 days → Mon, Tue, Wed, Fri, Sat
-- 6 days → Mon–Sat
+- `nil` → split is active immediately (existing behavior)
+- non-nil → split is pending; `isActive` remains `false` until the app detects `scheduledStartAt <= Date()`
 
-User taps any day to toggle. Rest days shown with a moon icon. Minimum 2 training days enforced.
+**Activation trigger:** `AppViewModel.loadActiveSplit()` (already called on `onAppear` and after session end) checks for any `UserSplitRecord` where `isActive == false && scheduledStartAt != nil && scheduledStartAt! <= Date()`. If found, sets `isActive = true`, clears `scheduledStartAt`, saves, then loads as normal.
 
-### Step 3 — Confirm
+**TrainView while pending:** No special UI — the existing "No Active Split / Pick a split in Programs" message continues to show until the start date arrives.
+
+### Day Assignment — Weekday-Pinned Model
+
+The existing ordinal rotation model (`gymDay(for:)`) uses `activatedAt` to count days since activation. The Split Finder introduces a parallel weekday-pinned mode:
+
+`UserSplitRecord` gains: `pinnedWeekdays: [Int]?` — array of weekday integers (1=Sunday … 7=Saturday, matching `Calendar.component(.weekday)`). `nil` → use existing ordinal rotation.
+
+When `pinnedWeekdays` is non-nil, `AppViewModel.gymDay(for date:)` checks whether `Calendar.current.component(.weekday, from: date)` is in `pinnedWeekdays`. If yes, maps to the next split day in ordinal order. If no, returns a rest day.
+
+Only splits created via Split Finder use `pinnedWeekdays`. Existing manually-created splits remain ordinal.
+
+### SplitSubscribeSheet
+
+Presented as a `.sheet` from `SplitFinderResultsView`. On dismiss (any path), also dismisses `SplitFinderResultsView` and the parent `SplitFinderView` via a `dismissAll: () -> Void` closure passed down from `TrainView`.
+
+**Step 1 — Conflict resolution (skipped if no active split):**
+Half-sheet with active split name and two buttons:
+- "Switch Now" → `conflictResolution = .now`
+- "Start Next Monday" → `conflictResolution = .nextMonday`
+
+**Step 2 — Day assignment:**
+7-day grid (Mon–Sun). Pre-populated based on `daysPerWeek`:
+
+| Days | Pre-selected |
+|------|-------------|
+| 2 | Mon, Thu |
+| 3 | Mon, Wed, Fri |
+| 4 | Mon, Tue, Thu, Fri |
+| 5 | Mon, Tue, Wed, Fri, Sat |
+| 6 | Mon–Sat |
+
+User taps any day to toggle. Rest days show a moon icon. Minimum 2 training days enforced (confirm button disabled otherwise).
+
+**Step 3 — Confirm:**
 "Start [Split Name]" button. On tap:
-- Saves split locally (SwiftData) with assigned days
-- Calls `vm.loadActiveSplit()` to reflect immediately in `TrainView`
-- Background API sync (same pattern as templates — local UUID first, update on success)
-- Sheet dismisses, `SplitFinderView` dismisses
+
+1. Build `UserSplitRecord`:
+   - `name`: recommendation name
+   - `libraryKey`: `""` (synthesized split — no library origin)
+   - `isActive`: `true` if `.now`, `false` if `.nextMonday`
+   - `scheduledStartAt`: `nil` if `.now`; next Monday's `startOfDay` if `.nextMonday`
+   - `pinnedWeekdays`: selected weekday integers from day assignment grid
+   - `activatedAt`: `Date()` if `.now`, nil if `.nextMonday`
+2. If `.now` and there is an existing active split: set its `isActive = false`.
+3. Build `UserSplitDayRecord` entries from `recommendation.days` with `orderIndex`.
+4. Save all to SwiftData `modelContext`.
+5. Background API sync via `ApiClient.shared.post("/splits", body: ...)` — failure is silent; a `syncPending` flag on `UserSplitRecord` is set `true` and retried on next `loadActiveSplit()` call (same pattern as templates).
+6. Call `vm.loadActiveSplit()`.
+7. Call `dismissAll()`.
 
 ---
 
 ## New Files
 
-| File | Purpose |
+| File | Location |
 |------|---------|
-| `SplitFinderModels.swift` | All input/result structs and enums |
-| `SplitFinderView.swift` | 8-step survey stepper + results transition |
-| `SplitFinderViewModel.swift` | Survey state, step logic, triggers recommendation |
-| `SplitRecommender.swift` | Pure scoring + candidate selection engine |
-| `InjurySubstitutionEngine.swift` | Static substitution map + backfill logic |
-| `WarmupLibrary.swift` | Warmup block definitions keyed by goal + style |
-| `SplitFinderResultsView.swift` | 3-card results display |
-| `SplitSubscribeSheet.swift` | Conflict resolution + day assignment + confirm |
+| `SplitFinderModels.swift` | `Features/Train/Programs/` |
+| `SplitFinderView.swift` | `Features/Train/Programs/` |
+| `SplitFinderViewModel.swift` | `Features/Train/Programs/` |
+| `SplitRecommender.swift` | `Features/Train/Programs/` |
+| `InjurySubstitutionEngine.swift` | `Features/Train/Programs/` |
+| `WarmupLibrary.swift` | `Features/Train/Programs/` |
+| `SplitFinderResultsView.swift` | `Features/Train/Programs/` |
+| `SplitSubscribeSheet.swift` | `Features/Train/Programs/` |
+
+---
 
 ## Modified Files
 
 | File | Change |
 |------|--------|
-| `TrainView.swift` | Add `showSplitFinder` state + toolbar button + `.sheet(isPresented: $showSplitFinder)` |
+| `TrainView.swift` | Add `showSplitFinder: Bool` state + `wand.and.stars` toolbar button + `.sheet(isPresented: $showSplitFinder) { SplitFinderView(dismissAll: { showSplitFinder = false }) }` |
+| `ElosSchema.swift` | Add `scheduledStartAt: Date?` and `pinnedWeekdays: [Int]?` to `UserSplitRecord`; add `syncPending: Bool` if not already present |
+| `AppViewModel.swift` | Update `loadActiveSplit()` to check pending splits and to use `pinnedWeekdays` in `gymDay(for:)` when non-nil |
