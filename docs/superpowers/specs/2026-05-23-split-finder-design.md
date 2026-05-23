@@ -1,6 +1,6 @@
 # Split Finder — Design Spec
 **Date:** 2026-05-23
-**Status:** Approved (rev 2 — spec-review fixes applied)
+**Status:** Approved (rev 3 — second spec-review fixes applied)
 
 ## Overview
 
@@ -373,26 +373,43 @@ If only 1 or 2 recommendations are returned (very restrictive input), render onl
 
 ## Subscribe Flow
 
-### Deferred Activation — Data Model
+### Schema Changes (`ElosSchema.swift`)
 
-`UserSplitRecord` gains one new optional field: `scheduledStartAt: Date?`.
+`UserSplitRecord` gains three new stored properties:
 
-- `nil` → split is active immediately (existing behavior)
-- non-nil → split is pending; `isActive` remains `false` until the app detects `scheduledStartAt <= Date()`
+- `scheduledStartAt: Date?` — nil = active immediately; non-nil = pending activation.
+- `pinnedWeekdaysJSON: String?` — nil = ordinal rotation (existing behavior); non-nil = JSON-encoded `[Int]` of Calendar weekday numbers (1=Sunday … 7=Saturday). Follows the codebase pattern of `skippedDatesJSON`/`exercisesJSON`. Expose via computed accessor:
+  ```swift
+  var pinnedWeekdays: [Int]? {
+      get { pinnedWeekdaysJSON.flatMap { try? JSONDecoder().decode([Int].self, from: Data($0.utf8)) } }
+      set { pinnedWeekdaysJSON = newValue.flatMap { try? String(data: JSONEncoder().encode($0), encoding: .utf8) } }
+  }
+  ```
+- `syncPending: Bool` — add only if not already present.
 
-**Activation trigger:** `AppViewModel.loadActiveSplit()` (already called on `onAppear` and after session end) checks for any `UserSplitRecord` where `isActive == false && scheduledStartAt != nil && scheduledStartAt! <= Date()`. If found, sets `isActive = true`, clears `scheduledStartAt`, saves, then loads as normal.
+`libraryKey = ""` for synthesized splits (no library origin).
+
+### Deferred Activation in `loadActiveSplit()`
 
 **TrainView while pending:** No special UI — the existing "No Active Split / Pick a split in Programs" message continues to show until the start date arrives.
 
+**Order of operations** (both in a single synchronous call):
+1. **Promote pending first:** fetch all records where `isActive == false && scheduledStartAt != nil`. For each where `scheduledStartAt! <= Date()`: set `isActive = true`, clear `scheduledStartAt`, save context.
+2. **Then fetch active:** existing predicate `isActive == true` runs after promotion so a just-promoted record is picked up on the same call.
+
 ### Day Assignment — Weekday-Pinned Model
 
-The existing ordinal rotation model (`gymDay(for:)`) uses `activatedAt` to count days since activation. The Split Finder introduces a parallel weekday-pinned mode:
+The existing ordinal rotation model uses `activatedAt` to count days since activation. The Split Finder introduces a parallel weekday-pinned mode using `pinnedWeekdaysJSON`.
 
-`UserSplitRecord` gains: `pinnedWeekdays: [Int]?` — array of weekday integers (1=Sunday … 7=Saturday, matching `Calendar.component(.weekday)`). `nil` → use existing ordinal rotation.
+`pinnedWeekdays` is an **ordered array** where element at index `i` is the Calendar weekday number assigned to the `i`-th non-rest split day (by `orderIndex`). Populated at subscribe time from the day-assignment grid selections.
 
-When `pinnedWeekdays` is non-nil, `AppViewModel.gymDay(for date:)` checks whether `Calendar.current.component(.weekday, from: date)` is in `pinnedWeekdays`. If yes, maps to the next split day in ordinal order. If no, returns a rest day.
+When `pinnedWeekdays` is non-nil, `gymDay(for date:)` works as follows:
+- Compute `weekday = Calendar.current.component(.weekday, from: date)`.
+- If `weekday` appears at index `i` in `pinnedWeekdays`, return `activeSplitDays[i]` (the `i`-th non-rest day by `orderIndex`).
+- If not found, return a synthetic rest day (`isRest = true`).
+- The ordinal cursor / `activatedAt` advancement logic is **not used** for pinned splits.
 
-Only splits created via Split Finder use `pinnedWeekdays`. Existing manually-created splits remain ordinal.
+Only splits created via Split Finder use `pinnedWeekdays`. Existing manually-created splits (`pinnedWeekdaysJSON == nil`) remain ordinal.
 
 ### SplitSubscribeSheet
 
@@ -424,12 +441,12 @@ User taps any day to toggle. Rest days show a moon icon. Minimum 2 training days
    - `libraryKey`: `""` (synthesized split — no library origin)
    - `isActive`: `true` if `.now`, `false` if `.nextMonday`
    - `scheduledStartAt`: `nil` if `.now`; next Monday's `startOfDay` if `.nextMonday`
-   - `pinnedWeekdays`: selected weekday integers from day assignment grid
+   - `pinnedWeekdays`: selected weekday integers from day-assignment grid (stored via `pinnedWeekdaysJSON` computed setter)
    - `activatedAt`: `Date()` if `.now`, nil if `.nextMonday`
 2. If `.now` and there is an existing active split: set its `isActive = false`.
-3. Build `UserSplitDayRecord` entries from `recommendation.days` with `orderIndex`.
+3. Build `UserSplitDayRecord` entries from `recommendation.days` (non-rest days only) with `orderIndex`.
 4. Save all to SwiftData `modelContext`.
-5. Background API sync via `ApiClient.shared.post("/splits", body: ...)` — failure is silent; a `syncPending` flag on `UserSplitRecord` is set `true` and retried on next `loadActiveSplit()` call (same pattern as templates).
+5. Background API sync via `ApiClient.shared.post("/splits", body: ...)` — on failure, set `syncPending = true`. Retry happens inside `syncSplitsFromServer()` (called by `loadForUser()` on app launch). The implementation plan must ensure `syncSplitsFromServer()` handles `libraryKey == ""` synthesized splits correctly.
 6. Call `vm.loadActiveSplit()`.
 7. Call `dismissAll()`.
 
@@ -455,5 +472,5 @@ User taps any day to toggle. Rest days show a moon icon. Minimum 2 training days
 | File | Change |
 |------|--------|
 | `TrainView.swift` | Add `showSplitFinder: Bool` state + `wand.and.stars` toolbar button + `.sheet(isPresented: $showSplitFinder) { SplitFinderView(dismissAll: { showSplitFinder = false }) }` |
-| `ElosSchema.swift` | Add `scheduledStartAt: Date?` and `pinnedWeekdays: [Int]?` to `UserSplitRecord`; add `syncPending: Bool` if not already present |
-| `AppViewModel.swift` | Update `loadActiveSplit()` to check pending splits and to use `pinnedWeekdays` in `gymDay(for:)` when non-nil |
+| `ElosSchema.swift` | Add `scheduledStartAt: Date?`, `pinnedWeekdaysJSON: String?`, and `syncPending: Bool` to `UserSplitRecord` |
+| `AppViewModel.swift` | Update `loadActiveSplit()` to (1) promote pending splits before fetching active, (2) use `pinnedWeekdays` in `gymDay(for:)` when non-nil; update `syncSplitsFromServer()` to handle `libraryKey == ""` synthesized splits |
