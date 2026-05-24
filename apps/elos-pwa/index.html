@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#000000" />
+  <title>ELOS</title>
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Theme -->
+  <link rel="stylesheet" href="src/theme.css" />
+
+  <!-- React 18 UMD -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <!-- Babel standalone for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- 1. State (no JSX — plain JS) -->
+  <script src="src/state.js"></script>
+
+  <!-- 2. Components + Screens (JSX — must be type="text/babel") -->
+  <script type="text/babel" src="src/components/RingChart.jsx"></script>
+  <script type="text/babel" src="src/components/MuscleBody.jsx"></script>
+  <script type="text/babel" src="src/components/BottomSheet.jsx"></script>
+  <script type="text/babel" src="src/components/TabBar.jsx"></script>
+
+  <script type="text/babel" src="src/screens/TodayScreen.jsx"></script>
+  <script type="text/babel" src="src/screens/TrainScreen.jsx"></script>
+  <script type="text/babel" src="src/screens/EatScreen.jsx"></script>
+  <script type="text/babel" src="src/screens/PlanScreen.jsx"></script>
+  <script type="text/babel" src="src/screens/MeScreen.jsx"></script>
+  <script type="text/babel" src="src/screens/ActiveSessionScreen.jsx"></script>
+
+  <script type="text/babel" src="src/sheets/LogMealSheet.jsx"></script>
+  <script type="text/babel" src="src/sheets/LogSleepSheet.jsx"></script>
+  <script type="text/babel" src="src/sheets/AddHabitSheet.jsx"></script>
+
+  <!-- 3. App root -->
+  <script type="text/babel" src="src/App.jsx"></script>
+
+  <!-- 4. Mount -->
+  <script type="text/babel">
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+
+  <!-- 5. Service worker -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
