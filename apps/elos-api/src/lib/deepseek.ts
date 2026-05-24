@@ -5,7 +5,11 @@ export function parseMoodAndBrief(raw: string): { briefText: string; mood: strin
   return { briefText, mood };
 }
 
+const DEV_MOCK =
+  "Your readiness data looks good for today's session — stay consistent with your plan. No urgent deadlines detected, so this is a solid training day.\nMOOD: positive";
+
 export async function callDeepSeek(prompt: string): Promise<string> {
+  if (!process.env.DEEPSEEK_API_KEY) return DEV_MOCK;
   const res = await fetch("https://api.deepseek.com/chat/completions", {
     method: "POST",
     headers: {

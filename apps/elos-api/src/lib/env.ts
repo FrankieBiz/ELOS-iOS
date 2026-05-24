@@ -1,7 +1,6 @@
 const REQUIRED_VARS = [
   "SUPABASE_URL",
   "SUPABASE_SERVICE_ROLE_KEY",
-  "DEEPSEEK_API_KEY",
 ] as const;
 
 export function assertRequiredEnv(): void {
