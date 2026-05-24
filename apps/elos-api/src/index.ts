@@ -21,7 +21,6 @@ import machinesRouter from "./routes/machines";
 import socialRouter from "./routes/social";
 import leaderboardRouter from "./routes/leaderboard";
 import splitsRouter from "./routes/splits";
-import aiRouter from "./routes/ai";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -78,7 +77,6 @@ app.use("/machines", machinesRouter);
 app.use("/social", socialRouter);
 app.use("/leaderboard", leaderboardRouter);
 app.use("/splits", splitsRouter);
-app.use("/ai", aiRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
