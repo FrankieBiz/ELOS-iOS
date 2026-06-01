@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: elos
+          POSTGRES_PASSWORD: elos
+          POSTGRES_DB: elos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Type-check elos-api
+        run: pnpm --filter elos-api exec tsc --noEmit
+
+      - name: Run migrations
+        env:
+          DATABASE_URL: postgresql://elos:elos@localhost:5432/elos
+        run: pnpm --filter elos-api migrate
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql://elos:elos@localhost:5432/elos
+          SUPABASE_URL: http://localhost
+          SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-key
+          NODE_ENV: test
+        run: pnpm --filter elos-api test --if-present

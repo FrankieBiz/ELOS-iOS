@@ -1,0 +1,27 @@
+# Node / pnpm
+node_modules/
+dist/
+.pnpm-store/
+coverage/
+
+# Env
+.env
+.env.local
+apps/*/.env
+apps/*/.env.local
+*.env.local
+
+# Xcode / iOS
+build/
+DerivedData/
+**/DerivedData/
+*.xcuserdata
+*.xcuserdata/
+**/*.xcuserdata/
+*.xcuserstate
+
+# macOS
+.DS_Store
+
+# Claude Code workspace
+.claude/

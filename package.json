@@ -1,0 +1,27 @@
+{
+  "name": "elos",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "db:up": "docker compose -f infra/docker/docker-compose.yml up -d",
+    "db:down": "docker compose -f infra/docker/docker-compose.yml down",
+    "db:logs": "docker compose -f infra/docker/docker-compose.yml logs -f db",
+    "migrate": "pnpm --filter elos-api migrate",
+    "dev:api": "pnpm --filter elos-api dev",
+    "dev": "pnpm db:up && pnpm dev:api",
+    "typecheck": "pnpm --filter elos-api exec tsc --noEmit",
+    "test": "pnpm --filter elos-api test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.0.9",
+      "onFail": "download"
+    }
+  },
+  "type": "module"
+}
