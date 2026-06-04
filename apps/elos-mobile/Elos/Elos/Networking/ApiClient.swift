@@ -23,7 +23,7 @@ final class ApiClient {
     #if DEBUG
     private let baseURL = "http://localhost:3000"
     #else
-    private let baseURL = "https://api.elos.app"
+    private let baseURL = "https://elos.onrender.com"
     #endif
 
     private func makeRequest(method: String, path: String, body: (any Encodable)? = nil) async throws -> URLRequest {
@@ -54,6 +54,11 @@ final class ApiClient {
 
     func patch<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
         let request = try await makeRequest(method: "PATCH", path: path, body: body)
+        return try await perform(request)
+    }
+
+    func put<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
+        let request = try await makeRequest(method: "PUT", path: path, body: body)
         return try await perform(request)
     }
 
