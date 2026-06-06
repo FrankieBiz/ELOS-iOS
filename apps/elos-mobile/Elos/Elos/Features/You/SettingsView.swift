@@ -4,11 +4,13 @@ struct SettingsView: View {
     @EnvironmentObject var vm: AppViewModel
     @EnvironmentObject var authStore: AuthStore
     @Environment(\.dismiss) private var dismiss
-    @State private var showingSignOutAlert    = false
-    @State private var showingCanvasSync     = false
-    @State private var showingEditProfile    = false
-    @State private var showingPlateCalc      = false
-    @State private var showingBodyMetrics    = false
+    @StateObject private var authVM = AuthViewModel()
+    @State private var showingSignOutAlert      = false
+    @State private var showingDeleteAlert       = false
+    @State private var showingCanvasSync        = false
+    @State private var showingEditProfile       = false
+    @State private var showingPlateCalc         = false
+    @State private var showingBodyMetrics       = false
 
     var body: some View {
         NavigationView {
@@ -45,6 +47,12 @@ struct SettingsView: View {
                         showingSignOutAlert = true
                     } label: {
                         Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+
+                    Button(role: .destructive) {
+                        showingDeleteAlert = true
+                    } label: {
+                        Label("Delete Account", systemImage: "trash")
                     }
                 }
 
@@ -114,12 +122,21 @@ struct SettingsView: View {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text("1.0.0").foregroundStyle(.secondary)
+                        Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0").foregroundStyle(.secondary)
                     }
                     HStack {
                         Text("Build")
                         Spacer()
                         Text("ELOS · 2026").foregroundStyle(.secondary)
+                    }
+                    // TODO: Replace these URLs with your published policy pages before App Store submission
+                    Link(destination: URL(string: "https://elos.app/privacy")!) {
+                        Label("Privacy Policy", systemImage: "hand.raised")
+                            .foregroundStyle(.primary)
+                    }
+                    Link(destination: URL(string: "https://elos.app/terms")!) {
+                        Label("Terms of Service", systemImage: "doc.text")
+                            .foregroundStyle(.primary)
                     }
                 }
             }
@@ -138,6 +155,17 @@ struct SettingsView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("You'll need to sign in again to access your data.")
+            }
+            .alert("Delete Account", isPresented: $showingDeleteAlert) {
+                Button("Delete", role: .destructive) {
+                    Task {
+                        let ok = await authVM.deleteAccount(authStore: authStore)
+                        if ok { dismiss() }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will permanently delete your account and all your data. This cannot be undone.")
             }
             .sheet(isPresented: $showingCanvasSync) {
                 CanvasSyncSheet()
@@ -180,7 +208,7 @@ struct CanvasSyncSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @AppStorage("canvasBaseURL") private var baseURL = ""
-    @AppStorage("canvasToken")   private var token   = ""
+    @State private var token = ""
 
     var body: some View {
         NavigationView {
@@ -242,8 +270,15 @@ struct CanvasSyncSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }.fontWeight(.semibold)
+                    Button("Done") {
+                        KeychainHelper.save(token, forKey: "canvasToken")
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
                 }
+            }
+            .onAppear {
+                token = KeychainHelper.load(forKey: "canvasToken") ?? ""
             }
         }
     }

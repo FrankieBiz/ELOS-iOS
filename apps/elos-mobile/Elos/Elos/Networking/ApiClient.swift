@@ -67,6 +67,10 @@ final class ApiClient {
         return try await perform(request)
     }
 
+    func warmup() async {
+        _ = try? await get("/health") as [String: String]
+    }
+
     func deleteNoContent(_ path: String) async throws {
         let request = try await makeRequest(method: "DELETE", path: path)
         let (_, response) = try await URLSession.shared.data(for: request)

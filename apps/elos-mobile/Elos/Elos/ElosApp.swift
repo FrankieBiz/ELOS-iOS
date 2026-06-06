@@ -5,6 +5,7 @@ import SwiftData
 struct ElosApp: App {
     @StateObject private var authStore = AuthStore()
     private let container: ModelContainer
+    private let launchError: String?
     @StateObject private var viewModel: AppViewModel
     @StateObject private var trainViewModel: TrainViewModel
     @StateObject private var socialViewModel: SocialViewModel
@@ -36,28 +37,30 @@ struct ElosApp: App {
             ScheduleEventRecord.self,
             CourseRecord.self,
         ])
-        let c = Self.makeContainer(schema: schema)
+        let (c, err) = Self.makeContainer(schema: schema)
         container = c
-        ExerciseCatalog.seedIfNeeded(context: c.mainContext)
+        launchError = err
+        if err == nil { ExerciseCatalog.seedIfNeeded(context: c.mainContext) }
         _viewModel = StateObject(wrappedValue: AppViewModel(context: c.mainContext))
         _trainViewModel = StateObject(wrappedValue: TrainViewModel(context: c.mainContext))
         _socialViewModel = StateObject(wrappedValue: SocialViewModel(context: c.mainContext))
     }
 
-    private static func makeContainer(schema: Schema) -> ModelContainer {
+    private static func makeContainer(schema: Schema) -> (ModelContainer, String?) {
         let config = ModelConfiguration("ElosStore", schema: schema)
         do {
-            return try ModelContainer(for: schema, configurations: config)
+            return (try ModelContainer(for: schema, configurations: config), nil)
         } catch {
             print("SwiftData container init failed: \(error). Attempting recovery by deleting store.")
             Self.deleteStoreFiles()
             do {
-                return try ModelContainer(for: schema, configurations: config)
+                return (try ModelContainer(for: schema, configurations: config), nil)
             } catch {
                 print("SwiftData store delete + retry failed: \(error). Falling back to in-memory store.")
                 let memoryConfig = ModelConfiguration("ElosStoreMemory", schema: schema, isStoredInMemoryOnly: true)
                 do {
-                    return try ModelContainer(for: schema, configurations: memoryConfig)
+                    let c = try ModelContainer(for: schema, configurations: memoryConfig)
+                    return (c, "Elos could not restore your database. Your data is safe but won't be saved this session. Please reinstall the app.")
                 } catch {
                     fatalError("SwiftData in-memory fallback also failed: \(error)")
                 }
@@ -82,17 +85,35 @@ struct ElosApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(authStore)
-                .environmentObject(viewModel)
-                .environmentObject(trainViewModel)
-                .environmentObject(socialViewModel)
-                .environmentObject(trainingContext)
-                .modelContainer(container)
-                .onAppear {
-                    NotificationManager.requestAuthorization()
-                    NotificationManager.scheduleHabitReminder(hour: 20, minute: 0)
+            if let error = launchError {
+                VStack(spacing: 20) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.red)
+                    Text("Something went wrong")
+                        .font(.title2).fontWeight(.bold)
+                    Text(error)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.systemGroupedBackground))
+            } else {
+                RootView()
+                    .environmentObject(authStore)
+                    .environmentObject(viewModel)
+                    .environmentObject(trainViewModel)
+                    .environmentObject(socialViewModel)
+                    .environmentObject(trainingContext)
+                    .modelContainer(container)
+                    .onAppear {
+                        NotificationManager.requestAuthorization()
+                        NotificationManager.scheduleHabitReminder(hour: 20, minute: 0)
+                        Task { await ApiClient.shared.warmup() }
+                    }
+            }
         }
     }
 }
