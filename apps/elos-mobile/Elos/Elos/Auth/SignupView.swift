@@ -155,7 +155,21 @@ struct SignupView: View {
                 }
                 .buttonStyle(.plain)
 
-                Spacer().frame(height: 60)
+                HStack(spacing: 4) {
+                    Text("By signing up you agree to our")
+                        .foregroundStyle(.secondary)
+                    Link("Terms", destination: URL(string: "https://elos.app/terms")!)
+                        .foregroundStyle(Color.tint)
+                    Text("and")
+                        .foregroundStyle(.secondary)
+                    Link("Privacy Policy", destination: URL(string: "https://elos.app/privacy")!)
+                        .foregroundStyle(Color.tint)
+                }
+                .font(.caption2)
+                .padding(.horizontal, 24)
+                .padding(.top, 8)
+
+                Spacer().frame(height: 48)
             }
         }
         .scrollBounceBehavior(.basedOnSize)

@@ -129,7 +129,6 @@ struct SettingsView: View {
                         Spacer()
                         Text("ELOS · 2026").foregroundStyle(.secondary)
                     }
-                    // TODO: Replace these URLs with your published policy pages before App Store submission
                     Link(destination: URL(string: "https://elos.app/privacy")!) {
                         Label("Privacy Policy", systemImage: "hand.raised")
                             .foregroundStyle(.primary)
