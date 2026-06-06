@@ -200,6 +200,20 @@ class SocialViewModel: ObservableObject {
         }
     }
 
+    func reportUser(reportedId: String, category: String, note: String?) async -> Bool {
+        struct Body: Encodable { let reportedId: String; let category: String; let note: String? }
+        struct OkResponse: Decodable { let ok: Bool }
+        do {
+            _ = try await ApiClient.shared.post(
+                "/social/report",
+                body: Body(reportedId: reportedId, category: category, note: note)
+            ) as OkResponse
+            return true
+        } catch {
+            return false
+        }
+    }
+
     func formattedValue(_ value: Double, metric: String) -> String {
         switch metric {
         case "volume":   return String(format: "%.0f kg", value)

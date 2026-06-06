@@ -389,7 +389,7 @@ private struct PlanAssignmentRow: View {
                         .font(.subheadline)
                         .strikethrough(assign.done)
                         .foregroundStyle(assign.done ? .secondary : .primary)
-                    Text("\(assign.subject) · \(assign.due)")
+                    Text("\(assign.subject) · \(DateDisplay.friendly(assign.due))")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -417,7 +417,7 @@ private struct ExamCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(exam.subject).font(.caption).foregroundStyle(.secondary)
                 Text(exam.title).font(.system(size: 17, weight: .semibold))
-                Text(exam.date).font(.caption).foregroundStyle(.secondary)
+                Text(DateDisplay.friendly(exam.date)).font(.caption).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 

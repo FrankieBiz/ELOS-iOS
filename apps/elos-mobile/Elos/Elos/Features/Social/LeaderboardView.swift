@@ -3,6 +3,10 @@ import SwiftUI
 struct LeaderboardView: View {
     @EnvironmentObject private var socialVM: SocialViewModel
     @State private var showCrew = false
+    @State private var reportingEntry: LeaderboardEntryResponse?
+    @State private var reportCategory = "other"
+    @State private var reportNote = ""
+    @State private var showingReportConfirmation = false
 
     private let metrics = ["volume", "sessions", "streak", "prs"]
     private let metricLabels = ["Volume", "Sessions", "Streak", "PRs"]
@@ -23,6 +27,55 @@ struct LeaderboardView: View {
         .task { await socialVM.loadBoard() }
         .onChange(of: socialVM.selectedMetric) { _, _ in
             Task { await socialVM.loadBoard() }
+        }
+        .sheet(item: $reportingEntry) { entry in
+            reportSheet(for: entry)
+        }
+        .alert("Report Submitted", isPresented: $showingReportConfirmation) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Thank you. Our team will review this report.")
+        }
+    }
+
+    private func reportSheet(for entry: LeaderboardEntryResponse) -> some View {
+        NavigationStack {
+            Form {
+                Section("Reason") {
+                    Picker("Category", selection: $reportCategory) {
+                        Text("Spam").tag("spam")
+                        Text("Harassment").tag("harassment")
+                        Text("Inappropriate").tag("inappropriate")
+                        Text("Other").tag("other")
+                    }
+                }
+                Section("Additional Info (optional)") {
+                    TextField("Tell us more…", text: $reportNote, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+            }
+            .navigationTitle("Report \(entry.displayName)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { reportingEntry = nil }
+                        .foregroundStyle(.secondary)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Submit") {
+                        let cat = reportCategory
+                        let note = reportNote.isEmpty ? nil : reportNote
+                        let uid = entry.user_id
+                        reportingEntry = nil
+                        Task {
+                            let ok = await socialVM.reportUser(reportedId: uid, category: cat, note: note)
+                            if ok { showingReportConfirmation = true }
+                        }
+                    }
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Color.tint)
+                }
+            }
         }
     }
 
@@ -60,6 +113,17 @@ struct LeaderboardView: View {
                 ForEach(socialVM.weeklyBoard) { entry in
                     LeaderboardRow(entry: entry, metric: socialVM.selectedMetric)
                         .background(entry.is_self ? Color.tint.opacity(0.07) : Color.clear)
+                        .contextMenu {
+                            if !entry.is_self {
+                                Button(role: .destructive) {
+                                    reportCategory = "other"
+                                    reportNote = ""
+                                    reportingEntry = entry
+                                } label: {
+                                    Label("Report User", systemImage: "flag")
+                                }
+                            }
+                        }
                     Divider().padding(.leading, 56)
                 }
             }
@@ -122,6 +186,7 @@ private struct LeaderboardRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.displayName)
                     .font(.subheadline).fontWeight(entry.is_self ? .bold : .regular)
+                    .lineLimit(1)
                 if entry.is_self {
                     Text("You").font(.caption2).foregroundStyle(Color.tint)
                 }

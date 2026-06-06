@@ -50,7 +50,7 @@ struct SplitSubscribeSheet: View {
                 .padding(20)
                 .padding(.bottom, 40)
             }
-            .navigationTitle("Subscribe")
+            .navigationTitle("Start Program")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -262,7 +262,7 @@ struct SplitSubscribeSheet: View {
 
         for (idx, day) in orderedDays.enumerated() {
             let exercisesJSON = (try? String(
-                data: JSONEncoder().encode(day.exercises.map { DayExercise(id: UUID().uuidString, name: $0.name) }),
+                data: JSONEncoder().encode(day.exercises.map { DayExercise(id: UUID().uuidString, name: $0.name, sets: $0.sets, reps: $0.reps) }),
                 encoding: .utf8
             )) ?? "[]"
             let dayRecord = UserSplitDayRecord(

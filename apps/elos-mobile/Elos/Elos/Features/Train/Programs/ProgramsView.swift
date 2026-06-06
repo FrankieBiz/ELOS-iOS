@@ -10,6 +10,7 @@ struct ProgramsView: View {
     @State private var showCreateSplit = false
     @State private var showSplitFinder = false
     @State private var selectedSplit: UserSplitRecord?
+    @State private var splitPendingDelete: UserSplitRecord?
 
     private let categoryOrder: [SplitCategory] = [
         .creatorInspired, .olympiaBodybuilding, .sportPerformance,
@@ -55,6 +56,7 @@ struct ProgramsView: View {
                         Image(systemName: "wand.and.stars")
                             .foregroundStyle(Color.tint)
                     }
+                    .accessibilityLabel("Find a split")
                 }
             }
             .sheet(isPresented: $showCreateSplit) {
@@ -66,10 +68,32 @@ struct ProgramsView: View {
                     .environmentObject(vm)
             }
             .navigationDestination(item: $selectedSplit) { split in
-                UserSplitDetailView(split: split, splitDays: daysFor(split: split))
+                UserSplitDetailView(split: split)
                     .environmentObject(vm)
             }
+            .confirmationDialog(
+                "Delete this split?",
+                isPresented: Binding(
+                    get: { splitPendingDelete != nil },
+                    set: { if !$0 { splitPendingDelete = nil } }
+                ),
+                presenting: splitPendingDelete
+            ) { split in
+                Button("Delete", role: .destructive) { deleteSplit(split) }
+                Button("Cancel", role: .cancel) {}
+            } message: { split in
+                Text("\"\(split.name)\" will be permanently removed.")
+            }
         }
+    }
+
+    private func deleteSplit(_ split: UserSplitRecord) {
+        let serverID = split.serverID
+        let days = daysFor(split: split)
+        for day in days { modelContext.delete(day) }
+        modelContext.delete(split)
+        try? modelContext.save()
+        Task { await vm.deleteSplitOnServer(serverID: serverID) }
     }
 
     // MARK: Active Split Card
@@ -205,6 +229,12 @@ struct ProgramsView: View {
                                     Label("Set as Active", systemImage: "checkmark.circle")
                                 }
                             }
+                            Divider()
+                            Button(role: .destructive) {
+                                splitPendingDelete = split
+                            } label: {
+                                Label("Delete Split", systemImage: "trash")
+                            }
                         }
                     }
                 }
@@ -287,8 +317,20 @@ struct ProgramsView: View {
 
 struct UserSplitDetailView: View {
     @EnvironmentObject var vm: AppViewModel
+    @Environment(\.modelContext) private var modelContext
     let split: UserSplitRecord
-    let splitDays: [UserSplitDayRecord]
+
+    @Query private var splitDays: [UserSplitDayRecord]
+    @State private var showEdit = false
+
+    init(split: UserSplitRecord) {
+        self.split = split
+        let id = split.id
+        _splitDays = Query(
+            filter: #Predicate<UserSplitDayRecord> { $0.splitID == id },
+            sort: \.orderIndex
+        )
+    }
 
     var body: some View {
         List {
@@ -334,6 +376,16 @@ struct UserSplitDetailView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(split.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Edit") { showEdit = true }
+                    .foregroundStyle(Color.tint)
+            }
+        }
+        .sheet(isPresented: $showEdit) {
+            CreateSplitView(editSplit: split, editDays: splitDays) { showEdit = false }
+                .environmentObject(vm)
+        }
     }
 
     private func weeklyTargetArrays(from days: [UserSplitDayRecord]) -> (

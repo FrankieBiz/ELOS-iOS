@@ -69,6 +69,7 @@ private struct ErrorBanner: View {
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.white.opacity(0.8))
             }
+            .accessibilityLabel("Dismiss error")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -90,6 +91,7 @@ private struct ElosTabBar: View {
             HStack(spacing: 0) {
                 ForEach(AppTab.allCases, id: \.self) { tab in
                     Button {
+                        HapticManager.selection()
                         withAnimation(.easeInOut(duration: 0.2)) {
                             vm.selectedTab = tab
                         }
@@ -109,6 +111,9 @@ private struct ElosTabBar: View {
                         .padding(.vertical, 6)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(tab.label)
+                    .accessibilityAddTraits(vm.selectedTab == tab ? [.isButton, .isSelected] : .isButton)
                 }
             }
             .background(Color(.systemBackground))

@@ -288,7 +288,7 @@ struct WorkoutSplitDetailView: View {
 
         let encoder = JSONEncoder()
         for (i, day) in split.workouts.enumerated() {
-            let exercises = day.exercises.map { DayExercise(id: UUID().uuidString, name: $0.name) }
+            let exercises = day.exercises.map { DayExercise.from(name: $0.name, prescription: $0.prescription) }
             let jsonStr = (try? String(data: encoder.encode(exercises), encoding: .utf8)) ?? "[]"
             let dayRecord = UserSplitDayRecord(
                 splitID: record.id,

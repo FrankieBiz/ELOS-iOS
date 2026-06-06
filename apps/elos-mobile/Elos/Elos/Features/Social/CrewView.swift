@@ -7,6 +7,7 @@ struct CrewView: View {
 
     @State private var tab = 0
     @State private var showSearch = false
+    @State private var friendPendingRemove: FriendProfileResponse?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -40,12 +41,29 @@ struct CrewView: View {
                         } label: {
                             Image(systemName: "person.badge.plus")
                         }
+                        .accessibilityLabel("Search for friends")
                     }
                 }
             }
             .sheet(isPresented: $showSearch) {
                 FriendSearchView()
                     .environmentObject(socialVM)
+            }
+            .confirmationDialog(
+                "Remove friend?",
+                isPresented: Binding(
+                    get: { friendPendingRemove != nil },
+                    set: { if !$0 { friendPendingRemove = nil } }
+                ),
+                presenting: friendPendingRemove
+            ) { friend in
+                Button("Remove", role: .destructive) {
+                    HapticManager.warning()
+                    Task { await socialVM.remove(friendshipId: friend.friendship_id) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { friend in
+                Text("\(friend.displayName) will be removed from your crew.")
             }
         }
         .task {
@@ -91,6 +109,7 @@ struct CrewView: View {
                     }
                     Spacer()
                     Button("Accept") {
+                        HapticManager.success()
                         Task { await socialVM.accept(friendshipId: req.friendship_id) }
                     }
                     .font(.caption).fontWeight(.semibold)
@@ -100,6 +119,7 @@ struct CrewView: View {
                     .clipShape(Capsule())
 
                     Button("Decline") {
+                        HapticManager.impact(.light)
                         Task { await socialVM.decline(friendshipId: req.friendship_id) }
                     }
                     .font(.caption).fontWeight(.semibold)
@@ -140,7 +160,7 @@ struct CrewView: View {
                 .elosCard()
                 .swipeActions(edge: .trailing) {
                     Button(role: .destructive) {
-                        Task { await socialVM.remove(friendshipId: friend.friendship_id) }
+                        friendPendingRemove = friend
                     } label: {
                         Label("Remove", systemImage: "person.fill.xmark")
                     }

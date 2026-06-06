@@ -6,7 +6,6 @@ struct SplitFinderResultsView: View {
     let dismissAll: () -> Void
 
     @State private var selectedRec: SplitRecommendation?
-    @State private var showSubscribe = false
 
     init(recommendations: [SplitRecommendation], input: SplitFinderInput, dismissAll: @escaping () -> Void) {
         _recommendations = State(initialValue: recommendations)
@@ -29,21 +28,18 @@ struct SplitFinderResultsView: View {
                 ForEach(recommendations.indices, id: \.self) { i in
                     SFRecommendationCard(rec: $recommendations[i]) {
                         selectedRec = recommendations[i]
-                        showSubscribe = true
                     }
                     .padding(.horizontal, 20)
                 }
                 Spacer(minLength: 40)
             }
         }
-        .sheet(isPresented: $showSubscribe) {
-            if let rec = selectedRec {
-                SplitSubscribeSheet(
-                    recommendation: rec,
-                    daysPerWeek: input.daysPerWeek,
-                    dismissAll: dismissAll
-                )
-            }
+        .sheet(item: $selectedRec) { rec in
+            SplitSubscribeSheet(
+                recommendation: rec,
+                daysPerWeek: input.daysPerWeek,
+                dismissAll: dismissAll
+            )
         }
     }
 }

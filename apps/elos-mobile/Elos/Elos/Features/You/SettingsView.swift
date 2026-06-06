@@ -37,6 +37,7 @@ struct SettingsView: View {
                     }
 
                     Button {
+                        HapticManager.impact(.light)
                         showingEditProfile = true
                     } label: {
                         Label("Edit Profile", systemImage: "person.crop.circle")
@@ -81,12 +82,14 @@ struct SettingsView: View {
 
                 Section("Training") {
                     Button {
+                        HapticManager.impact(.light)
                         showingBodyMetrics = true
                     } label: {
                         Label("Body Metrics", systemImage: "figure.stand")
                             .foregroundStyle(.primary)
                     }
                     Button {
+                        HapticManager.impact(.light)
                         showingPlateCalc = true
                     } label: {
                         Label("Plate Calculator", systemImage: "scalemass")
@@ -96,6 +99,7 @@ struct SettingsView: View {
 
                 Section("Canvas LMS") {
                     Button {
+                        HapticManager.impact(.light)
                         showingCanvasSync = true
                     } label: {
                         HStack {
@@ -127,7 +131,8 @@ struct SettingsView: View {
                     HStack {
                         Text("Build")
                         Spacer()
-                        Text("ELOS · 2026").foregroundStyle(.secondary)
+                        Text(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1")
+                            .foregroundStyle(.secondary)
                     }
                     Link(destination: URL(string: "https://elos.app/privacy")!) {
                         Label("Privacy Policy", systemImage: "hand.raised")
@@ -252,6 +257,14 @@ struct CanvasSyncSheet: View {
                         }
                     }
                     .disabled(baseURL.isEmpty || token.isEmpty || vm.canvasSyncing)
+                }
+
+                if let error = vm.canvasError {
+                    Section {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                 }
 
                 if let lastSync = vm.canvasLastSynced {

@@ -23,8 +23,10 @@ struct FriendSearchView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if results.isEmpty && !query.isEmpty && !isSearching {
                     VStack(spacing: 12) {
-                        Text("No results for \"\(query)\"")
+                        Text("No one found for \"\(query)\" — try a different name")
                             .font(.subheadline).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -33,6 +35,7 @@ struct FriendSearchView: View {
                             user: user,
                             hasSentRequest: sentRequestIDs.contains(user.user_id)
                         ) {
+                            HapticManager.success()
                             Task {
                                 await socialVM.sendRequest(to: user.user_id)
                                 sentRequestIDs.insert(user.user_id)
@@ -84,6 +87,7 @@ private struct UserSearchResultRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(user.displayName)
                     .font(.subheadline).fontWeight(.semibold)
+                    .lineLimit(1)
                 if let uname = user.username {
                     Text("@\(uname)").font(.caption).foregroundStyle(.secondary)
                 }

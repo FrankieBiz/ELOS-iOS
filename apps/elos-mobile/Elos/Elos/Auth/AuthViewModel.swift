@@ -90,6 +90,21 @@ final class AuthViewModel: ObservableObject {
 
     // MARK: - Email / Password
 
+    func deleteAccount(authStore: AuthStore) async -> Bool {
+        isLoading    = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            struct OkResponse: Decodable { let ok: Bool }
+            _ = try await ApiClient.shared.delete("/auth/account") as OkResponse
+            await authStore.logout()
+            return true
+        } catch {
+            errorMessage = "Could not delete account. Please try again."
+            return false
+        }
+    }
+
     func register(authStore: AuthStore) async {
         guard !email.isEmpty else { errorMessage = "Email is required."; return }
         guard password.count >= 8 else { errorMessage = "Password must be at least 8 characters."; return }
@@ -102,6 +117,9 @@ final class AuthViewModel: ObservableObject {
                 email: email,
                 password: password
             )
+            // Mark that this device just created an account so onboarding always runs,
+            // even if the user needs to confirm their email and sign in manually later.
+            UserDefaults.standard.set(true, forKey: "elos_signup_pending")
             if response.session == nil {
                 // Email confirmation is enabled — user must verify before signing in
                 errorMessage = "Check your email to confirm your account, then sign in."

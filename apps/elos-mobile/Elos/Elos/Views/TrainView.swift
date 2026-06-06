@@ -29,6 +29,7 @@ struct TrainView: View {
     @State private var userProgress: GamificationEngine.UserProgress?
     @State private var workoutStreak: Int = 0
     @State private var sessionCount: Int = 0
+    @State private var showSkipConfirm = false
 
     private enum TrainState {
         case noSplit
@@ -88,10 +89,12 @@ struct TrainView: View {
                             Image(systemName: "calendar.badge.clock")
                                 .foregroundStyle(Color.tint)
                         }
+                        .accessibilityLabel("Workout history")
                         Button { context.showAnalytics = true } label: {
                             Image(systemName: "chart.line.uptrend.xyaxis")
                                 .foregroundStyle(Color.tint)
                         }
+                        .accessibilityLabel("Analytics")
                     }
                 }
             }
@@ -539,7 +542,7 @@ struct TrainView: View {
 
             if vm.activeSplit != nil && !vm.isTodaySkipped {
                 Button {
-                    vm.skipToday()
+                    showSkipConfirm = true
                 } label: {
                     Label("Skip Today", systemImage: "forward.fill")
                         .font(.system(size: 14, weight: .semibold))
@@ -550,6 +553,15 @@ struct TrainView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
+                .confirmationDialog("Skip today's workout?", isPresented: $showSkipConfirm, titleVisibility: .visible) {
+                    Button("Skip Today", role: .destructive) {
+                        HapticManager.impact(.medium)
+                        vm.skipToday()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This advances your split to the next day.")
+                }
             }
         }
     }
@@ -799,7 +811,10 @@ private struct QuickActionButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            HapticManager.impact(.light)
+            action()
+        } label: {
             VStack(spacing: 6) {
                 Image(systemName: icon)
                     .font(.system(size: 22, weight: .medium))

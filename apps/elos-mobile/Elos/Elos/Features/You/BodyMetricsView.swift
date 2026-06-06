@@ -11,9 +11,20 @@ struct BodyMetricsView: View {
         profiles.first { $0.ownerID == vm.currentUserID }
     }
 
+    @AppStorage("preferLbs") private var preferLbs: Bool = false
+
     private var weightKg: Double { profile?.weightKg ?? 0 }
     private var heightCm: Double { profile?.heightCm ?? 0 }
     private var ageYears: Int    { profile?.ageYears ?? 0 }
+
+    private var weightDisplay: (value: String, unit: String) {
+        guard weightKg > 0 else { return ("—", preferLbs ? "lbs" : "kg") }
+        if preferLbs {
+            return (String(format: "%.1f", weightKg / 0.453592), "lbs")
+        } else {
+            return (String(format: "%.1f", weightKg), "kg")
+        }
+    }
 
     private var bmi: Double? {
         guard weightKg > 0, heightCm > 0 else { return nil }
@@ -70,15 +81,24 @@ struct BodyMetricsView: View {
 
     private var biometricsCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label("Biometrics", systemImage: "figure.stand")
-                .font(.subheadline).fontWeight(.bold)
+            HStack {
+                Label("Biometrics", systemImage: "figure.stand")
+                    .font(.subheadline).fontWeight(.bold)
+                Spacer()
+                Picker("", selection: $preferLbs) {
+                    Text("kg").tag(false)
+                    Text("lbs").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+            }
 
             Divider()
 
             HStack(spacing: 0) {
                 metricBlock(
-                    value: weightKg > 0 ? String(format: "%.1f", weightKg) : "—",
-                    unit: "kg",
+                    value: weightDisplay.value,
+                    unit: weightDisplay.unit,
                     label: "Weight"
                 )
                 Divider().frame(height: 52)

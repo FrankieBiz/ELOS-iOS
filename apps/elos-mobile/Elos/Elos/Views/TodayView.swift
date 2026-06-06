@@ -297,6 +297,19 @@ struct TodayView: View {
                         .buttonStyle(.plain)
                 }
             }
+            HStack(spacing: 6) {
+                ForEach([8, 16, 32], id: \.self) { oz in
+                    Button("-\(oz)") { HapticManager.impact(.light); vm.removeHydration(oz: oz) }
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(.tertiarySystemFill))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .buttonStyle(.plain)
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
@@ -475,7 +488,7 @@ private struct AssignmentRow: View {
                         .font(.subheadline)
                         .strikethrough(assign.done)
                         .foregroundStyle(assign.done ? .secondary : .primary)
-                    Text("\(assign.subject) · \(assign.due)")
+                    Text("\(assign.subject) · \(DateDisplay.friendly(assign.due))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

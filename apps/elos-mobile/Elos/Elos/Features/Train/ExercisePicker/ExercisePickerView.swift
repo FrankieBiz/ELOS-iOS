@@ -412,6 +412,7 @@ struct ExercisePickerView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "dumbbell")
                                 Text(machineSectionHeader)
+                                    .lineLimit(1)
                             }
                             .font(.caption2).fontWeight(.semibold)
                             .foregroundStyle(localBrandFilter != nil ? Color.tint : .secondary)
@@ -498,6 +499,7 @@ struct ExercisePickerView: View {
         let isSelected = selectedIDs.contains(row.id)
         let isFav = vm.favoriteIDs.contains(row.id)
         return Button {
+            HapticManager.impact(.light)
             handleTap(row: row)
         } label: {
             HStack(spacing: 10) {
@@ -526,6 +528,7 @@ struct ExercisePickerView: View {
                 }
                 Spacer()
                 Button {
+                    HapticManager.impact(.light)
                     Task { await vm.toggleFavorite(exerciseID: row.id) }
                 } label: {
                     Image(systemName: isFav ? "star.fill" : "star")
@@ -533,6 +536,7 @@ struct ExercisePickerView: View {
                         .font(.system(size: 16))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(isFav ? "Remove from favorites" : "Add to favorites")
             }
             .padding(.vertical, 2)
         }

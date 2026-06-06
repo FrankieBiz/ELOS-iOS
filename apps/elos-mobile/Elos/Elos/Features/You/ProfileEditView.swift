@@ -104,6 +104,7 @@ struct ProfileEditView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @StateObject private var editVM = ProfileEditViewModel()
+    @AppStorage("preferLbs") private var preferLbs: Bool = false
 
     private let experienceOptions: [(String, String)] = [
         ("beginner",     "Beginner"),
@@ -165,10 +166,25 @@ struct ProfileEditView: View {
                     HStack {
                         Text("Weight")
                         Spacer()
-                        Text(String(format: "%.0f lbs", editVM.weightLbs))
-                            .foregroundStyle(.secondary)
+                        if preferLbs {
+                            Text(String(format: "%.0f lbs", editVM.weightLbs))
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text(String(format: "%.1f kg", editVM.weightLbs * 0.453592))
+                                .foregroundStyle(.secondary)
+                        }
                         Stepper("", value: $editVM.weightLbs, in: 50...500, step: 1)
                             .labelsHidden()
+                    }
+                    HStack {
+                        Text("Unit")
+                        Spacer()
+                        Picker("", selection: $preferLbs) {
+                            Text("kg").tag(false)
+                            Text("lbs").tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        .fixedSize()
                     }
                 }
 
@@ -206,6 +222,7 @@ struct ProfileEditView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
+                        HapticManager.impact(.medium)
                         Task { await saveProfile() }
                     } label: {
                         if editVM.isLoading {
@@ -226,18 +243,27 @@ struct ProfileEditView: View {
 
     private func loadProfile() {
         let uid = authStore.currentUserID
+        guard !uid.isEmpty else { return }
         let desc = FetchDescriptor<UserProfileRecord>(predicate: #Predicate { $0.ownerID == uid })
         if let record = try? modelContext.fetch(desc).first {
             editVM.load(from: record)
         }
+        // If no local record the form shows default values — that's fine,
+        // saveProfile() will create the record on first save.
     }
 
     private func saveProfile() async {
         let uid = authStore.currentUserID
+        guard !uid.isEmpty else { return }
         let desc = FetchDescriptor<UserProfileRecord>(predicate: #Predicate { $0.ownerID == uid })
-        guard let record = try? modelContext.fetch(desc).first else {
-            editVM.errorMessage = "Profile not found. Try signing out and back in."
-            return
+        let record: UserProfileRecord
+        if let existing = try? modelContext.fetch(desc).first {
+            record = existing
+        } else {
+            // No local record — create one (covers new device / reinstall / login without onboarding)
+            let newRecord = UserProfileRecord(id: uid, ownerID: uid, email: "")
+            modelContext.insert(newRecord)
+            record = newRecord
         }
         await editVM.save(record: record, context: modelContext, appVM: vm)
     }

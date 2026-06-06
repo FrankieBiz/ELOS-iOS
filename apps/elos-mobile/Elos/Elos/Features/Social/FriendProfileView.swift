@@ -24,8 +24,13 @@ struct FriendProfileView: View {
     let userId: String
     let displayName: String
 
+    @EnvironmentObject private var socialVM: SocialViewModel
     @State private var stats: FriendStatsResponse?
     @State private var isLoading = false
+    @State private var showingReportSheet = false
+    @State private var reportCategory = "other"
+    @State private var reportNote = ""
+    @State private var showingReportConfirmation = false
 
     private var initials: String {
         guard let s = stats else { return "?" }
@@ -57,6 +62,68 @@ struct FriendProfileView: View {
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadStats() }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button(role: .destructive) {
+                        showingReportSheet = true
+                    } label: {
+                        Label("Report User", systemImage: "flag")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .accessibilityLabel("More options")
+                }
+            }
+        }
+        .sheet(isPresented: $showingReportSheet) {
+            reportSheet
+        }
+        .alert("Report Submitted", isPresented: $showingReportConfirmation) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Thank you. Our team will review this report.")
+        }
+    }
+
+    private var reportSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Reason") {
+                    Picker("Category", selection: $reportCategory) {
+                        Text("Spam").tag("spam")
+                        Text("Harassment").tag("harassment")
+                        Text("Inappropriate").tag("inappropriate")
+                        Text("Other").tag("other")
+                    }
+                }
+                Section("Additional Info (optional)") {
+                    TextField("Tell us more…", text: $reportNote, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+            }
+            .navigationTitle("Report User")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { showingReportSheet = false }
+                        .foregroundStyle(.secondary)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Submit") {
+                        let cat = reportCategory
+                        let note = reportNote.isEmpty ? nil : reportNote
+                        showingReportSheet = false
+                        Task {
+                            let ok = await socialVM.reportUser(reportedId: userId, category: cat, note: note)
+                            if ok { showingReportConfirmation = true }
+                        }
+                    }
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Color.tint)
+                }
+            }
+        }
     }
 
     private func loadStats() async {

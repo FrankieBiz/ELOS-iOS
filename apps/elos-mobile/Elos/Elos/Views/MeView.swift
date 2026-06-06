@@ -97,12 +97,16 @@ struct MeView: View {
             .padding(18)
             .elosCard()
 
-            Button { showingSettings = true } label: {
+            Button {
+                HapticManager.impact(.light)
+                showingSettings = true
+            } label: {
                 Image(systemName: "gear")
                     .font(.system(size: 16))
                     .foregroundStyle(.secondary)
                     .padding(14)
             }
+            .accessibilityLabel("Settings")
         }
     }
 
@@ -220,7 +224,22 @@ struct MeView: View {
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.top, 10)
+
+            HStack(spacing: 8) {
+                ForEach([8, 16, 32], id: \.self) { oz in
+                    Button("-\(oz)oz") { HapticManager.impact(.light); vm.removeHydration(oz: oz) }
+                        .font(.caption).fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background(Color(.tertiarySystemFill))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 10)
         }
         .elosCard()
     }

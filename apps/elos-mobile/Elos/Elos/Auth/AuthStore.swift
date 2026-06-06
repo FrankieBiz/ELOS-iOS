@@ -21,15 +21,25 @@ final class AuthStore: ObservableObject {
                 if let session {
                     currentUserID   = session.user.id.uuidString
                     isAuthenticated = true
-                    await fetchOnboardingStatus()
+                    // Existing session on app launch — always skip onboarding
+                    await fetchOnboardingStatus(isNewAccount: false)
                 }
                 isLoading = false
 
-            case .signedIn, .tokenRefreshed:
+            case .signedIn:
                 if let session {
                     currentUserID   = session.user.id.uuidString
                     isAuthenticated = true
-                    await fetchOnboardingStatus()
+                    // Accounts created within the last 60 seconds are new signups
+                    let isNewAccount = abs(Date().timeIntervalSince(session.user.createdAt)) < 60
+                    await fetchOnboardingStatus(isNewAccount: isNewAccount)
+                }
+
+            case .tokenRefreshed:
+                if let session {
+                    currentUserID   = session.user.id.uuidString
+                    isAuthenticated = true
+                    await fetchOnboardingStatus(isNewAccount: false)
                 }
 
             case .signedOut:
@@ -44,8 +54,20 @@ final class AuthStore: ObservableObject {
         }
     }
 
-    private func fetchOnboardingStatus() async {
+    private func fetchOnboardingStatus(isNewAccount: Bool) async {
         let cacheKey = "elos_onboarded_\(currentUserID)"
+        // Also check the flag set by register() — handles email-confirmation flows where
+        // the user confirms their email and signs in manually after createdAt > 60s.
+        let signupPending = UserDefaults.standard.bool(forKey: "elos_signup_pending")
+
+        // Existing account login — skip survey entirely and cache the result
+        guard isNewAccount || signupPending else {
+            isOnboardingComplete = true
+            UserDefaults.standard.set(true, forKey: cacheKey)
+            return
+        }
+        // Consume the flag now that we're proceeding to onboarding
+        UserDefaults.standard.removeObject(forKey: "elos_signup_pending")
 
         // Trust the local cache immediately so we never flash onboarding on a bad connection.
         if UserDefaults.standard.bool(forKey: cacheKey) {

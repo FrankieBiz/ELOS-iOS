@@ -9,9 +9,20 @@ struct CreateSplitView: View {
 
     let onSave: () -> Void
     let template: WorkoutSplit?
+    private let editSplit: UserSplitRecord?
+    private let editDays: [UserSplitDayRecord]
 
     init(template: WorkoutSplit? = nil, onSave: @escaping () -> Void) {
         self.template = template
+        self.editSplit = nil
+        self.editDays = []
+        self.onSave = onSave
+    }
+
+    init(editSplit: UserSplitRecord, editDays: [UserSplitDayRecord], onSave: @escaping () -> Void) {
+        self.template = nil
+        self.editSplit = editSplit
+        self.editDays = editDays
         self.onSave = onSave
     }
 
@@ -20,8 +31,28 @@ struct CreateSplitView: View {
     @State private var dayTemplateIDs: [String] = Array(repeating: "", count: 7)
     @State private var dayIsRest: [Bool] = Array(repeating: false, count: 7)
     @State private var dayExercises: [[DayExercise]] = Array(repeating: [], count: 7)
-    @State private var pickingDayIndex: Int?
-    @State private var pickingExerciseDayIndex: Int?
+    @State private var activePicker: ActivePicker? = nil
+    @State private var showDiscardConfirm = false
+
+    private var hasUnsavedContent: Bool {
+        !splitName.trimmingCharacters(in: .whitespaces).isEmpty
+            || dayTemplateIDs.contains { !$0.isEmpty }
+            || dayExercises.contains { !$0.isEmpty }
+    }
+
+    private enum ActivePicker: Identifiable {
+        case template(dayIndex: Int)
+        case exercise(dayIndex: Int)
+        var id: String {
+            switch self {
+            case .template(let i): return "template-\(i)"
+            case .exercise(let i): return "exercise-\(i)"
+            }
+        }
+        var dayIndex: Int {
+            switch self { case .template(let i): return i; case .exercise(let i): return i }
+        }
+    }
 
     private let dayLabels = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -51,21 +82,37 @@ struct CreateSplitView: View {
                     }
                 }
             }
-            .navigationTitle(template != nil ? "Customize Split" : "New Split")
+            .navigationTitle(editSplit != nil ? "Edit Split" : (template != nil ? "Customize Split" : "New Split"))
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
-                guard let t = template else { return }
-                splitName = t.title
-                for (i, day) in t.workouts.prefix(7).enumerated() {
-                    dayNames[i] = day.focus
-                    dayIsRest[i] = false
-                    dayExercises[i] = day.exercises.map { DayExercise(id: UUID().uuidString, name: $0.name) }
+                if let t = template {
+                    splitName = t.title
+                    for (i, day) in t.workouts.prefix(7).enumerated() {
+                        dayNames[i] = day.focus
+                        dayIsRest[i] = false
+                        dayExercises[i] = day.exercises.map { DayExercise.from(name: $0.name, prescription: $0.prescription) }
+                    }
+                } else if let s = editSplit {
+                    splitName = s.name
+                    for day in editDays {
+                        let i = day.orderIndex
+                        guard i < 7 else { continue }
+                        dayIsRest[i] = day.isRest
+                        dayNames[i] = day.isRest ? "" : (day.dayName == dayLabels[i] ? "" : day.dayName)
+                        dayTemplateIDs[i] = day.templateID
+                        if let data = day.exercisesJSON.data(using: .utf8),
+                           let decoded = try? JSONDecoder().decode([DayExercise].self, from: data) {
+                            dayExercises[i] = decoded
+                        }
+                    }
                 }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { onSave() }
-                        .foregroundStyle(.secondary)
+                    Button("Cancel") {
+                        if hasUnsavedContent { showDiscardConfirm = true } else { onSave() }
+                    }
+                    .foregroundStyle(.secondary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") { saveSplit() }
@@ -74,31 +121,29 @@ struct CreateSplitView: View {
                         .disabled(splitName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
-            .sheet(item: Binding(
-                get: { pickingDayIndex.map { PickerIndex(value: $0) } },
-                set: { pickingDayIndex = $0?.value }
-            )) { item in
-                TemplatePickerSheet(
-                    templates: templates,
-                    selectedID: dayTemplateIDs[item.value]
-                ) { templateID, templateName in
-                    dayTemplateIDs[item.value] = templateID
-                    if dayNames[item.value].isEmpty {
-                        dayNames[item.value] = templateName
+            .sheet(item: $activePicker) { picker in
+                switch picker {
+                case .template(let i):
+                    TemplatePickerSheet(
+                        templates: templates,
+                        selectedID: dayTemplateIDs[i]
+                    ) { templateID, templateName in
+                        dayTemplateIDs[i] = templateID
+                        if dayNames[i].isEmpty { dayNames[i] = templateName }
                     }
-                    pickingDayIndex = nil
+                case .exercise(let i):
+                    ExercisePickerView(onPickSingle: { picked in
+                        if !dayExercises[i].contains(where: { $0.id == picked.id }) {
+                            dayExercises[i].append(DayExercise(id: picked.id, name: picked.name))
+                        }
+                    })
                 }
             }
-            .sheet(item: Binding(
-                get: { pickingExerciseDayIndex.map { PickerIndex(value: $0) } },
-                set: { pickingExerciseDayIndex = $0?.value }
-            )) { item in
-                ExercisePickerView(onPickSingle: { picked in
-                    if !dayExercises[item.value].contains(where: { $0.id == picked.id }) {
-                        dayExercises[item.value].append(DayExercise(id: picked.id, name: picked.name))
-                    }
-                    // Don't dismiss — user can keep picking then swipe to close
-                })
+            .confirmationDialog("Discard this split?", isPresented: $showDiscardConfirm, titleVisibility: .visible) {
+                Button("Discard", role: .destructive) { onSave() }
+                Button("Keep Editing", role: .cancel) {}
+            } message: {
+                Text("Your changes won't be saved.")
             }
         }
     }
@@ -129,7 +174,7 @@ struct CreateSplitView: View {
                         .frame(maxWidth: .infinity)
 
                     Button {
-                        pickingDayIndex = i
+                        activePicker = .template(dayIndex: i)
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "list.bullet")
@@ -139,7 +184,7 @@ struct CreateSplitView: View {
                                 .lineLimit(1)
                         }
                         .foregroundStyle(dayTemplateIDs[i].isEmpty ? Color.tint : Color.good)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
                         .background((dayTemplateIDs[i].isEmpty ? Color.tint : Color.good).opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
@@ -149,11 +194,20 @@ struct CreateSplitView: View {
                 // Exercises for this day
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
-                        ForEach(dayExercises[i]) { ex in
+                        ForEach(Array(dayExercises[i].enumerated()), id: \.element.id) { j, ex in
                             HStack(spacing: 4) {
                                 Text(ex.name)
                                     .font(.caption2)
                                     .lineLimit(1)
+                                Menu {
+                                    ForEach([2, 3, 4, 5], id: \.self) { s in
+                                        Button("\(s) sets") { dayExercises[i][j].sets = s }
+                                    }
+                                } label: {
+                                    Text("\(ex.sets)×")
+                                        .font(.caption2).fontWeight(.semibold)
+                                        .foregroundStyle(Color.tint.opacity(0.7))
+                                }
                                 Button {
                                     dayExercises[i].removeAll { $0.id == ex.id }
                                 } label: {
@@ -167,7 +221,7 @@ struct CreateSplitView: View {
                             .clipShape(Capsule())
                         }
                         Button {
-                            pickingExerciseDayIndex = i
+                            activePicker = .exercise(dayIndex: i)
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "plus")
@@ -195,37 +249,64 @@ struct CreateSplitView: View {
     private func saveSplit() {
         let trimmed = splitName.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        let split = UserSplitRecord(ownerID: vm.currentUserID, name: trimmed)
-        modelContext.insert(split)
+
         let encoder = JSONEncoder()
-        for (i, label) in dayLabels.enumerated() {
-            let exData = try? encoder.encode(dayExercises[i])
-            let exJSON = exData.flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
-            let day = UserSplitDayRecord(
-                splitID: split.id,
-                orderIndex: i,
-                dayLabel: label,
-                dayName: dayIsRest[i] ? "Rest" : (dayNames[i].isEmpty ? label : dayNames[i]),
-                templateID: dayIsRest[i] ? "" : dayTemplateIDs[i],
-                isRest: dayIsRest[i],
-                exercisesJSON: dayIsRest[i] ? "[]" : exJSON
-            )
-            modelContext.insert(day)
+        let indexToWeekday = [2, 3, 4, 5, 6, 7, 1]
+
+        func buildDays(for splitID: String) {
+            for (i, label) in dayLabels.enumerated() {
+                let exData = try? encoder.encode(dayExercises[i])
+                let exJSON = exData.flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+                modelContext.insert(UserSplitDayRecord(
+                    splitID: splitID,
+                    orderIndex: i,
+                    dayLabel: label,
+                    dayName: dayIsRest[i] ? "Rest" : (dayNames[i].isEmpty ? label : dayNames[i]),
+                    templateID: dayIsRest[i] ? "" : dayTemplateIDs[i],
+                    isRest: dayIsRest[i],
+                    exercisesJSON: dayIsRest[i] ? "[]" : exJSON
+                ))
+            }
         }
-        try? modelContext.save()
+
+        if let existing = editSplit {
+            // Edit mode — update in place then push to server
+            existing.name = trimmed
+            existing.pinnedWeekdays = (0..<7).filter { !dayIsRest[$0] }.map { indexToWeekday[$0] }
+            existing.syncPending = true
+            for day in editDays { modelContext.delete(day) }
+            buildDays(for: existing.id)
+            try? modelContext.save()
+            vm.loadActiveSplit()
+            let record = existing
+            Task.detached {
+                if !record.serverID.isEmpty {
+                    await vm.updateSplitOnServer(serverID: record.serverID, record: record)
+                } else {
+                    await vm.pushSplitToServer(record)
+                }
+            }
+        } else {
+            // Create mode — insert new record and push immediately
+            let split = UserSplitRecord(ownerID: vm.currentUserID, name: trimmed)
+            split.pinnedWeekdays = (0..<7).filter { !dayIsRest[$0] }.map { indexToWeekday[$0] }
+            split.syncPending = true
+            modelContext.insert(split)
+            buildDays(for: split.id)
+            try? modelContext.save()
+            let record = split
+            Task.detached { await vm.pushSplitToServer(record) }
+        }
         onSave()
     }
-}
-
-private struct PickerIndex: Identifiable {
-    let value: Int
-    var id: Int { value }
 }
 
 private struct TemplatePickerSheet: View {
     let templates: [WorkoutTemplateRecord]
     let selectedID: String
     let onSelect: (String, String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -241,18 +322,18 @@ private struct TemplatePickerSheet: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     List(templates) { template in
-                        Button {
-                            onSelect(template.id, template.name)
-                        } label: {
-                            HStack {
-                                Text(template.name).font(.subheadline)
-                                Spacer()
-                                if template.id == selectedID {
-                                    Image(systemName: "checkmark").foregroundStyle(Color.tint).font(.caption)
-                                }
+                        HStack {
+                            Text(template.name).font(.subheadline)
+                            Spacer()
+                            if template.id == selectedID {
+                                Image(systemName: "checkmark").foregroundStyle(Color.tint).font(.caption)
                             }
                         }
-                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            onSelect(template.id, template.name)
+                            dismiss()
+                        }
                     }
                     .listStyle(.insetGrouped)
                 }
@@ -261,8 +342,11 @@ private struct TemplatePickerSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("None") { onSelect("", "") }
-                        .foregroundStyle(.secondary)
+                    Button("None") {
+                        onSelect("", "")
+                        dismiss()
+                    }
+                    .foregroundStyle(.secondary)
                 }
             }
         }

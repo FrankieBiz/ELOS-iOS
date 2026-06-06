@@ -536,7 +536,7 @@ private struct ExerciseCard: View {
                     .font(.system(size: 11))
                     .foregroundStyle(Color.tint)
                     .padding(.top, 2)
-                TextField("e.g. Slow eccentric, touch chest…", text: $entry.notes, axis: .vertical)
+                TextField("e.g. Slow eccentric, touch chest", text: $entry.notes, axis: .vertical)
                     .font(.system(size: 13))
                     .lineLimit(1...3)
                 Button {

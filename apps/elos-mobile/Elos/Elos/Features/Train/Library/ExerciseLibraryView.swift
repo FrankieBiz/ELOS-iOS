@@ -155,9 +155,11 @@ struct ExerciseLibraryView: View {
                         Button { showAdvancedPicker = true } label: {
                             Image(systemName: "line.3.horizontal.decrease.circle")
                         }
+                        .accessibilityLabel("Filter exercises")
                         Button { showCreate = true } label: {
                             Image(systemName: "plus")
                         }
+                        .accessibilityLabel("Create exercise")
                     }
                 }
             }

@@ -4,6 +4,7 @@ struct UserSplitResponse: Decodable {
     let id: String
     let name: String
     let library_key: String
+    let pinned_weekdays_json: String
     let is_active: Bool
     let created_at: String
     let days: [UserSplitDayResponse]

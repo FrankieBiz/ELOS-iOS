@@ -199,7 +199,7 @@ struct StatsView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Weekly Volume (Sets by Muscle)").font(.subheadline).fontWeight(.semibold)
             if analyticsVM.volumeData.isEmpty {
-                Text("No completed sets in the last 8 weeks yet.")
+                Text("Complete a few sets to see your volume trends.")
                     .font(.caption).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
             } else {

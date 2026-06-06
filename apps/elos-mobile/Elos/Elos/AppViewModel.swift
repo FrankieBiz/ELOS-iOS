@@ -77,6 +77,7 @@ class AppViewModel: ObservableObject {
     // MARK: - Canvas sync state
     @Published var canvasSyncing = false
     @Published var canvasLastSynced: Date? = nil
+    @Published var canvasError: String? = nil
 
     // MARK: - Favorites
     @Published var favoriteSplitKeys: Set<String> = []
@@ -327,6 +328,18 @@ class AppViewModel: ObservableObject {
         try? context.save()
     }
 
+    func removeHydration(oz: Int) {
+        hydration = max(0, hydration - oz)
+        guard !currentUserID.isEmpty else { return }
+        let uid = currentUserID
+        let desc = FetchDescriptor<HydrationRecord>(predicate: #Predicate { $0.ownerID == uid })
+        let allRecs = (try? context.fetch(desc)) ?? []
+        if let existing = allRecs.first(where: { Calendar.current.isDateInToday($0.logDate) }) {
+            existing.ouncesConsumed = hydration
+            try? context.save()
+        }
+    }
+
     func logSleep(_ entry: SleepEntry) {
         sleepLog.insert(entry, at: 0)
         guard !currentUserID.isEmpty else { return }
@@ -509,9 +522,14 @@ class AppViewModel: ObservableObject {
            let infos = try? JSONDecoder().decode([DayExercise].self, from: data),
            !infos.isEmpty {
             exercises = infos.map { info in
-                Exercise(name: info.name, primaryMuscle: "", secondaryMuscles: [],
-                         setsLabel: "3×10", lastBest: "",
-                         sets: (0..<3).map { _ in WorkSet(weight: "", reps: "10", rpe: "") })
+                // Use the lower bound of any rep range (e.g. "6–10" → "6", "8-12" → "8")
+                let baseReps = info.reps
+                    .components(separatedBy: CharacterSet(charactersIn: "-–"))
+                    .first?
+                    .trimmingCharacters(in: .whitespaces) ?? "10"
+                return Exercise(name: info.name, primaryMuscle: "", secondaryMuscles: [],
+                                setsLabel: "\(info.sets)×\(info.reps)", lastBest: "",
+                                sets: (0..<info.sets).map { _ in WorkSet(weight: "", reps: baseReps, rpe: "") })
             }
             return
         }
@@ -612,12 +630,22 @@ class AppViewModel: ObservableObject {
         let cal = Calendar.current
         let target = cal.startOfDay(for: date)
 
-        // Weekday-pinned path (Split Finder splits)
+        // Weekday-pinned path (Split Finder splits and new CreateSplitView splits)
         if let pinned = split.pinnedWeekdays {
             let weekday = cal.component(.weekday, from: target)
             let nonRestDays = activeSplitDays.filter { !$0.isRest }
             guard let idx = pinned.firstIndex(of: weekday), idx < nonRestDays.count else { return nil }
             return nonRestDays[idx]
+        }
+
+        // Backward-compat path: 7-day CreateSplitView splits saved before pinnedWeekdays was set.
+        // orderIndex 0–6 maps directly to Mon–Sun, so look up today's weekday directly.
+        if activeSplitDays.count == 7 {
+            let weekday = cal.component(.weekday, from: target) // 1=Sun,2=Mon,...,7=Sat
+            let indexToWeekday = [2, 3, 4, 5, 6, 7, 1]         // orderIndex 0–6 → Calendar weekday
+            guard let dayIndex = indexToWeekday.firstIndex(of: weekday) else { return nil }
+            let day = activeSplitDays[dayIndex]                  // sorted by orderIndex
+            return day.isRest ? nil : day
         }
 
         // Ordinal rotation path (existing splits)
@@ -694,6 +722,13 @@ class AppViewModel: ObservableObject {
     private struct CreateSplitRequest: Encodable {
         let name: String
         let library_key: String
+        let pinned_weekdays_json: String
+        let days: [CreateSplitDayRequest]
+    }
+
+    private struct UpdateSplitRequest: Encodable {
+        let name: String
+        let pinned_weekdays_json: String
         let days: [CreateSplitDayRequest]
     }
 
@@ -711,6 +746,7 @@ class AppViewModel: ObservableObject {
         let body = CreateSplitRequest(
             name: record.name,
             library_key: record.libraryKey,
+            pinned_weekdays_json: record.pinnedWeekdaysJSON ?? "",
             days: days.map {
                 CreateSplitDayRequest(
                     order_index: $0.orderIndex,
@@ -755,6 +791,39 @@ class AppViewModel: ObservableObject {
         let _: UserSplitResponse? = try? await ApiClient.shared.patch("/splits/\(serverID)/activate", body: ActivateSplitRequest())
     }
 
+    func updateSplitOnServer(serverID: String, record: UserSplitRecord) async {
+        let splitID = record.id
+        let days = (try? context.fetch(
+            FetchDescriptor<UserSplitDayRecord>(
+                predicate: #Predicate { $0.splitID == splitID },
+                sortBy: [SortDescriptor(\.orderIndex)]
+            )
+        )) ?? []
+        let body = UpdateSplitRequest(
+            name: record.name,
+            pinned_weekdays_json: record.pinnedWeekdaysJSON ?? "",
+            days: days.map {
+                CreateSplitDayRequest(
+                    order_index: $0.orderIndex,
+                    day_label: $0.dayLabel,
+                    day_name: $0.dayName,
+                    template_id: $0.templateID,
+                    is_rest: $0.isRest,
+                    exercises_json: $0.exercisesJSON
+                )
+            }
+        )
+        do {
+            let _: UserSplitResponse = try await ApiClient.shared.put("/splits/\(serverID)", body: body)
+            await MainActor.run {
+                record.syncPending = false
+                try? context.save()
+            }
+        } catch {
+            // Network failure — syncPending stays true for retry on next launch
+        }
+    }
+
     func syncSplitsFromServer() async {
         guard !currentUserID.isEmpty else { return }
 
@@ -773,6 +842,9 @@ class AppViewModel: ObservableObject {
                         existing.isActive = remote.is_active
                         existing.serverID = remote.id
                         existing.syncPending = false
+                        if !remote.pinned_weekdays_json.isEmpty {
+                            existing.pinnedWeekdaysJSON = remote.pinned_weekdays_json
+                        }
                     }
                     let existingDays = localDays.filter { $0.splitID == existing.id }
                     for remoteDay in remote.days {
@@ -808,6 +880,9 @@ class AppViewModel: ObservableObject {
                         serverID: remote.id,
                         syncPending: false
                     )
+                    if !remote.pinned_weekdays_json.isEmpty {
+                        newSplit.pinnedWeekdaysJSON = remote.pinned_weekdays_json
+                    }
                     await MainActor.run { context.insert(newSplit) }
                     for remoteDay in remote.days {
                         let newDay = UserSplitDayRecord(
@@ -844,7 +919,7 @@ class AppViewModel: ObservableObject {
 
     func syncCanvasIfConfigured() async {
         let url = UserDefaults.standard.string(forKey: "canvasBaseURL") ?? ""
-        let token = UserDefaults.standard.string(forKey: "canvasToken") ?? ""
+        let token = KeychainHelper.load(forKey: "canvasToken") ?? ""
         guard !url.isEmpty, !token.isEmpty, !currentUserID.isEmpty else { return }
         await syncCanvas(baseURL: url, token: token)
     }
@@ -852,12 +927,13 @@ class AppViewModel: ObservableObject {
     func syncCanvas(baseURL: String, token: String) async {
         let uid = currentUserID
         guard !uid.isEmpty else { return }
-        await MainActor.run { canvasSyncing = true }
+        await MainActor.run { canvasSyncing = true; canvasError = nil }
         do {
             try await CanvasService.shared.sync(baseURL: baseURL, token: token, ownerID: uid, context: context)
             await MainActor.run {
                 canvasLastSynced = Date()
                 canvasSyncing    = false
+                canvasError      = nil
                 // Reload exams + assignments after sync
                 let examDesc = FetchDescriptor<ExamRecord>(predicate: #Predicate { $0.ownerID == uid })
                 let examRecords = (try? context.fetch(examDesc)) ?? []
@@ -875,7 +951,10 @@ class AppViewModel: ObservableObject {
                 }
             }
         } catch {
-            await MainActor.run { canvasSyncing = false }
+            await MainActor.run {
+                canvasSyncing = false
+                canvasError = "Sync failed. Check your Canvas URL and access token, then try again."
+            }
         }
     }
 }
