@@ -2,13 +2,15 @@ import { Router, Request, Response } from "express";
 import { requireAuth } from "../middleware/auth";
 import { MachineService } from "../services/machineService";
 import { pool } from "../db";
+import { qs } from "../lib/query";
 
 const router = Router();
 const service = new MachineService(pool);
 
 router.use(requireAuth);
 
-const qs = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+// Machine catalog is shared reference data (not user-scoped) and changes rarely.
+const REFERENCE_CACHE = "private, max-age=3600";
 
 router.get("/", async (req: Request, res: Response) => {
   const machines = await service.getMachines({
@@ -21,16 +23,19 @@ router.get("/", async (req: Request, res: Response) => {
 
 router.get("/categories", async (_req: Request, res: Response) => {
   const categories = await service.getMachinesByCategory();
+  res.set("Cache-Control", REFERENCE_CACHE);
   res.json(categories);
 });
 
 router.get("/brands", async (_req: Request, res: Response) => {
   const brands = await service.getBrands();
+  res.set("Cache-Control", REFERENCE_CACHE);
   res.json({ brands });
 });
 
 router.get("/by-brand", async (_req: Request, res: Response) => {
   const groups = await service.getMachinesByBrand();
+  res.set("Cache-Control", REFERENCE_CACHE);
   res.json({ groups });
 });
 

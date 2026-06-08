@@ -1,5 +1,4 @@
 import SwiftUI
-import AuthenticationServices
 
 struct LoginView: View {
     @Binding var showSignup: Bool
@@ -95,35 +94,27 @@ struct LoginView: View {
                 }
                 .padding(.horizontal, 24)
 
-                Spacer().frame(height: 24)
+                // Forgot password
+                Button {
+                    Task { await authVM.sendPasswordReset() }
+                } label: {
+                    Text("Forgot password?")
+                        .font(.caption)
+                        .foregroundStyle(Color.tint)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 12)
 
-                // "or" divider
-                HStack(spacing: 12) {
-                    Rectangle()
-                        .frame(height: 1)
-                        .foregroundStyle(Color(.separator))
-                    Text("or")
+                if let info = authVM.infoMessage {
+                    Text(info)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Rectangle()
-                        .frame(height: 1)
-                        .foregroundStyle(Color(.separator))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 8)
                 }
-                .padding(.horizontal, 24)
 
-                SignInWithAppleButton(.signIn) { request in
-                    request.requestedScopes = [.fullName, .email]
-                    request.nonce = authVM.prepareAppleSignIn()
-                } onCompletion: { result in
-                    Task { await authVM.handleAppleSignIn(result: result, authStore: authStore) }
-                }
-                .signInWithAppleButtonStyle(.black)
-                .frame(height: 50)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .padding(.horizontal, 24)
-                .padding(.top, 8)
-
-                Spacer().frame(height: 32)
+                Spacer().frame(height: 40)
 
                 Button {
                     withAnimation { showSignup = true }

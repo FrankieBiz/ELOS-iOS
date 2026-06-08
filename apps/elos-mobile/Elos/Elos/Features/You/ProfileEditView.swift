@@ -43,7 +43,7 @@ final class ProfileEditViewModel: ObservableObject {
     private var heightCm: Double { Double(heightFeet * 12 + heightInches) * 2.54 }
     private var weightKg: Double { weightLbs * 0.453592 }
 
-    func save(record: UserProfileRecord, context: ModelContext, appVM: AppViewModel) async {
+    func save(record: UserProfileRecord, context: ModelContext, appVM: AppViewModel, useImperial: Bool) async {
         isLoading    = true
         errorMessage = nil
         defer { isLoading = false }
@@ -61,13 +61,16 @@ final class ProfileEditViewModel: ObservableObject {
             cal_goal:            calGoal,
             protein_goal:        proteinGoal,
             carb_goal:           carbGoal,
-            fat_goal:            fatGoal
+            fat_goal:            fatGoal,
+            use_imperial:        useImperial
         )
 
+        var networkSucceeded = false
         do {
-            let _: ProfileUpdateBody = try await ApiClient.shared.patch("/profile", body: body)
+            let _: ProfileResponse = try await ApiClient.shared.patch("/profile", body: body)
+            networkSucceeded = true
         } catch {
-            // Save locally even if network is unavailable
+            // Save locally; syncPending triggers a retry from syncProfileFromServer on next launch.
         }
 
         record.firstName          = firstName
@@ -83,6 +86,8 @@ final class ProfileEditViewModel: ObservableObject {
         record.proteinGoal        = proteinGoal
         record.carbGoal           = carbGoal
         record.fatGoal            = fatGoal
+        record.useImperial        = useImperial
+        record.syncPending        = !networkSucceeded
         try? context.save()
 
         appVM.displayName = firstName.isEmpty ? "there" : firstName
@@ -247,6 +252,8 @@ struct ProfileEditView: View {
         let desc = FetchDescriptor<UserProfileRecord>(predicate: #Predicate { $0.ownerID == uid })
         if let record = try? modelContext.fetch(desc).first {
             editVM.load(from: record)
+            // Reflect the account's stored unit preference in the local display toggle.
+            preferLbs = record.useImperial
         }
         // If no local record the form shows default values — that's fine,
         // saveProfile() will create the record on first save.
@@ -265,6 +272,6 @@ struct ProfileEditView: View {
             modelContext.insert(newRecord)
             record = newRecord
         }
-        await editVM.save(record: record, context: modelContext, appVM: vm)
+        await editVM.save(record: record, context: modelContext, appVM: vm, useImperial: preferLbs)
     }
 }

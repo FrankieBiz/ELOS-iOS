@@ -52,7 +52,7 @@ export class ExerciseService {
       )`);
     }
 
-    const limit = Math.min(Math.max(filters.limit ?? 500, 1), 500);
+    const limit = Math.min(Math.max(filters.limit ?? 50, 1), 500);
     const offset = Math.max(filters.offset ?? 0, 0);
     params.push(limit, offset);
     const limitIdx = params.length - 1;

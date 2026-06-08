@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   protein_goal        INTEGER,
   carb_goal           INTEGER,
   fat_goal            INTEGER,
+  use_imperial        BOOLEAN     NOT NULL DEFAULT true,
   onboarding_complete BOOLEAN     NOT NULL DEFAULT false,
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );

@@ -350,7 +350,81 @@ export interface UserSplit {
   user_id: string;
   name: string;
   library_key: string;
+  pinned_weekdays_json: string;
   is_active: boolean;
   created_at: string;
   days: UserSplitDay[];
 }
+
+// --- Friends activity feed ---
+
+export type FeedPostKind = "workout" | "pr" | "split";
+
+export interface FeedTopLift {
+  name: string;
+  weight_kg: number;
+  reps: number;
+}
+
+export interface WorkoutPayload {
+  date: string;
+  duration_min: number;
+  volume_kg: number;
+  total_sets: number;
+  unique_exercises: number;
+  top_lift?: FeedTopLift;
+  pr?: string;
+}
+
+export interface PrPayload {
+  exercise_name: string;
+  weight_kg: number;
+  reps: number;
+  e1rm: number;
+}
+
+export interface SplitPayloadDay {
+  order_index: number;
+  day_label: string;
+  day_name: string;
+  template_id: string;
+  is_rest: boolean;
+  exercises_json: string;
+}
+
+export interface SplitPayload {
+  name: string;
+  days: SplitPayloadDay[];
+}
+
+export type FeedPayload = WorkoutPayload | PrPayload | SplitPayload;
+
+export interface FeedReactionSummary {
+  emoji: string;
+  count: number;
+}
+
+export interface FeedPost {
+  id: string;
+  kind: FeedPostKind;
+  created_at: string;
+  author: {
+    user_id: string;
+    username: string;
+    first_name: string;
+    last_name: string;
+    avatar_color: string;
+  };
+  is_mine: boolean;
+  payload: FeedPayload;
+  reactions: FeedReactionSummary[];
+  my_reaction: string | null;
+}
+
+export interface FeedPage {
+  posts: FeedPost[];
+  next_cursor: string | null;
+}
+
+export const FEED_REACTION_EMOJIS = ["🔥", "💪", "👏", "🎯", "👀"] as const;
+export type FeedReactionEmoji = (typeof FEED_REACTION_EMOJIS)[number];

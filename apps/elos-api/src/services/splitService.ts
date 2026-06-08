@@ -13,6 +13,13 @@ type CreateSplitDayBody = {
 type CreateSplitBody = {
   name: string;
   library_key?: string;
+  pinned_weekdays_json?: string;
+  days: CreateSplitDayBody[];
+};
+
+type UpdateSplitBody = {
+  name: string;
+  pinned_weekdays_json?: string;
   days: CreateSplitDayBody[];
 };
 
@@ -29,10 +36,10 @@ export class SplitService {
       await client.query("BEGIN");
 
       const splitResult = await client.query<Omit<UserSplit, "days">>(
-        `INSERT INTO user_splits (user_id, name, library_key, is_active)
-         VALUES ($1, $2, $3, TRUE)
-         RETURNING id, user_id, name, library_key, is_active, created_at::text`,
-        [userId, body.name, body.library_key ?? ""]
+        `INSERT INTO user_splits (user_id, name, library_key, pinned_weekdays_json, is_active)
+         VALUES ($1, $2, $3, $4, TRUE)
+         RETURNING id, user_id, name, library_key, pinned_weekdays_json, is_active, created_at::text`,
+        [userId, body.name, body.library_key ?? "", body.pinned_weekdays_json ?? ""]
       );
       const split = splitResult.rows[0];
 
@@ -64,9 +71,9 @@ export class SplitService {
 
       await client.query("COMMIT");
       return { conflict: false, split: { ...split, days } };
-    } catch (err: any) {
+    } catch (err: unknown) {
       await client.query("ROLLBACK");
-      if (err.code === "23505") {
+      if (typeof err === "object" && err !== null && (err as { code?: string }).code === "23505") {
         const existing = await this.pool.query<{ id: string }>(
           `SELECT id FROM user_splits WHERE user_id = $1 AND library_key = $2`,
           [userId, body.library_key ?? ""]
@@ -81,7 +88,7 @@ export class SplitService {
 
   async getUserSplits(userId: string): Promise<UserSplit[]> {
     const splits = await this.pool.query<Omit<UserSplit, "days">>(
-      `SELECT id, user_id, name, library_key, is_active, created_at::text
+      `SELECT id, user_id, name, library_key, pinned_weekdays_json, is_active, created_at::text
        FROM user_splits WHERE user_id = $1 ORDER BY created_at DESC`,
       [userId]
     );
@@ -107,6 +114,47 @@ export class SplitService {
     return (result.rowCount ?? 0) > 0;
   }
 
+  async updateSplit(userId: string, splitId: string, body: UpdateSplitBody): Promise<UserSplit | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const result = await client.query<Omit<UserSplit, "days">>(
+        `UPDATE user_splits
+         SET name = $1, pinned_weekdays_json = $2
+         WHERE id = $3 AND user_id = $4
+         RETURNING id, user_id, name, library_key, pinned_weekdays_json, is_active, created_at::text`,
+        [body.name, body.pinned_weekdays_json ?? "", splitId, userId]
+      );
+
+      if (!result.rows[0]) { await client.query("ROLLBACK"); return null; }
+      const split = result.rows[0];
+
+      await client.query(`DELETE FROM user_split_days WHERE split_id = $1`, [splitId]);
+
+      const days: UserSplitDay[] = [];
+      for (const day of body.days ?? []) {
+        const dayResult = await client.query<UserSplitDay>(
+          `INSERT INTO user_split_days
+             (split_id, order_index, day_label, day_name, template_id, is_rest, exercises_json)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING *`,
+          [splitId, day.order_index, day.day_label, day.day_name,
+           day.template_id ?? "", day.is_rest, day.exercises_json]
+        );
+        days.push(dayResult.rows[0]);
+      }
+
+      await client.query("COMMIT");
+      return { ...split, days };
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   async activateSplit(userId: string, splitId: string): Promise<UserSplit | null> {
     const client = await this.pool.connect();
     try {
@@ -118,7 +166,7 @@ export class SplitService {
       const result = await client.query<Omit<UserSplit, "days">>(
         `UPDATE user_splits SET is_active = TRUE
          WHERE id = $1 AND user_id = $2
-         RETURNING id, user_id, name, library_key, is_active, created_at::text`,
+         RETURNING id, user_id, name, library_key, pinned_weekdays_json, is_active, created_at::text`,
         [splitId, userId]
       );
       await client.query("COMMIT");

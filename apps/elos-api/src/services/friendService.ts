@@ -1,18 +1,64 @@
 import { Pool } from "pg";
 import type { FriendProfile, UserSearchResult } from "elos-shared";
+import { getWeekStart } from "./leaderboardService";
 
 export class FriendService {
   constructor(private readonly db: Pool) {}
+
+  async reportUser(
+    reporterId: string,
+    reportedId: string,
+    category: string,
+    note?: string
+  ): Promise<void> {
+    await this.db.query(
+      `INSERT INTO user_reports (reporter_id, reported_id, category, note)
+       VALUES ($1, $2, $3, $4)`,
+      [reporterId, reportedId, category, note ?? null]
+    );
+  }
+
+  /** Block a user: record the block and sever any friendship in either direction. */
+  async blockUser(blockerId: string, blockedId: string): Promise<void> {
+    const client = await this.db.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO user_blocks (blocker_id, blocked_id)
+         VALUES ($1, $2) ON CONFLICT (blocker_id, blocked_id) DO NOTHING`,
+        [blockerId, blockedId]
+      );
+      await client.query(
+        `DELETE FROM friendships
+         WHERE (requester_id = $1 AND addressee_id = $2)
+            OR (requester_id = $2 AND addressee_id = $1)`,
+        [blockerId, blockedId]
+      );
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async unblockUser(blockerId: string, blockedId: string): Promise<void> {
+    await this.db.query(
+      `DELETE FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2`,
+      [blockerId, blockedId]
+    );
+  }
 
   async getFriends(userId: string): Promise<FriendProfile[]> {
     const result = await this.db.query<FriendProfile>(
       `SELECT
          f.id               AS friendship_id,
          p.user_id,
-         p.username,
-         p.first_name,
-         p.last_name,
-         p.avatar_color,
+         COALESCE(p.username, '')        AS username,
+         COALESCE(p.first_name, '')      AS first_name,
+         COALESCE(p.last_name, '')       AS last_name,
+         COALESCE(p.avatar_color, '#6C47FF') AS avatar_color,
          f.status,
          (f.requester_id = $1) AS is_requester
        FROM friendships f
@@ -33,10 +79,10 @@ export class FriendService {
       `SELECT
          f.id               AS friendship_id,
          p.user_id,
-         p.username,
-         p.first_name,
-         p.last_name,
-         p.avatar_color,
+         COALESCE(p.username, '')        AS username,
+         COALESCE(p.first_name, '')      AS first_name,
+         COALESCE(p.last_name, '')       AS last_name,
+         COALESCE(p.avatar_color, '#6C47FF') AS avatar_color,
          f.status,
          false              AS is_requester
        FROM friendships f
@@ -53,10 +99,10 @@ export class FriendService {
       `SELECT
          f.id               AS friendship_id,
          p.user_id,
-         p.username,
-         p.first_name,
-         p.last_name,
-         p.avatar_color,
+         COALESCE(p.username, '')        AS username,
+         COALESCE(p.first_name, '')      AS first_name,
+         COALESCE(p.last_name, '')       AS last_name,
+         COALESCE(p.avatar_color, '#6C47FF') AS avatar_color,
          f.status,
          true               AS is_requester
        FROM friendships f
@@ -69,9 +115,15 @@ export class FriendService {
   }
 
   async sendRequest(requesterId: string, addresseeId: string): Promise<void> {
+    // No-op if either party has blocked the other.
     await this.db.query(
       `INSERT INTO friendships (requester_id, addressee_id, status)
-       VALUES ($1, $2, 'pending')
+       SELECT $1, $2, 'pending'
+       WHERE NOT EXISTS (
+         SELECT 1 FROM user_blocks
+         WHERE (blocker_id = $1 AND blocked_id = $2)
+            OR (blocker_id = $2 AND blocked_id = $1)
+       )
        ON CONFLICT (requester_id, addressee_id) DO NOTHING`,
       [requesterId, addresseeId]
     );
@@ -106,10 +158,10 @@ export class FriendService {
     const result = await this.db.query<UserSearchResult>(
       `SELECT
          p.user_id,
-         p.username,
-         p.first_name,
-         p.last_name,
-         p.avatar_color,
+         COALESCE(p.username, '')        AS username,
+         COALESCE(p.first_name, '')      AS first_name,
+         COALESCE(p.last_name, '')       AS last_name,
+         COALESCE(p.avatar_color, '#6C47FF') AS avatar_color,
          CASE
            WHEN f.id IS NULL THEN 'none'
            WHEN f.status = 'accepted' THEN 'accepted'
@@ -123,6 +175,11 @@ export class FriendService {
          OR (f.addressee_id = $2 AND f.requester_id = p.user_id)
        WHERE p.user_id != $2
          AND p.search_vector @@ plainto_tsquery('english', $1)
+         AND p.user_id NOT IN (
+           SELECT blocked_id FROM user_blocks WHERE blocker_id = $2
+           UNION
+           SELECT blocker_id FROM user_blocks WHERE blocked_id = $2
+         )
        ORDER BY p.first_name, p.last_name
        LIMIT 30`,
       [query, currentUserId]
@@ -209,14 +266,4 @@ export class FriendService {
       top_prs: topPRs.rows,
     };
   }
-}
-
-function getWeekStart(): Date {
-  const now = new Date();
-  const day = now.getUTCDay();
-  const diff = (day === 0 ? -6 : 1 - day);
-  const monday = new Date(now);
-  monday.setUTCDate(now.getUTCDate() + diff);
-  monday.setUTCHours(0, 0, 0, 0);
-  return monday;
 }

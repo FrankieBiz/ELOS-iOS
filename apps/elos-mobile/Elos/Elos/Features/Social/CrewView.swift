@@ -14,17 +14,18 @@ struct CrewView: View {
         NavigationView {
             VStack(spacing: 0) {
                 Picker("", selection: $tab) {
-                    Text("Friends").tag(0)
-                    Text("Leaderboard").tag(1)
+                    Text("Feed").tag(0)
+                    Text("Friends").tag(1)
+                    Text("Leaderboard").tag(2)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
 
-                if tab == 0 {
-                    friendsTab
-                } else {
-                    LeaderboardView()
+                switch tab {
+                case 0:  FeedView()
+                case 1:  friendsTab
+                default: LeaderboardView()
                 }
             }
             .background(Color(.systemGroupedBackground))
@@ -35,7 +36,7 @@ struct CrewView: View {
                     Button("Done") { dismiss() }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    if tab == 0 {
+                    if tab == 1 {
                         Button {
                             showSearch = true
                         } label: {
@@ -149,6 +150,19 @@ struct CrewView: View {
                         }
                     }
                     Spacer()
+                    Menu {
+                        Button(role: .destructive) {
+                            friendPendingRemove = friend
+                        } label: {
+                            Label("Remove from Crew", systemImage: "person.fill.xmark")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("Friend options")
                     NavigationLink {
                         FriendProfileView(userId: friend.user_id, displayName: friend.displayName)
                     } label: {
@@ -158,13 +172,6 @@ struct CrewView: View {
                 }
                 .padding(12)
                 .elosCard()
-                .swipeActions(edge: .trailing) {
-                    Button(role: .destructive) {
-                        friendPendingRemove = friend
-                    } label: {
-                        Label("Remove", systemImage: "person.fill.xmark")
-                    }
-                }
             }
         }
     }

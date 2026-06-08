@@ -3,7 +3,7 @@ import { requireAuth } from "../middleware/auth";
 import { validateBody } from "../middleware/validate";
 import { SplitService } from "../services/splitService";
 import { pool } from "../db";
-import { createSplitSchema } from "../schemas";
+import { createSplitSchema, updateSplitSchema } from "../schemas";
 
 const router = Router();
 const service = new SplitService(pool);
@@ -20,6 +20,12 @@ router.post("/", requireAuth, validateBody(createSplitSchema), async (req: Reque
 router.get("/", requireAuth, async (req: Request, res: Response) => {
   const splits = await service.getUserSplits(req.user!.id);
   res.json(splits);
+});
+
+router.put("/:id", requireAuth, validateBody(updateSplitSchema), async (req: Request, res: Response) => {
+  const split = await service.updateSplit(req.user!.id, req.params.id as string, req.body);
+  if (!split) { res.status(404).json({ error: "Split not found" }); return; }
+  res.json(split);
 });
 
 router.delete("/:id", requireAuth, async (req: Request, res: Response) => {

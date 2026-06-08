@@ -40,6 +40,7 @@ export interface Profile {
   protein_goal: number | null;
   carb_goal: number | null;
   fat_goal: number | null;
+  use_imperial: boolean;
   onboarding_complete: boolean;
   updated_at: string;
 }
@@ -58,5 +59,6 @@ export interface ProfileUpdate {
   protein_goal?: number;
   carb_goal?: number;
   fat_goal?: number;
+  use_imperial?: boolean;
   onboarding_complete?: boolean;
 }

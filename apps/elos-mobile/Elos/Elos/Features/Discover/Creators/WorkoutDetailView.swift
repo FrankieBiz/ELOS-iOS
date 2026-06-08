@@ -50,41 +50,22 @@ struct WorkoutExerciseAPIResponse: Decodable {
     let superset_group: Int?
 }
 
-private struct SaveWorkoutBody: Encodable { let workoutId: String }
-private struct EmptySaveResponse: Decodable { let ok: Bool? }
-
-private struct CreateTemplateForkRequest: Encodable {
-    let name: String
-    let exercises: [TemplateExForkRequest]
-}
-private struct TemplateExForkRequest: Encodable {
-    let exercise_name: String
-    let order_index: Int
-    let target_sets: Int
-    let target_reps: String
-    let target_rpe: Double?
-    let rest_seconds: Int
-}
-private struct ForkTemplateResponse: Decodable { let id: String }
-
 // MARK: - View
 
 struct WorkoutDetailView: View {
     let workoutId: String
     @EnvironmentObject var appVM: AppViewModel
     @Environment(\.modelContext) private var modelContext
+    @StateObject private var detailVM = WorkoutDetailViewModel()
 
-    @State private var workout: WorkoutDetailAPIResponse?
     @State private var expandedDay: String?
-    @State private var isSaved = false
-    @State private var isLoading = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                if isLoading {
+                if detailVM.isLoading {
                     ProgressView().frame(maxWidth: .infinity, minHeight: 200)
-                } else if let w = workout {
+                } else if let w = detailVM.workout {
                     headerCard(w)
                     if !w.equipment.isEmpty { equipmentRow(w.equipment) }
                     ForEach(w.days, id: \.id) { day in
@@ -107,73 +88,14 @@ struct WorkoutDetailView: View {
         }
         .scrollIndicators(.hidden)
         .background(Color(.systemGroupedBackground))
-        .navigationTitle(workout?.title ?? "Program")
+        .navigationTitle(detailVM.workout?.title ?? "Program")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await loadWorkout() }
+        .task {
+            await detailVM.load(workoutId: workoutId, context: modelContext)
+            expandedDay = detailVM.workout?.days.first?.id
+        }
         .safeAreaInset(edge: .bottom) {
-            if workout != nil { bottomBar }
-        }
-    }
-
-    // MARK: Load
-
-    private func loadWorkout() async {
-        isLoading = true
-        defer { isLoading = false }
-        workout = try? await ApiClient.shared.get("/library/workouts/\(workoutId)") as WorkoutDetailAPIResponse
-        if let w = workout { expandedDay = w.days.first?.id }
-        checkSaved()
-    }
-
-    private func checkSaved() {
-        let id = workoutId
-        let desc = FetchDescriptor<SavedLibraryWorkoutRecord>(
-            predicate: #Predicate { $0.workoutID == id }
-        )
-        isSaved = (try? modelContext.fetch(desc))?.isEmpty == false
-    }
-
-    private func toggleSave() {
-        guard let w = workout else { return }
-        if isSaved {
-            isSaved = false
-            let id = w.id
-            let desc = FetchDescriptor<SavedLibraryWorkoutRecord>(
-                predicate: #Predicate { $0.workoutID == id }
-            )
-            if let record = try? modelContext.fetch(desc).first {
-                modelContext.delete(record)
-                try? modelContext.save()
-            }
-            Task { _ = try? await ApiClient.shared.delete("/library/saved/\(w.id)") as EmptySaveResponse }
-        } else {
-            isSaved = true
-            let record = SavedLibraryWorkoutRecord(ownerID: appVM.currentUserID, workoutID: w.id)
-            modelContext.insert(record)
-            try? modelContext.save()
-            Task { _ = try? await ApiClient.shared.post("/library/saved", body: SaveWorkoutBody(workoutId: w.id)) as EmptySaveResponse }
-        }
-    }
-
-    // MARK: Add to Plan
-
-    private func addToMyPlan(_ w: WorkoutDetailAPIResponse) {
-        guard let firstDay = w.days.first else { return }
-        let exercises = firstDay.exercises.map { ex in
-            TemplateExForkRequest(
-                exercise_name: ex.exercise_name,
-                order_index: ex.order_index,
-                target_sets: ex.sets ?? 3,
-                target_reps: ex.reps ?? "8-10",
-                target_rpe: nil,
-                rest_seconds: ex.rest_seconds ?? 90
-            )
-        }
-        Task {
-            _ = try? await ApiClient.shared.post(
-                "/templates",
-                body: CreateTemplateForkRequest(name: "\(w.creator_name): \(firstDay.name)", exercises: exercises)
-            ) as ForkTemplateResponse
+            if detailVM.workout != nil { bottomBar }
         }
     }
 
@@ -246,18 +168,18 @@ struct WorkoutDetailView: View {
 
     private var bottomBar: some View {
         HStack(spacing: 12) {
-            Button { toggleSave() } label: {
-                Label(isSaved ? "Saved" : "Save",
-                      systemImage: isSaved ? "bookmark.fill" : "bookmark")
+            Button { detailVM.toggleSave(ownerID: appVM.currentUserID, context: modelContext) } label: {
+                Label(detailVM.isSaved ? "Saved" : "Save",
+                      systemImage: detailVM.isSaved ? "bookmark.fill" : "bookmark")
                     .font(.subheadline).fontWeight(.semibold)
-                    .foregroundStyle(isSaved ? Color.tint : Color.primary)
+                    .foregroundStyle(detailVM.isSaved ? Color.tint : Color.primary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(isSaved ? Color.tint.opacity(0.12) : Color(.secondarySystemBackground))
+                    .background(detailVM.isSaved ? Color.tint.opacity(0.12) : Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
 
-            Button { if let w = workout { addToMyPlan(w) } } label: {
+            Button { detailVM.addToMyPlan() } label: {
                 Label("Add to Plan", systemImage: "plus.rectangle.on.rectangle")
                     .font(.subheadline).fontWeight(.semibold)
                     .foregroundStyle(.white)
@@ -270,6 +192,84 @@ struct WorkoutDetailView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(.ultraThinMaterial)
+    }
+}
+
+// MARK: - ViewModel
+
+@MainActor
+final class WorkoutDetailViewModel: ObservableObject {
+    @Published var workout: WorkoutDetailAPIResponse?
+    @Published var isSaved = false
+    @Published var isLoading = false
+
+    private struct SaveWorkoutBody: Encodable { let workoutId: String }
+    private struct EmptySaveResponse: Decodable { let ok: Bool? }
+    private struct CreateTemplateForkRequest: Encodable {
+        let name: String
+        let exercises: [TemplateExForkRequest]
+    }
+    private struct TemplateExForkRequest: Encodable {
+        let exercise_name: String
+        let order_index: Int
+        let target_sets: Int
+        let target_reps: String
+        let target_rpe: Double?
+        let rest_seconds: Int
+    }
+    private struct ForkTemplateResponse: Decodable { let id: String }
+
+    func load(workoutId: String, context: ModelContext) async {
+        isLoading = true
+        defer { isLoading = false }
+        workout = try? await ApiClient.shared.get("/library/workouts/\(workoutId)") as WorkoutDetailAPIResponse
+        checkSaved(workoutId: workoutId, context: context)
+    }
+
+    func checkSaved(workoutId: String, context: ModelContext) {
+        let id = workoutId
+        let desc = FetchDescriptor<SavedLibraryWorkoutRecord>(predicate: #Predicate { $0.workoutID == id })
+        isSaved = (try? context.fetch(desc))?.isEmpty == false
+    }
+
+    func toggleSave(ownerID: String, context: ModelContext) {
+        guard let w = workout else { return }
+        if isSaved {
+            isSaved = false
+            let id = w.id
+            let desc = FetchDescriptor<SavedLibraryWorkoutRecord>(predicate: #Predicate { $0.workoutID == id })
+            if let record = try? context.fetch(desc).first {
+                context.delete(record)
+                try? context.save()
+            }
+            Task { _ = try? await ApiClient.shared.delete("/library/saved/\(w.id)") as EmptySaveResponse }
+        } else {
+            isSaved = true
+            let record = SavedLibraryWorkoutRecord(ownerID: ownerID, workoutID: w.id)
+            context.insert(record)
+            try? context.save()
+            Task { _ = try? await ApiClient.shared.post("/library/saved", body: SaveWorkoutBody(workoutId: w.id)) as EmptySaveResponse }
+        }
+    }
+
+    func addToMyPlan() {
+        guard let w = workout, let firstDay = w.days.first else { return }
+        let exercises = firstDay.exercises.map { ex in
+            TemplateExForkRequest(
+                exercise_name: ex.exercise_name,
+                order_index: ex.order_index,
+                target_sets: ex.sets ?? 3,
+                target_reps: ex.reps ?? "8-10",
+                target_rpe: nil,
+                rest_seconds: ex.rest_seconds ?? 90
+            )
+        }
+        Task {
+            _ = try? await ApiClient.shared.post(
+                "/templates",
+                body: CreateTemplateForkRequest(name: "\(w.creator_name): \(firstDay.name)", exercises: exercises)
+            ) as ForkTemplateResponse
+        }
     }
 }
 

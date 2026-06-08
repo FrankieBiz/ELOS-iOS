@@ -1,5 +1,4 @@
 import SwiftUI
-import AuthenticationServices
 
 struct SignupView: View {
     @Binding var showSignup: Bool
@@ -111,34 +110,6 @@ struct SignupView: View {
                 }
                 .padding(.horizontal, 24)
 
-                Spacer().frame(height: 24)
-
-                // "or" divider
-                HStack(spacing: 12) {
-                    Rectangle()
-                        .frame(height: 1)
-                        .foregroundStyle(Color(.separator))
-                    Text("or")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Rectangle()
-                        .frame(height: 1)
-                        .foregroundStyle(Color(.separator))
-                }
-                .padding(.horizontal, 24)
-
-                SignInWithAppleButton(.continue) { request in
-                    request.requestedScopes = [.fullName, .email]
-                    request.nonce = authVM.prepareAppleSignIn()
-                } onCompletion: { result in
-                    Task { await authVM.handleAppleSignIn(result: result, authStore: authStore) }
-                }
-                .signInWithAppleButtonStyle(.black)
-                .frame(height: 50)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .padding(.horizontal, 24)
-                .padding(.top, 8)
-
                 Spacer().frame(height: 32)
 
                 Button {
@@ -158,11 +129,11 @@ struct SignupView: View {
                 HStack(spacing: 4) {
                     Text("By signing up you agree to our")
                         .foregroundStyle(.secondary)
-                    Link("Terms", destination: URL(string: "https://elos.app/terms")!)
+                    Link("Terms", destination: URL(string: "https://elos.onrender.com/terms")!)
                         .foregroundStyle(Color.tint)
                     Text("and")
                         .foregroundStyle(.secondary)
-                    Link("Privacy Policy", destination: URL(string: "https://elos.app/privacy")!)
+                    Link("Privacy Policy", destination: URL(string: "https://elos.onrender.com/privacy")!)
                         .foregroundStyle(Color.tint)
                 }
                 .font(.caption2)

@@ -83,7 +83,7 @@ struct BodyMetricsStepView: View {
                     Text("AGE")
                         .font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
                     Picker("Age", selection: $vm.ageYears) {
-                        ForEach(12...80, id: \.self) { Text("\($0) yrs").tag($0) }
+                        ForEach(13...80, id: \.self) { Text("\($0) yrs").tag($0) }
                     }
                     .pickerStyle(.wheel)
                     .frame(height: 120)

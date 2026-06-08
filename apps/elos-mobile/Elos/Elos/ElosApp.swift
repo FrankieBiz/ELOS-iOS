@@ -9,6 +9,7 @@ struct ElosApp: App {
     @StateObject private var viewModel: AppViewModel
     @StateObject private var trainViewModel: TrainViewModel
     @StateObject private var socialViewModel: SocialViewModel
+    @StateObject private var feedViewModel = FeedViewModel()
     @StateObject private var trainingContext = TrainingContext()
 
     init() {
@@ -106,6 +107,7 @@ struct ElosApp: App {
                     .environmentObject(viewModel)
                     .environmentObject(trainViewModel)
                     .environmentObject(socialViewModel)
+                    .environmentObject(feedViewModel)
                     .environmentObject(trainingContext)
                     .modelContainer(container)
                     .onAppear {

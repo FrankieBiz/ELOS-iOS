@@ -6,7 +6,14 @@ import {
   upsertProfileSchema,
   searchExercisesQuerySchema,
   createTemplateSchema,
+  createFeedPostSchema,
+  reactSchema,
+  friendRequestSchema,
+  reportUserSchema,
+  saveWorkoutSchema,
+  blockUserSchema,
 } from "../schemas";
+import { FEED_REACTION_EMOJIS } from "elos-shared";
 
 describe("zod schemas", () => {
   describe("createSetSchema", () => {
@@ -196,6 +203,140 @@ describe("zod schemas", () => {
         ],
       });
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe("createFeedPostSchema", () => {
+    it("accepts a valid workout post", () => {
+      const result = createFeedPostSchema.safeParse({
+        kind: "workout",
+        payload: {
+          date: "2026-06-06",
+          duration_min: 62,
+          volume_kg: 4200,
+          total_sets: 18,
+          unique_exercises: 6,
+          top_lift: { name: "Bench Press", weight_kg: 100, reps: 5 },
+          pr: "Bench Press",
+        },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts a valid pr post", () => {
+      const result = createFeedPostSchema.safeParse({
+        kind: "pr",
+        payload: { exercise_name: "Deadlift", weight_kg: 180, reps: 3, e1rm: 198 },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects split posts (server-built only)", () => {
+      const result = createFeedPostSchema.safeParse({
+        kind: "split",
+        payload: { name: "PPL", days: [] },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects a workout payload missing required fields", () => {
+      const result = createFeedPostSchema.safeParse({
+        kind: "workout",
+        payload: { date: "2026-06-06" },
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects unknown keys in the payload (strict)", () => {
+      const result = createFeedPostSchema.safeParse({
+        kind: "pr",
+        payload: {
+          exercise_name: "Deadlift",
+          weight_kg: 180,
+          reps: 3,
+          e1rm: 198,
+          injected: "x".repeat(100000),
+        },
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("friendRequestSchema", () => {
+    it("accepts a valid UUID addressee", () => {
+      expect(
+        friendRequestSchema.safeParse({ addresseeId: "123e4567-e89b-12d3-a456-426614174000" }).success
+      ).toBe(true);
+    });
+    it("rejects a non-UUID addressee", () => {
+      expect(friendRequestSchema.safeParse({ addresseeId: "nope" }).success).toBe(false);
+    });
+    it("rejects a missing addressee", () => {
+      expect(friendRequestSchema.safeParse({}).success).toBe(false);
+    });
+  });
+
+  describe("reportUserSchema", () => {
+    it("accepts a valid report", () => {
+      expect(
+        reportUserSchema.safeParse({
+          reportedId: "123e4567-e89b-12d3-a456-426614174000",
+          category: "spam",
+          note: "bot account",
+        }).success
+      ).toBe(true);
+    });
+    it("rejects an unknown category", () => {
+      expect(
+        reportUserSchema.safeParse({
+          reportedId: "123e4567-e89b-12d3-a456-426614174000",
+          category: "slander",
+        }).success
+      ).toBe(false);
+    });
+    it("rejects a note over 1000 chars", () => {
+      expect(
+        reportUserSchema.safeParse({
+          reportedId: "123e4567-e89b-12d3-a456-426614174000",
+          category: "other",
+          note: "x".repeat(1001),
+        }).success
+      ).toBe(false);
+    });
+  });
+
+  describe("saveWorkoutSchema", () => {
+    it("accepts a valid UUID workout id", () => {
+      expect(
+        saveWorkoutSchema.safeParse({ workoutId: "123e4567-e89b-12d3-a456-426614174000" }).success
+      ).toBe(true);
+    });
+    it("rejects a non-UUID workout id", () => {
+      expect(saveWorkoutSchema.safeParse({ workoutId: "42" }).success).toBe(false);
+    });
+  });
+
+  describe("blockUserSchema", () => {
+    it("accepts a valid UUID", () => {
+      expect(
+        blockUserSchema.safeParse({ blockedId: "123e4567-e89b-12d3-a456-426614174000" }).success
+      ).toBe(true);
+    });
+    it("rejects a non-UUID / missing id", () => {
+      expect(blockUserSchema.safeParse({ blockedId: "nope" }).success).toBe(false);
+      expect(blockUserSchema.safeParse({}).success).toBe(false);
+    });
+  });
+
+  describe("reactSchema", () => {
+    it("accepts each allowed emoji", () => {
+      for (const emoji of FEED_REACTION_EMOJIS) {
+        expect(reactSchema.safeParse({ emoji }).success).toBe(true);
+      }
+    });
+
+    it("rejects an empty emoji", () => {
+      expect(reactSchema.safeParse({ emoji: "" }).success).toBe(false);
     });
   });
 });

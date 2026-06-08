@@ -11,6 +11,7 @@ struct UserProfileSnapshot {
     var schoolYear: String
 }
 
+@MainActor
 class AppViewModel: ObservableObject {
     private let context: ModelContext
 
@@ -154,14 +155,16 @@ class AppViewModel: ObservableObject {
             predicate: #Predicate { $0.ownerID == uid }
         )
         let habitRecords = (try? context.fetch(habitDesc)) ?? []
+        // Reset any habit whose done-flag is left over from a previous day (single save).
+        var didResetHabit = false
+        for r in habitRecords where !Calendar.current.isDateInToday(r.lastResetDate) {
+            r.isDone = false
+            r.lastResetDate = today
+            didResetHabit = true
+        }
+        if didResetHabit { try? context.save() }
         habits = habitRecords.map { r in
-            // Reset isDone if it was set on a previous day
-            if !Calendar.current.isDateInToday(r.lastResetDate) {
-                r.isDone = false
-                r.lastResetDate = today
-                try? context.save()
-            }
-            return Habit(id: r.id, label: r.label, category: r.category, streak: r.streak, done: r.isDone)
+            Habit(id: r.id, label: r.label, category: r.category, streak: r.streak, done: r.isDone)
         }
 
         // Load sleep entries
@@ -194,13 +197,15 @@ class AppViewModel: ObservableObject {
         )
         let examRecords = (try? context.fetch(examDesc)) ?? []
         exams = examRecords.enumerated().map { idx, r in
-            Exam(id: idx + 1, subject: r.subject, title: r.title, date: r.dateString, daysAway: r.daysAway)
+            Exam(id: idx + 1, subject: r.subject, title: r.title, date: r.dateString, daysAway: Formatters.daysFromToday(toISODay: r.dateString))
         }
 
         loadTodayReadiness()
         loadActiveSplit()
         Task { await syncCanvasIfConfigured() }
         Task { await syncSplitsFromServer() }
+        Task { await syncProfileFromServer() }
+        Task { await WorkoutSyncService.shared.reconcile(ownerID: uid, context: context) }
     }
 
     func clearData() {
@@ -827,10 +832,16 @@ class AppViewModel: ObservableObject {
     func syncSplitsFromServer() async {
         guard !currentUserID.isEmpty else { return }
 
+        let uid = currentUserID
         do {
             let remoteSplits: [UserSplitResponse] = try await ApiClient.shared.get("/splits")
-            let localSplits = (try? context.fetch(FetchDescriptor<UserSplitRecord>())) ?? []
-            let localDays = (try? context.fetch(FetchDescriptor<UserSplitDayRecord>())) ?? []
+            // Scope to the current user — never consider another account's local rows.
+            let localSplits = (try? context.fetch(
+                FetchDescriptor<UserSplitRecord>(predicate: #Predicate { $0.ownerID == uid })
+            )) ?? []
+            let localSplitIDs = Set(localSplits.map(\.id))
+            let localDays = ((try? context.fetch(FetchDescriptor<UserSplitDayRecord>())) ?? [])
+                .filter { localSplitIDs.contains($0.splitID) }
 
             for remote in remoteSplits {
                 let match = localSplits.first { $0.serverID == remote.id }
@@ -904,14 +915,121 @@ class AppViewModel: ObservableObject {
                 loadActiveSplit()
             }
 
-            // Push locally-created splits not yet on the server
-            let allLocal = (try? context.fetch(FetchDescriptor<UserSplitRecord>())) ?? []
+            // Push locally-created splits (this user's) not yet on the server
+            let allLocal = (try? context.fetch(
+                FetchDescriptor<UserSplitRecord>(predicate: #Predicate { $0.ownerID == uid })
+            )) ?? []
             for record in allLocal where record.syncPending && record.serverID.isEmpty {
                 await pushSplitToServer(record)
             }
 
         } catch {
             // Offline — local state is authoritative
+        }
+    }
+
+    // MARK: - Profile Sync
+
+    func syncProfileFromServer() async {
+        guard !currentUserID.isEmpty else { return }
+        let uid = currentUserID
+
+        // Push any locally-pending profile to server first
+        let allProfiles = (try? context.fetch(FetchDescriptor<UserProfileRecord>())) ?? []
+        if let pending = allProfiles.first(where: { $0.ownerID == uid && $0.syncPending }) {
+            await pushProfileToServer(pending)
+        }
+
+        // Fetch from server (server is source of truth on login)
+        do {
+            let remote: ProfileResponse = try await ApiClient.shared.get("/profile")
+
+            await MainActor.run {
+                let desc = FetchDescriptor<UserProfileRecord>(predicate: #Predicate { $0.ownerID == uid })
+                if let existing = try? context.fetch(desc).first {
+                    existing.firstName          = remote.first_name ?? existing.firstName
+                    existing.lastName           = remote.last_name ?? existing.lastName
+                    existing.heightCm           = remote.height_cm ?? existing.heightCm
+                    existing.weightKg           = remote.weight_kg ?? existing.weightKg
+                    existing.ageYears           = remote.age_years ?? existing.ageYears
+                    existing.trainingExperience = remote.training_experience ?? existing.trainingExperience
+                    existing.trainingGoal       = remote.training_goal ?? existing.trainingGoal
+                    existing.schoolName         = remote.school_name ?? existing.schoolName
+                    existing.schoolYear         = remote.school_year ?? existing.schoolYear
+                    existing.calGoal            = remote.cal_goal ?? existing.calGoal
+                    existing.proteinGoal        = remote.protein_goal ?? existing.proteinGoal
+                    existing.carbGoal           = remote.carb_goal ?? existing.carbGoal
+                    existing.fatGoal            = remote.fat_goal ?? existing.fatGoal
+                    existing.useImperial        = remote.use_imperial ?? existing.useImperial
+                    existing.syncPending        = false
+                } else {
+                    let record = UserProfileRecord(
+                        id: uid, ownerID: uid, email: "",
+                        firstName:          remote.first_name ?? "",
+                        lastName:           remote.last_name ?? "",
+                        heightCm:           remote.height_cm ?? 0,
+                        weightKg:           remote.weight_kg ?? 0,
+                        ageYears:           remote.age_years ?? 0,
+                        trainingExperience: remote.training_experience ?? "beginner",
+                        trainingGoal:       remote.training_goal ?? "hypertrophy",
+                        schoolName:         remote.school_name ?? "",
+                        schoolYear:         remote.school_year ?? "sophomore",
+                        calGoal:            remote.cal_goal ?? 2500,
+                        proteinGoal:        remote.protein_goal ?? 180,
+                        carbGoal:           remote.carb_goal ?? 300,
+                        fatGoal:            remote.fat_goal ?? 80,
+                        onboardingComplete: remote.onboarding_complete ?? false,
+                        syncPending:        false,
+                        useImperial:        remote.use_imperial ?? true
+                    )
+                    context.insert(record)
+                }
+                try? context.save()
+
+                // Refresh published UI state
+                let fetchDesc = FetchDescriptor<UserProfileRecord>(predicate: #Predicate { $0.ownerID == uid })
+                if let profile = try? context.fetch(fetchDesc).first {
+                    displayName = profile.firstName.isEmpty ? "there" : profile.firstName
+                    userProfile = UserProfileSnapshot(
+                        firstName:  profile.firstName,
+                        lastName:   profile.lastName,
+                        email:      profile.email,
+                        schoolName: profile.schoolName,
+                        schoolYear: profile.schoolYear
+                    )
+                }
+            }
+        } catch {
+            // Offline — local state stands
+        }
+    }
+
+    private func pushProfileToServer(_ record: UserProfileRecord) async {
+        let body = ProfileUpdateBody(
+            first_name:          record.firstName.isEmpty ? nil : record.firstName,
+            last_name:           record.lastName.isEmpty ? nil : record.lastName,
+            height_cm:           record.heightCm > 0 ? record.heightCm : nil,
+            weight_kg:           record.weightKg > 0 ? record.weightKg : nil,
+            age_years:           record.ageYears > 0 ? record.ageYears : nil,
+            training_experience: record.trainingExperience.isEmpty ? nil : record.trainingExperience,
+            training_goal:       record.trainingGoal.isEmpty ? nil : record.trainingGoal,
+            school_name:         record.schoolName.isEmpty ? nil : record.schoolName,
+            school_year:         record.schoolYear.isEmpty ? nil : record.schoolYear,
+            cal_goal:            record.calGoal > 0 ? record.calGoal : nil,
+            protein_goal:        record.proteinGoal,
+            carb_goal:           record.carbGoal,
+            fat_goal:            record.fatGoal,
+            onboarding_complete: record.onboardingComplete ? true : nil,
+            use_imperial:        record.useImperial
+        )
+        do {
+            let _: ProfileResponse = try await ApiClient.shared.patch("/profile", body: body)
+            await MainActor.run {
+                record.syncPending = false
+                try? context.save()
+            }
+        } catch {
+            // Network failure — syncPending stays true for retry on next launch
         }
     }
 
@@ -938,7 +1056,7 @@ class AppViewModel: ObservableObject {
                 let examDesc = FetchDescriptor<ExamRecord>(predicate: #Predicate { $0.ownerID == uid })
                 let examRecords = (try? context.fetch(examDesc)) ?? []
                 exams = examRecords.enumerated().map { idx, r in
-                    Exam(id: idx + 1, subject: r.subject, title: r.title, date: r.dateString, daysAway: r.daysAway)
+                    Exam(id: idx + 1, subject: r.subject, title: r.title, date: r.dateString, daysAway: Formatters.daysFromToday(toISODay: r.dateString))
                 }
                 let assignDesc = FetchDescriptor<AssignmentRecord>(predicate: #Predicate { $0.ownerID == uid })
                 let assignRecords = (try? context.fetch(assignDesc)) ?? []

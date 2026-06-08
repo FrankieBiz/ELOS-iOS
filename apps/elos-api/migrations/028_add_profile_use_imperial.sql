@@ -1,0 +1,1 @@
+ALTER TABLE profiles ADD COLUMN use_imperial BOOLEAN NOT NULL DEFAULT true;

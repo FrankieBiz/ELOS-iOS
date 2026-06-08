@@ -1,12 +1,13 @@
 import { Router, Request, Response } from "express";
 import { requireAuth } from "../middleware/auth";
+import { validateBody } from "../middleware/validate";
 import { FriendService } from "../services/friendService";
 import { pool } from "../db";
+import { friendRequestSchema, reportUserSchema, blockUserSchema } from "../schemas";
+import { qs } from "../lib/query";
 
 const router = Router();
 const service = new FriendService(pool);
-
-const qs = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
 
 router.get("/friends", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
@@ -20,10 +21,9 @@ router.get("/friends/requests", requireAuth, async (req: Request, res: Response)
   res.json({ requests });
 });
 
-router.post("/friends/request", requireAuth, async (req: Request, res: Response) => {
+router.post("/friends/request", requireAuth, validateBody(friendRequestSchema), async (req: Request, res: Response) => {
   const userId = req.user!.id;
-  const { addresseeId } = req.body as { addresseeId?: string };
-  if (!addresseeId) { res.status(400).json({ error: "addresseeId required" }); return; }
+  const { addresseeId } = req.body as { addresseeId: string };
   await service.sendRequest(userId, addresseeId);
   res.status(201).json({ ok: true });
 });
@@ -59,6 +59,28 @@ router.get("/friends/:userId/stats", requireAuth, async (req: Request, res: Resp
   const stats = await service.getFriendStats(viewerId, req.params.userId as string);
   if (!stats) { res.status(403).json({ error: "Not friends or user not found" }); return; }
   res.json(stats);
+});
+
+router.post("/report", requireAuth, validateBody(reportUserSchema), async (req: Request, res: Response) => {
+  const reporterId = req.user!.id;
+  const { reportedId, category, note } = req.body as {
+    reportedId: string;
+    category: string;
+    note?: string;
+  };
+  await service.reportUser(reporterId, reportedId, category, note);
+  res.status(201).json({ ok: true });
+});
+
+router.post("/block", requireAuth, validateBody(blockUserSchema), async (req: Request, res: Response) => {
+  const { blockedId } = req.body as { blockedId: string };
+  await service.blockUser(req.user!.id, blockedId);
+  res.status(201).json({ ok: true });
+});
+
+router.delete("/block/:userId", requireAuth, async (req: Request, res: Response) => {
+  await service.unblockUser(req.user!.id, req.params.userId as string);
+  res.json({ ok: true });
 });
 
 export default router;

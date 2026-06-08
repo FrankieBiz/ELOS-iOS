@@ -103,10 +103,13 @@ export class LeaderboardService {
       `;
     }
 
-    const includeStreakParams = metric === "streak";
-    const params = includeStreakParams
-      ? [userId]
-      : [userId, weekStart, weekEnd];
+    // The "streak" board is an all-time CURRENT streak (last_day >= today - 1),
+    // intentionally NOT week-scoped, so its CTE references only $1 and must bind
+    // ONLY [userId]. Every other metric references $2/$3 and binds the week window.
+    // If you add a $2/$3 reference to the streak branch, you MUST add them here too,
+    // or Postgres throws "bind message supplies N parameters, but requires M".
+    const params: unknown[] =
+      metric === "streak" ? [userId] : [userId, weekStart, weekEnd];
 
     const finalQuery = `
       ${valueQuery},

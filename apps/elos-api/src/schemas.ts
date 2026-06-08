@@ -100,17 +100,87 @@ export const upsertProfileSchema = z.object({
   carb_goal: z.number().int().min(0).max(2000).nullable().optional(),
   fat_goal: z.number().int().min(0).max(500).nullable().optional(),
   onboarding_complete: z.boolean().optional(),
+  use_imperial: z.boolean().optional(),
+});
+
+const splitDaySchema = z.object({
+  order_index: z.number().int().min(0).max(6),
+  day_label: z.string().max(30),
+  day_name: z.string().max(200),
+  template_id: z.string().max(100).optional(),
+  is_rest: z.boolean(),
+  exercises_json: z.string().max(5000),
 });
 
 export const createSplitSchema = z.object({
   name: z.string().min(1).max(200),
   library_key: z.string().max(100).optional(),
-  days: z.array(z.object({
-    order_index: z.number().int().min(0).max(6),
-    day_label: z.string().max(30),
-    day_name: z.string().max(200),
-    template_id: z.string().max(100).optional(),
-    is_rest: z.boolean(),
-    exercises_json: z.string().max(2000),
-  })).max(7),
+  pinned_weekdays_json: z.string().max(200).optional(),
+  days: z.array(splitDaySchema).max(7),
+});
+
+export const updateSplitSchema = z.object({
+  name: z.string().min(1).max(200),
+  pinned_weekdays_json: z.string().max(200).optional(),
+  days: z.array(splitDaySchema).max(7),
+});
+
+// --- Friends activity feed ---
+
+const topLiftSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    weight_kg: z.number().min(0).max(2000),
+    reps: z.number().int().min(0).max(1000),
+  })
+  .strict();
+
+const workoutPayloadSchema = z
+  .object({
+    date: z.string().min(1).max(40),
+    duration_min: z.number().int().min(0).max(1440),
+    volume_kg: z.number().min(0).max(10_000_000),
+    total_sets: z.number().int().min(0).max(1000),
+    unique_exercises: z.number().int().min(0).max(200),
+    top_lift: topLiftSchema.optional(),
+    pr: z.string().max(200).optional(),
+  })
+  .strict();
+
+const prPayloadSchema = z
+  .object({
+    exercise_name: z.string().min(1).max(200),
+    weight_kg: z.number().min(0).max(2000),
+    reps: z.number().int().min(0).max(1000),
+    e1rm: z.number().min(0).max(10000),
+  })
+  .strict();
+
+export const createFeedPostSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("workout"), payload: workoutPayloadSchema }),
+  z.object({ kind: z.literal("pr"), payload: prPayloadSchema }),
+]);
+
+export const reactSchema = z.object({
+  emoji: z.string().min(1).max(8),
+});
+
+// --- Social / library writes ---
+
+export const friendRequestSchema = z.object({
+  addresseeId: z.string().uuid(),
+});
+
+export const reportUserSchema = z.object({
+  reportedId: z.string().uuid(),
+  category: z.enum(["spam", "harassment", "inappropriate", "other"]),
+  note: z.string().max(1000).optional(),
+});
+
+export const saveWorkoutSchema = z.object({
+  workoutId: z.string().uuid(),
+});
+
+export const blockUserSchema = z.object({
+  blockedId: z.string().uuid(),
 });

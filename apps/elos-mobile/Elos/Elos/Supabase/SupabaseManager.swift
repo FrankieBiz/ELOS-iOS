@@ -7,8 +7,11 @@ final class SupabaseManager {
     let client: SupabaseClient
 
     private init() {
+        guard let supabaseURL = URL(string: SupabaseConfig.url) else {
+            preconditionFailure("Invalid SupabaseConfig.url: \(SupabaseConfig.url)")
+        }
         client = SupabaseClient(
-            supabaseURL: URL(string: SupabaseConfig.url)!,
+            supabaseURL: supabaseURL,
             supabaseKey: SupabaseConfig.anonKey,
             options: SupabaseClientOptions(
                 auth: SupabaseClientOptions.AuthOptions(

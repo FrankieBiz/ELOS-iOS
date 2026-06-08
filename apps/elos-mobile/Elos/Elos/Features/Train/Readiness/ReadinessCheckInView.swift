@@ -1,16 +1,16 @@
 import SwiftUI
 import SwiftData
+import Combine
 
 struct ReadinessCheckInView: View {
     @EnvironmentObject var vm: AppViewModel
     @Environment(\.modelContext) private var modelContext
+    @StateObject private var checkInVM = ReadinessCheckInViewModel()
 
     @State private var sleepQuality: Double = 3
     @State private var soreness: Double     = 3
     @State private var stress: Double       = 3
     @State private var motivation: Double   = 3
-    @State private var isSaving = false
-    @State private var saved    = false
 
     let onDismiss: () -> Void
     var onComplete: ((ReadinessCheckInRecord) -> Void)? = nil
@@ -61,9 +61,9 @@ struct ReadinessCheckInView: View {
                 save()
             } label: {
                 Group {
-                    if saved {
+                    if checkInVM.saved {
                         Label("Saved!", systemImage: "checkmark.circle.fill")
-                    } else if isSaving {
+                    } else if checkInVM.isSaving {
                         ProgressView()
                     } else {
                         Text("Log Check-In")
@@ -73,11 +73,11 @@ struct ReadinessCheckInView: View {
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(saved ? Color.good : Color.tint)
+                .background(checkInVM.saved ? Color.good : Color.tint)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
-            .disabled(isSaving || saved)
+            .disabled(checkInVM.isSaving || checkInVM.saved)
             .padding(.horizontal, 20)
 
             Spacer()
@@ -86,35 +86,15 @@ struct ReadinessCheckInView: View {
     }
 
     private func save() {
-        isSaving = true
-        let dateStr = {
-            let f = DateFormatter()
-            f.dateFormat = "yyyy-MM-dd"
-            return f.string(from: Date())
-        }()
-
-        let record = ReadinessCheckInRecord(
-            ownerID: vm.currentUserID,
-            logDate: dateStr,
-            sleepQuality: Int(sleepQuality),
-            soreness: Int(soreness),
-            stress: Int(stress),
-            motivation: Int(motivation)
-        )
-        modelContext.insert(record)
-        try? modelContext.save()
-
         Task {
-            let body = ReadinessBody(
-                log_date: dateStr,
-                sleep_quality: Int(sleepQuality),
+            let record = await checkInVM.save(
+                ownerID: vm.currentUserID,
+                sleepQuality: Int(sleepQuality),
                 soreness: Int(soreness),
                 stress: Int(stress),
-                motivation: Int(motivation)
+                motivation: Int(motivation),
+                context: modelContext
             )
-            _ = try? await ApiClient.shared.post("/readiness", body: body) as ReadinessResponse
-            isSaving = false
-            withAnimation { saved = true }
             onComplete?(record)
             try? await Task.sleep(nanoseconds: 800_000_000)
             onDismiss()
@@ -122,16 +102,45 @@ struct ReadinessCheckInView: View {
     }
 }
 
-private struct ReadinessBody: Encodable {
-    let log_date: String
-    let sleep_quality: Int
-    let soreness: Int
-    let stress: Int
-    let motivation: Int
-}
+// MARK: - ViewModel
 
-private struct ReadinessResponse: Decodable {
-    let id: String
+@MainActor
+final class ReadinessCheckInViewModel: ObservableObject {
+    @Published var isSaving = false
+    @Published var saved    = false
+
+    private struct ReadinessBody: Encodable {
+        let log_date: String
+        let sleep_quality: Int
+        let soreness: Int
+        let stress: Int
+        let motivation: Int
+    }
+    private struct ReadinessResponse: Decodable { let id: String }
+
+    func save(ownerID: String, sleepQuality: Int, soreness: Int, stress: Int, motivation: Int,
+              context: ModelContext) async -> ReadinessCheckInRecord {
+        isSaving = true
+        let dateStr = Formatters.isoDay.string(from: Date())
+
+        let record = ReadinessCheckInRecord(
+            ownerID: ownerID, logDate: dateStr,
+            sleepQuality: sleepQuality, soreness: soreness,
+            stress: stress, motivation: motivation
+        )
+        context.insert(record)
+        try? context.save()
+
+        let body = ReadinessBody(
+            log_date: dateStr, sleep_quality: sleepQuality,
+            soreness: soreness, stress: stress, motivation: motivation
+        )
+        _ = try? await ApiClient.shared.post("/readiness", body: body) as ReadinessResponse
+
+        isSaving = false
+        withAnimation { saved = true }
+        return record
+    }
 }
 
 // MARK: - Readiness Slider

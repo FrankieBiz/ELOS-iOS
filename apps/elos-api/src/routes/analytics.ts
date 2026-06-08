@@ -2,18 +2,19 @@ import { Router, Request, Response } from "express";
 import { requireAuth } from "../middleware/auth";
 import { AnalyticsService } from "../services/analyticsService";
 import { pool } from "../db";
+import { intParam } from "../lib/query";
 
 const router = Router();
 const service = new AnalyticsService(pool);
 
 router.get("/volume", requireAuth, async (req: Request, res: Response) => {
-  const weeks = Math.min(Number(req.query.weeks ?? 8), 52);
+  const weeks = intParam(req.query.weeks, 8, 1, 52);
   const data = await service.getWeeklyVolume(req.user!.id, weeks);
   res.json({ volume: data });
 });
 
 router.get("/e1rm/:name", requireAuth, async (req: Request, res: Response) => {
-  const weeks = Math.min(Number(req.query.weeks ?? 12), 52);
+  const weeks = intParam(req.query.weeks, 12, 1, 52);
   const data = await service.getE1RMHistory(req.user!.id, req.params.name as string, weeks);
   res.json({ e1rm: data });
 });

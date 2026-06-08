@@ -6,11 +6,13 @@ struct ProgramsView: View {
     @Query(sort: \UserSplitRecord.createdAt, order: .reverse) private var userSplits: [UserSplitRecord]
     @Query private var allSplitDays: [UserSplitDayRecord]
     @EnvironmentObject var vm: AppViewModel
+    @EnvironmentObject var feedVM: FeedViewModel
 
     @State private var showCreateSplit = false
     @State private var showSplitFinder = false
     @State private var selectedSplit: UserSplitRecord?
     @State private var splitPendingDelete: UserSplitRecord?
+    @State private var splitShared = false
 
     private let categoryOrder: [SplitCategory] = [
         .creatorInspired, .olympiaBodybuilding, .sportPerformance,
@@ -83,6 +85,11 @@ struct ProgramsView: View {
                 Button("Cancel", role: .cancel) {}
             } message: { split in
                 Text("\"\(split.name)\" will be permanently removed.")
+            }
+            .alert("Shared to your feed", isPresented: $splitShared) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Friends can now import this split.")
             }
         }
     }
@@ -227,6 +234,17 @@ struct ProgramsView: View {
                             if !split.isActive {
                                 Button { vm.setActiveSplit(split) } label: {
                                     Label("Set as Active", systemImage: "checkmark.circle")
+                                }
+                            }
+                            if !split.serverID.isEmpty {
+                                Button {
+                                    Task {
+                                        if await feedVM.shareSplit(serverID: split.serverID) {
+                                            splitShared = true
+                                        }
+                                    }
+                                } label: {
+                                    Label("Share to Friends", systemImage: "person.2.fill")
                                 }
                             }
                             Divider()

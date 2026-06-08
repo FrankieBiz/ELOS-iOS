@@ -2,6 +2,7 @@ import "dotenv/config";
 import { assertRequiredEnv } from "./lib/env";
 assertRequiredEnv();
 
+import path from "node:path";
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
@@ -21,6 +22,7 @@ import machinesRouter from "./routes/machines";
 import socialRouter from "./routes/social";
 import leaderboardRouter from "./routes/leaderboard";
 import splitsRouter from "./routes/splits";
+import feedRouter from "./routes/feed";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -65,6 +67,11 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "elos-api" });
 });
 
+// Public legal pages (linked from the app's signup + settings screens).
+const legalDir = path.join(__dirname, "..", "public");
+app.get("/privacy", (_req, res) => res.sendFile(path.join(legalDir, "privacy.html")));
+app.get("/terms", (_req, res) => res.sendFile(path.join(legalDir, "terms.html")));
+
 app.use("/auth", authRouter);
 app.use("/profile", profileRouter);
 app.use("/sessions", sessionsRouter);
@@ -77,6 +84,7 @@ app.use("/machines", machinesRouter);
 app.use("/social", socialRouter);
 app.use("/leaderboard", leaderboardRouter);
 app.use("/splits", splitsRouter);
+app.use("/feed", feedRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

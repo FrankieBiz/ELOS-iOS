@@ -134,11 +134,11 @@ struct SettingsView: View {
                         Text(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1")
                             .foregroundStyle(.secondary)
                     }
-                    Link(destination: URL(string: "https://elos.app/privacy")!) {
+                    Link(destination: URL(string: "https://elos.onrender.com/privacy")!) {
                         Label("Privacy Policy", systemImage: "hand.raised")
                             .foregroundStyle(.primary)
                     }
-                    Link(destination: URL(string: "https://elos.app/terms")!) {
+                    Link(destination: URL(string: "https://elos.onrender.com/terms")!) {
                         Label("Terms of Service", systemImage: "doc.text")
                             .foregroundStyle(.primary)
                     }

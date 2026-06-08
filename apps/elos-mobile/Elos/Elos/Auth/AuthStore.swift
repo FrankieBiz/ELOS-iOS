@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import Supabase
 
+@MainActor
 final class AuthStore: ObservableObject {
     @Published var isAuthenticated: Bool = false
     @Published var isOnboardingComplete: Bool = false

@@ -17,8 +17,10 @@ struct ProfileUpdateBody: Codable {
     var carb_goal: Int?
     var fat_goal: Int?
     var onboarding_complete: Bool?
+    var use_imperial: Bool?
 }
 
+@MainActor
 final class OnboardingViewModel: ObservableObject {
     @Published var step = 0
     let totalSteps = 6
@@ -119,36 +121,46 @@ final class OnboardingViewModel: ObservableObject {
             protein_goal:        proteinGoal,
             carb_goal:           carbGoal,
             fat_goal:            fatGoal,
-            onboarding_complete: true
+            onboarding_complete: true,
+            use_imperial:        useImperial
         )
 
+        var networkSucceeded = false
         do {
-            let _: ProfileUpdateBody = try await ApiClient.shared.patch("/profile", body: body)
+            let _: ProfileResponse = try await ApiClient.shared.patch("/profile", body: body)
+            networkSucceeded = true
         } catch {
-            // Proceed even if network fails — record locally
+            // Proceed even if network fails — syncPending will trigger retry on next launch
         }
 
         let userID = authStore.currentUserID
-        let profileRecord = UserProfileRecord(
-            id: userID,
-            ownerID: userID,
-            email: "",
-            firstName: firstName,
-            lastName: lastName,
-            heightCm: heightCm,
-            weightKg: weightKg,
-            ageYears: ageYears,
-            trainingExperience: experience,
-            trainingGoal: trainingGoal,
-            schoolName: schoolName,
-            schoolYear: schoolYear,
-            calGoal: calGoal,
-            proteinGoal: proteinGoal,
-            carbGoal: carbGoal,
-            fatGoal: fatGoal,
-            onboardingComplete: true
+        // Upsert: update an existing profile row if one already exists (e.g. created by
+        // syncProfileFromServer) instead of inserting a duplicate.
+        let existingDesc = FetchDescriptor<UserProfileRecord>(
+            predicate: #Predicate { $0.ownerID == userID }
         )
-        context.insert(profileRecord)
+        let record = (try? context.fetch(existingDesc).first)
+            ?? {
+                let r = UserProfileRecord(id: userID, ownerID: userID, email: "")
+                context.insert(r)
+                return r
+            }()
+        record.firstName          = firstName
+        record.lastName           = lastName
+        record.heightCm           = heightCm
+        record.weightKg           = weightKg
+        record.ageYears           = ageYears
+        record.trainingExperience = experience
+        record.trainingGoal       = trainingGoal
+        record.schoolName         = schoolName
+        record.schoolYear         = schoolYear
+        record.calGoal            = calGoal
+        record.proteinGoal        = proteinGoal
+        record.carbGoal           = carbGoal
+        record.fatGoal            = fatGoal
+        record.onboardingComplete = true
+        record.syncPending        = !networkSucceeded
+        record.useImperial        = useImperial
         try? context.save()
 
         authStore.markOnboardingComplete()

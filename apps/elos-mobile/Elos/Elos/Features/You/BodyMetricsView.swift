@@ -318,6 +318,10 @@ struct BodyMetricsView: View {
                 Divider().frame(height: 52)
                 metricBlock(value: profile.map { "\($0.fatGoal)g" } ?? "—", unit: "", label: "Fat")
             }
+
+            Text("General estimates for educational use — not medical or dietary advice. Consult a doctor or dietitian before changing your diet.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
         .padding(16)
         .elosCard()

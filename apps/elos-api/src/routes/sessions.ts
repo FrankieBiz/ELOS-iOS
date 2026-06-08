@@ -4,6 +4,7 @@ import { validateBody } from "../middleware/validate";
 import { SessionService } from "../services/sessionService";
 import { pool } from "../db";
 import { createSessionSchema, updateSessionSchema, createSetSchema } from "../schemas";
+import { intParam } from "../lib/query";
 
 const router = Router();
 const service = new SessionService(pool);
@@ -14,7 +15,7 @@ router.post("/", requireAuth, validateBody(createSessionSchema), async (req: Req
 });
 
 router.get("/", requireAuth, async (req: Request, res: Response) => {
-  const limit = Math.min(Number(req.query.limit ?? 30), 100);
+  const limit = intParam(req.query.limit, 30, 1, 100);
   const sessions = await service.getSessionsForUser(req.user!.id, limit);
   res.json({ sessions });
 });

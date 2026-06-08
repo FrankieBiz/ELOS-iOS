@@ -11,17 +11,19 @@ export class AnalyticsService {
 
   async getWeeklyVolume(userId: string, weeks = 8): Promise<VolumeDataPoint[]> {
     const result = await this.db.query<VolumeDataPoint>(
+      // LEFT JOIN so custom / unmatched exercise names still count toward volume
+      // (bucketed as 'other') instead of being silently dropped.
       `SELECT
-         ed.primary_muscle AS muscle,
+         COALESCE(ed.primary_muscle, 'other') AS muscle,
          date_trunc('week', es.completed_at)::date::text AS week,
          COUNT(*)::int AS hard_sets,
          COALESCE(SUM(es.weight_kg * es.reps), 0)::float AS tonnage
        FROM exercise_sets es
-       JOIN exercise_definitions ed ON lower(es.exercise_name) = lower(ed.name)
+       LEFT JOIN exercise_definitions ed ON lower(es.exercise_name) = lower(ed.name)
        WHERE es.user_id = $1
          AND es.completed_at >= NOW() - ($2 || ' weeks')::interval
          AND es.reps > 0
-       GROUP BY ed.primary_muscle, date_trunc('week', es.completed_at)
+       GROUP BY COALESCE(ed.primary_muscle, 'other'), date_trunc('week', es.completed_at)
        ORDER BY week DESC, hard_sets DESC`,
       [userId, weeks]
     );

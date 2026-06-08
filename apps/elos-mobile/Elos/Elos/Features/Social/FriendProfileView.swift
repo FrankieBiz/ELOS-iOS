@@ -1,6 +1,7 @@
 import SwiftUI
+import Combine
 
-private struct FriendStatsResponse: Codable {
+struct FriendStatsResponse: Codable {
     let user_id: String
     let first_name: String
     let last_name: String
@@ -20,20 +21,33 @@ private struct FriendStatsResponse: Codable {
     }
 }
 
+@MainActor
+final class FriendProfileViewModel: ObservableObject {
+    @Published var stats: FriendStatsResponse?
+    @Published var isLoading = false
+
+    func loadStats(userId: String) async {
+        isLoading = true
+        defer { isLoading = false }
+        stats = try? await ApiClient.shared.get("/social/friends/\(userId)/stats") as FriendStatsResponse
+    }
+}
+
 struct FriendProfileView: View {
     let userId: String
     let displayName: String
 
     @EnvironmentObject private var socialVM: SocialViewModel
-    @State private var stats: FriendStatsResponse?
-    @State private var isLoading = false
+    @StateObject private var profileVM = FriendProfileViewModel()
     @State private var showingReportSheet = false
     @State private var reportCategory = "other"
     @State private var reportNote = ""
     @State private var showingReportConfirmation = false
+    @State private var showingBlockConfirm = false
+    @Environment(\.dismiss) private var dismiss
 
     private var initials: String {
-        guard let s = stats else { return "?" }
+        guard let s = profileVM.stats else { return "?" }
         let f = s.first_name.first.map(String.init) ?? ""
         let l = s.last_name.first.map(String.init) ?? ""
         return (f + l).uppercased().isEmpty ? "?" : (f + l).uppercased()
@@ -42,9 +56,9 @@ struct FriendProfileView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                if isLoading {
+                if profileVM.isLoading {
                     ProgressView().frame(maxWidth: .infinity, minHeight: 200)
-                } else if let s = stats {
+                } else if let s = profileVM.stats {
                     headerSection(s)
                     statsGrid(s)
                     if !s.top_prs.isEmpty {
@@ -61,14 +75,19 @@ struct FriendProfileView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
-        .task { await loadStats() }
+        .task { await profileVM.loadStats(userId: userId) }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button(role: .destructive) {
+                    Button {
                         showingReportSheet = true
                     } label: {
                         Label("Report User", systemImage: "flag")
+                    }
+                    Button(role: .destructive) {
+                        showingBlockConfirm = true
+                    } label: {
+                        Label("Block User", systemImage: "hand.raised")
                     }
                 } label: {
                     Image(systemName: "ellipsis")
@@ -83,6 +102,16 @@ struct FriendProfileView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Thank you. Our team will review this report.")
+        }
+        .confirmationDialog("Block \(displayName)?", isPresented: $showingBlockConfirm, titleVisibility: .visible) {
+            Button("Block", role: .destructive) {
+                Task {
+                    if await socialVM.blockUser(userId) { dismiss() }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("They'll be removed from your crew and won't see each other's posts or be able to add you.")
         }
     }
 
@@ -124,12 +153,6 @@ struct FriendProfileView: View {
                 }
             }
         }
-    }
-
-    private func loadStats() async {
-        isLoading = true
-        defer { isLoading = false }
-        stats = try? await ApiClient.shared.get("/social/friends/\(userId)/stats") as FriendStatsResponse
     }
 
     private func headerSection(_ s: FriendStatsResponse) -> some View {

@@ -4,6 +4,7 @@ import { validateBody } from "../middleware/validate";
 import { ReadinessService } from "../services/readinessService";
 import { pool } from "../db";
 import { createReadinessSchema } from "../schemas";
+import { intParam } from "../lib/query";
 
 const router = Router();
 const service = new ReadinessService(pool);
@@ -14,7 +15,7 @@ router.post("/", requireAuth, validateBody(createReadinessSchema), async (req: R
 });
 
 router.get("/", requireAuth, async (req: Request, res: Response) => {
-  const days = Math.min(Number(req.query.days ?? 30), 365);
+  const days = intParam(req.query.days, 30, 1, 365);
   const history = await service.getHistory(req.user!.id, days);
   res.json({ checkins: history });
 });

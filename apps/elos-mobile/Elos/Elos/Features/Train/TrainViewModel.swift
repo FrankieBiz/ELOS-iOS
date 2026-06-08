@@ -2,33 +2,9 @@ import SwiftUI
 import SwiftData
 import Combine
 
-// MARK: - API request/response types
-private struct CreateSessionRequest: Encodable {
-    let started_at: String
-}
-
-private struct UpdateSessionRequest: Encodable {
-    let finished_at: String
-    let session_rpe: Int
-    let total_volume: Double
-}
-
-private struct CreateSetRequest: Encodable {
-    let exercise_name: String
-    let set_index: Int
-    let weight_kg: Double
-    let reps: Int
-    let rpe: Double?
-    let completed_at: String
-}
-
-private struct SessionResponse: Decodable { let id: String }
-private struct SetResponse: Decodable { let id: String }
-
 @MainActor
 class TrainViewModel: ObservableObject {
     private let context: ModelContext
-    private let iso = ISO8601DateFormatter()
 
     @Published var currentSession: WorkoutSessionRecord?
     @Published var sessionSets: [ExerciseSetRecord] = []
@@ -36,26 +12,34 @@ class TrainViewModel: ObservableObject {
     @Published var prsHitThisSession: [String] = []
     @Published var showSessionRPEPrompt = false
     @Published var showDeloadSuggestion = false
+    @Published var recentExercises: [ExercisePickerViewModel.ExerciseResponse] = []
 
     init(context: ModelContext) {
         self.context = context
+    }
+
+    // MARK: - Recent exercises
+
+    func loadRecentExercises() async {
+        struct ListResponse: Decodable { let exercises: [ExercisePickerViewModel.ExerciseResponse] }
+        do {
+            let r: ListResponse = try await ApiClient.shared.get("/exercises/recent?limit=8")
+            recentExercises = r.exercises
+        } catch {}
     }
 
     // MARK: - Session lifecycle
 
     func startSession(ownerID: String) {
         guard currentSession == nil else { return }
-        let session = WorkoutSessionRecord(ownerID: ownerID, startedAt: Date())
+        let session = WorkoutSessionRecord(ownerID: ownerID, startedAt: Date(), syncPending: true)
         context.insert(session)
         try? context.save()
         currentSession = session
         sessionSets = []
         prsHitThisSession = []
 
-        Task {
-            let body = CreateSessionRequest(started_at: iso.string(from: session.startedAt))
-            _ = try? await ApiClient.shared.post("/sessions", body: body) as SessionResponse
-        }
+        Task { await WorkoutSyncService.shared.pushSessionCreate(session, context: context) }
     }
 
     func logCompletedSet(
@@ -78,7 +62,8 @@ class TrainViewModel: ObservableObject {
             reps: reps,
             rpe: rpe,
             isDone: true,
-            completedAt: now
+            completedAt: now,
+            syncPending: true
         )
         context.insert(record)
         sessionSets.append(record)
@@ -88,18 +73,7 @@ class TrainViewModel: ObservableObject {
         checkAndUpdatePR(exerciseName: exerciseName, weightKg: weightKg, reps: reps,
                          sessionID: session.id, ownerID: ownerID)
 
-        let sessionID = session.id
-        Task {
-            let body = CreateSetRequest(
-                exercise_name: exerciseName,
-                set_index: setIndex,
-                weight_kg: weightKg,
-                reps: reps,
-                rpe: rpe > 0 ? rpe : nil,
-                completed_at: iso.string(from: now)
-            )
-            _ = try? await ApiClient.shared.post("/sessions/\(sessionID)/sets", body: body) as SetResponse
-        }
+        Task { await WorkoutSyncService.shared.pushSet(record, session: session, context: context) }
     }
 
     func unlogCompletedSet(
@@ -131,20 +105,12 @@ class TrainViewModel: ObservableObject {
         let now = Date()
         session.finishedAt = now
         session.sessionRPE = sessionRPE
+        session.syncPending = true
         try? context.save()
 
         checkDeloadNeeded(ownerID: ownerID)
 
-        let sessionID = session.id
-        let volume = session.totalVolume
-        Task {
-            let body = UpdateSessionRequest(
-                finished_at: iso.string(from: now),
-                session_rpe: sessionRPE,
-                total_volume: volume
-            )
-            _ = try? await ApiClient.shared.patch("/sessions/\(sessionID)", body: body) as SessionResponse
-        }
+        Task { await WorkoutSyncService.shared.pushFinish(session, context: context) }
 
         currentSession = nil
     }

@@ -86,6 +86,10 @@ struct ProgramSelectionStepView: View {
                 .padding(14)
                 .background(Color(.secondarySystemGroupedBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                Text("These are general estimates for educational use, not medical or dietary advice. Talk to a doctor or registered dietitian before changing how you eat — especially if you're still growing.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()

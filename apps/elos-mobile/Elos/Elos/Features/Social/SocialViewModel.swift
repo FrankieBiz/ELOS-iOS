@@ -14,20 +14,7 @@ struct FriendProfileResponse: Codable, Identifiable {
     let avatar_color: String?
     let status: String
     let is_requester: Bool
-
-    var displayName: String {
-        let full = "\(first_name) \(last_name)".trimmingCharacters(in: .whitespaces)
-        return full.isEmpty ? (username.map { "@\($0)" } ?? "Unknown") : full
-    }
-
-    var initials: String {
-        let f = first_name.first.map(String.init) ?? ""
-        let l = last_name.first.map(String.init) ?? ""
-        let combo = (f + l).uppercased()
-        return combo.isEmpty ? "?" : combo
-    }
-
-    var avatarHex: String { avatar_color ?? "#6C47FF" }
+    // displayName / initials / avatarHex come from the NamedUser protocol.
 }
 
 struct LeaderboardEntryResponse: Codable, Identifiable {
@@ -40,20 +27,7 @@ struct LeaderboardEntryResponse: Codable, Identifiable {
     let avatar_color: String?
     let value: Double
     let is_self: Bool
-
-    var displayName: String {
-        let full = "\(first_name) \(last_name)".trimmingCharacters(in: .whitespaces)
-        return full.isEmpty ? (username.map { "@\($0)" } ?? "Unknown") : full
-    }
-
-    var initials: String {
-        let f = first_name.first.map(String.init) ?? ""
-        let l = last_name.first.map(String.init) ?? ""
-        let combo = (f + l).uppercased()
-        return combo.isEmpty ? "?" : combo
-    }
-
-    var avatarHex: String { avatar_color ?? "#6C47FF" }
+    // displayName / initials / avatarHex come from the NamedUser protocol.
 }
 
 struct WeeklyLeaderboardResponse: Codable {
@@ -85,20 +59,7 @@ struct UserSearchResultResponse: Codable, Identifiable {
     let last_name: String
     let avatar_color: String?
     let friendship_status: String
-
-    var displayName: String {
-        let full = "\(first_name) \(last_name)".trimmingCharacters(in: .whitespaces)
-        return full.isEmpty ? (username.map { "@\($0)" } ?? "Unknown") : full
-    }
-
-    var initials: String {
-        let f = first_name.first.map(String.init) ?? ""
-        let l = last_name.first.map(String.init) ?? ""
-        let combo = (f + l).uppercased()
-        return combo.isEmpty ? "?" : combo
-    }
-
-    var avatarHex: String { avatar_color ?? "#6C47FF" }
+    // displayName / initials / avatarHex come from the NamedUser protocol.
 }
 
 private struct FriendsListResponse: Codable { let friends: [FriendProfileResponse] }
@@ -197,6 +158,20 @@ class SocialViewModel: ObservableObject {
             return resp.users
         } catch {
             return []
+        }
+    }
+
+    func blockUser(_ userId: String) async -> Bool {
+        struct Body: Encodable { let blockedId: String }
+        struct OkResponse: Decodable { let ok: Bool }
+        do {
+            _ = try await ApiClient.shared.post("/social/block", body: Body(blockedId: userId)) as OkResponse
+            // Block severs the friendship server-side; reflect that locally.
+            friends.removeAll { $0.user_id == userId }
+            pendingRequests.removeAll { $0.user_id == userId }
+            return true
+        } catch {
+            return false
         }
     }
 

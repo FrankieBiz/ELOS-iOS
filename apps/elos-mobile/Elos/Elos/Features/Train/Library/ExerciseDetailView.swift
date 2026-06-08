@@ -1,20 +1,19 @@
 import SwiftUI
 import SwiftData
+import Combine
 import Charts
 
 struct ExerciseDetailView: View {
     @EnvironmentObject var vm: AppViewModel
+    @StateObject private var detailVM = ExerciseDetailViewModel()
 
     let exercise: ExerciseDefinitionRecord
-
-    @State private var e1rmHistory: [(day: String, e1rm: Double)] = []
-    @State private var isLoading = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
                 infoCard
-                if !e1rmHistory.isEmpty { e1rmChart }
+                if !detailVM.e1rmHistory.isEmpty { e1rmChart }
             }
             .padding(16)
             .padding(.bottom, 60)
@@ -22,7 +21,7 @@ struct ExerciseDetailView: View {
         .navigationTitle(exercise.name)
         .navigationBarTitleDisplayMode(.inline)
         .background(Color(.systemGroupedBackground))
-        .onAppear { loadE1RMHistory() }
+        .task { await detailVM.loadE1RMHistory(exerciseName: exercise.name) }
     }
 
     // MARK: Info Card
@@ -49,7 +48,7 @@ struct ExerciseDetailView: View {
             Text("Estimated 1RM Trend")
                 .font(.subheadline).fontWeight(.semibold)
 
-            Chart(e1rmHistory, id: \.day) { point in
+            Chart(detailVM.e1rmHistory, id: \.day) { point in
                 LineMark(
                     x: .value("Day", point.day),
                     y: .value("e1RM (kg)", point.e1rm)
@@ -70,26 +69,26 @@ struct ExerciseDetailView: View {
         .elosCard()
     }
 
-    private func loadE1RMHistory() {
-        let name = exercise.name
-        Task {
-            isLoading = true
-            defer { isLoading = false }
-            if let response = try? await ApiClient.shared.get("/analytics/e1rm/\(name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name)") as E1RMResponse {
-                await MainActor.run {
-                    e1rmHistory = response.e1rm.map { (day: $0.day, e1rm: $0.e1rm) }
-                }
-            }
-        }
-    }
 }
 
-private struct E1RMResponse: Decodable {
-    let e1rm: [E1RMPoint]
-}
-private struct E1RMPoint: Decodable {
-    let day: String
-    let e1rm: Double
+// MARK: - ViewModel
+
+@MainActor
+final class ExerciseDetailViewModel: ObservableObject {
+    @Published var e1rmHistory: [(day: String, e1rm: Double)] = []
+    @Published var isLoading = false
+
+    private struct E1RMResponse: Decodable { let e1rm: [E1RMPoint] }
+    private struct E1RMPoint: Decodable { let day: String; let e1rm: Double }
+
+    func loadE1RMHistory(exerciseName name: String) async {
+        isLoading = true
+        defer { isLoading = false }
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
+        if let response = try? await ApiClient.shared.get("/analytics/e1rm/\(encoded)") as E1RMResponse {
+            e1rmHistory = response.e1rm.map { (day: $0.day, e1rm: $0.e1rm) }
+        }
+    }
 }
 
 private struct InfoRow: View {

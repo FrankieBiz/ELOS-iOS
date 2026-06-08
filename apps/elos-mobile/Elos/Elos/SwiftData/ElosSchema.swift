@@ -144,11 +144,14 @@ final class WorkoutSessionRecord {
     var notes: String
     var templateID: String
     var totalVolume: Double
+    var serverID: String = ""       // backend UUID, "" until the create POST is confirmed
+    var syncPending: Bool = false   // true while create/sets/finish still need pushing
 
     init(id: String = UUID().uuidString, ownerID: String,
          startedAt: Date = Date(), finishedAt: Date? = nil,
          sessionRPE: Int = 0, notes: String = "",
-         templateID: String = "", totalVolume: Double = 0) {
+         templateID: String = "", totalVolume: Double = 0,
+         serverID: String = "", syncPending: Bool = false) {
         self.id          = id
         self.ownerID     = ownerID
         self.startedAt   = startedAt
@@ -157,6 +160,8 @@ final class WorkoutSessionRecord {
         self.notes       = notes
         self.templateID  = templateID
         self.totalVolume = totalVolume
+        self.serverID    = serverID
+        self.syncPending = syncPending
     }
 }
 
@@ -176,6 +181,8 @@ final class ExerciseSetRecord {
     var equipmentId: String?
     var equipmentDedupeKey: String?
     var equipmentBrandName: String?
+    var serverID: String = ""       // backend UUID, "" until the set POST is confirmed
+    var syncPending: Bool = false   // true until successfully POSTed to the server
 
     init(id: String = UUID().uuidString, ownerID: String,
          sessionID: String, exerciseName: String, setIndex: Int,
@@ -183,7 +190,8 @@ final class ExerciseSetRecord {
          rpe: Double = 0, rir: Int = -1,
          isDone: Bool = false, completedAt: Date? = nil,
          equipmentId: String? = nil, equipmentDedupeKey: String? = nil,
-         equipmentBrandName: String? = nil) {
+         equipmentBrandName: String? = nil,
+         serverID: String = "", syncPending: Bool = false) {
         self.id                  = id
         self.ownerID             = ownerID
         self.sessionID           = sessionID
@@ -198,6 +206,8 @@ final class ExerciseSetRecord {
         self.equipmentId         = equipmentId
         self.equipmentDedupeKey  = equipmentDedupeKey
         self.equipmentBrandName  = equipmentBrandName
+        self.serverID            = serverID
+        self.syncPending         = syncPending
     }
 }
 
@@ -692,6 +702,8 @@ final class UserProfileRecord {
     var carbGoal: Int
     var fatGoal: Int
     var onboardingComplete: Bool
+    var syncPending: Bool = false
+    var useImperial: Bool = true
 
     init(id: String, ownerID: String, email: String,
          firstName: String = "", lastName: String = "",
@@ -699,7 +711,9 @@ final class UserProfileRecord {
          trainingExperience: String = "beginner", trainingGoal: String = "hypertrophy",
          schoolName: String = "", schoolYear: String = "sophomore",
          calGoal: Int = 2500, proteinGoal: Int = 180, carbGoal: Int = 300, fatGoal: Int = 80,
-         onboardingComplete: Bool = false) {
+         onboardingComplete: Bool = false,
+         syncPending: Bool = false,
+         useImperial: Bool = true) {
         self.id                 = id
         self.ownerID            = ownerID
         self.email              = email
@@ -717,5 +731,7 @@ final class UserProfileRecord {
         self.carbGoal           = carbGoal
         self.fatGoal            = fatGoal
         self.onboardingComplete = onboardingComplete
+        self.syncPending        = syncPending
+        self.useImperial        = useImperial
     }
 }

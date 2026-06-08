@@ -5,12 +5,15 @@ struct PostSessionSummaryView: View {
     @EnvironmentObject var vm: AppViewModel
     @EnvironmentObject var trainVM: TrainViewModel
     @EnvironmentObject var context: TrainingContext
+    @EnvironmentObject var feedVM: FeedViewModel
     @Environment(\.modelContext) private var modelContext
 
     let summary: SessionSummary
 
     @State private var beforeProgress: GamificationEngine.UserProgress?
     @State private var afterProgress:  GamificationEngine.UserProgress?
+    @State private var workoutShared = false
+    @State private var sharedPRs: Set<String> = []
 
     private var durationMinutes: Int {
         Int(Date().timeIntervalSince(summary.startedAt)) / 60
@@ -42,6 +45,7 @@ struct PostSessionSummaryView: View {
                     muscleCard
                     if summary.comparisonLabel != nil { comparisonCard }
                     if summary.nextWorkoutDay != nil { nextWorkoutCard }
+                    shareToFriendsButton
                     analyticsButton
                     doneButton
                 }
@@ -112,11 +116,83 @@ struct PostSessionSummaryView: View {
                     Image(systemName: "trophy.fill").foregroundStyle(.yellow)
                     Text(exercise).font(.subheadline).fontWeight(.semibold)
                     Spacer()
+                    Button {
+                        Task { await sharePR(exercise) }
+                    } label: {
+                        Image(systemName: sharedPRs.contains(exercise)
+                              ? "checkmark.circle.fill" : "square.and.arrow.up")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(sharedPRs.contains(exercise) ? Color.secondary : Color.tint)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(sharedPRs.contains(exercise))
+                    .accessibilityLabel("Share \(exercise) PR to friends")
                 }
             }
         }
         .padding(14)
         .elosCard()
+    }
+
+    // MARK: Share to Friends
+
+    private var doneSets: [ExerciseSetRecord] { trainVM.sessionSets.filter(\.isDone) }
+
+    private var dateString: String {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d, yyyy"
+        return f.string(from: Date())
+    }
+
+    private func e1rm(_ s: ExerciseSetRecord) -> Double {
+        s.weightKg * (1 + Double(s.reps) / 30)
+    }
+
+    private var topLiftPayload: FeedTopLift? {
+        guard let best = doneSets.max(by: { ($0.weightKg, $0.reps) < ($1.weightKg, $1.reps) }) else {
+            return nil
+        }
+        return FeedTopLift(name: best.exerciseName, weight_kg: best.weightKg, reps: best.reps)
+    }
+
+    private var shareToFriendsButton: some View {
+        Button {
+            Task {
+                let ok = await feedVM.shareWorkout(
+                    date: dateString,
+                    durationMin: durationMinutes,
+                    volumeKg: summary.totalVolumeKg,
+                    totalSets: doneSets.count,
+                    uniqueExercises: Set(doneSets.map(\.exerciseName)).count,
+                    topLift: topLiftPayload,
+                    pr: summary.prsHit.first
+                )
+                if ok { workoutShared = true }
+            }
+        } label: {
+            Label(workoutShared ? "Shared to Friends" : "Share to Friends",
+                  systemImage: workoutShared ? "checkmark.circle.fill" : "person.2.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(workoutShared ? Color.secondary : Color.tint)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color.tintSoft)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .disabled(workoutShared)
+    }
+
+    private func sharePR(_ exercise: String) async {
+        let sets = doneSets.filter { $0.exerciseName == exercise }
+        guard let best = sets.max(by: { e1rm($0) < e1rm($1) }) else { return }
+        let ok = await feedVM.sharePR(
+            exerciseName: exercise,
+            weightKg: best.weightKg,
+            reps: best.reps,
+            e1rm: e1rm(best)
+        )
+        if ok { sharedPRs.insert(exercise) }
     }
 
     // MARK: Muscle breakdown

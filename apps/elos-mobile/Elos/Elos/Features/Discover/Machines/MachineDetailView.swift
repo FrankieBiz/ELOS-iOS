@@ -3,7 +3,7 @@ import Combine
 
 // MARK: - Response types
 
-private struct MachineDetailAPIResponse: Decodable {
+struct MachineDetailAPIResponse: Decodable {
     let id: String
     let name: String
     let slug: String
@@ -56,17 +56,15 @@ struct MachineSubstitutionResponse: Decodable {
 struct MachineDetailView: View {
     let slug: String
 
-    @State private var machine: MachineDetailAPIResponse?
-    @State private var isLoading = false
+    @StateObject private var detailVM = MachineDetailViewModel()
     @State private var expandedModelID: String?
-    @State private var favoritedExerciseIDs: Set<String> = []
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                if isLoading {
+                if detailVM.isLoading {
                     ProgressView().frame(maxWidth: .infinity, minHeight: 200)
-                } else if let m = machine {
+                } else if let m = detailVM.machine {
                     headerCard(m)
                     muscleChipsCard(m)
                     if !m.models.isEmpty { brandsSection(m.models) }
@@ -81,16 +79,12 @@ struct MachineDetailView: View {
         }
         .scrollIndicators(.hidden)
         .background(Color(.systemGroupedBackground))
-        .navigationTitle(machine?.name ?? "Machine")
+        .navigationTitle(detailVM.machine?.name ?? "Machine")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await loadMachine() }
-    }
-
-    private func loadMachine() async {
-        isLoading = true
-        defer { isLoading = false }
-        machine = try? await ApiClient.shared.get("/machines/\(slug)") as MachineDetailAPIResponse
-        expandedModelID = machine?.models.first?.id
+        .task {
+            await detailVM.loadMachine(slug: slug)
+            expandedModelID = detailVM.machine?.models.first?.id
+        }
     }
 
     // MARK: Cards
@@ -193,10 +187,10 @@ struct MachineDetailView: View {
                     Spacer()
                     if let id = ex.exercise_id {
                         Button {
-                            Task { await toggleFavorite(exerciseID: id) }
+                            Task { await detailVM.toggleFavorite(exerciseID: id) }
                         } label: {
-                            Image(systemName: favoritedExerciseIDs.contains(id) ? "star.fill" : "star")
-                                .foregroundStyle(favoritedExerciseIDs.contains(id) ? .yellow : .secondary)
+                            Image(systemName: detailVM.favoritedExerciseIDs.contains(id) ? "star.fill" : "star")
+                                .foregroundStyle(detailVM.favoritedExerciseIDs.contains(id) ? .yellow : .secondary)
                                 .font(.system(size: 14))
                         }
                         .buttonStyle(.plain)
@@ -210,18 +204,6 @@ struct MachineDetailView: View {
         }
         .padding(16)
         .elosCard()
-    }
-
-    private func toggleFavorite(exerciseID: String) async {
-        struct OkResponse: Decodable { let ok: Bool }
-        struct EmptyBody: Encodable {}
-        if favoritedExerciseIDs.contains(exerciseID) {
-            favoritedExerciseIDs.remove(exerciseID)
-            _ = try? await ApiClient.shared.delete("/exercises/\(exerciseID)/favorite") as OkResponse
-        } else {
-            favoritedExerciseIDs.insert(exerciseID)
-            _ = try? await ApiClient.shared.post("/exercises/\(exerciseID)/favorite", body: EmptyBody()) as OkResponse
-        }
     }
 
     private func substitutionsCard(_ subs: [MachineSubstitutionResponse]) -> some View {
@@ -246,6 +228,33 @@ struct MachineDetailView: View {
         }
         .padding(16)
         .elosCard()
+    }
+}
+
+// MARK: - ViewModel
+
+@MainActor
+final class MachineDetailViewModel: ObservableObject {
+    @Published var machine: MachineDetailAPIResponse?
+    @Published var isLoading = false
+    @Published var favoritedExerciseIDs: Set<String> = []
+
+    func loadMachine(slug: String) async {
+        isLoading = true
+        defer { isLoading = false }
+        machine = try? await ApiClient.shared.get("/machines/\(slug)") as MachineDetailAPIResponse
+    }
+
+    func toggleFavorite(exerciseID: String) async {
+        struct OkResponse: Decodable { let ok: Bool }
+        struct EmptyBody: Encodable {}
+        if favoritedExerciseIDs.contains(exerciseID) {
+            favoritedExerciseIDs.remove(exerciseID)
+            _ = try? await ApiClient.shared.delete("/exercises/\(exerciseID)/favorite") as OkResponse
+        } else {
+            favoritedExerciseIDs.insert(exerciseID)
+            _ = try? await ApiClient.shared.post("/exercises/\(exerciseID)/favorite", body: EmptyBody()) as OkResponse
+        }
     }
 }
 

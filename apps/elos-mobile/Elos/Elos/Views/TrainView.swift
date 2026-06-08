@@ -25,7 +25,6 @@ struct TrainView: View {
     @State private var selectedMuscleName: String? = "chest"
     @State private var prsExpanded         = false
     @State private var waitingForReadiness = false
-    @State private var recentExercises: [ExercisePickerViewModel.ExerciseResponse] = []
     @State private var userProgress: GamificationEngine.UserProgress?
     @State private var workoutStreak: Int = 0
     @State private var sessionCount: Int = 0
@@ -68,7 +67,7 @@ struct TrainView: View {
                     weekStrip
                     leaderboardCard
                     quickActions
-                    if !recentExercises.isEmpty { recentExercisesRow }
+                    if !trainVM.recentExercises.isEmpty { recentExercisesRow }
                     startButton
                     exercisesSection
                     muscleVolumePanel
@@ -105,7 +104,7 @@ struct TrainView: View {
             }
             vm.loadActiveSplit()
             computeUserProgress()
-            Task { await loadRecentExercises() }
+            Task { await trainVM.loadRecentExercises() }
             context.update(
                 shouldDeload: trainVM.showDeloadSuggestion,
                 readinessScore: vm.todayReadiness.map { Int($0.overallScore.rounded()) }
@@ -469,7 +468,7 @@ struct TrainView: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(recentExercises) { ex in
+                    ForEach(trainVM.recentExercises) { ex in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(ex.name)
                                 .font(.caption).fontWeight(.semibold)
@@ -492,14 +491,6 @@ struct TrainView: View {
         .sheet(isPresented: $context.showExercisePicker) {
             ExercisePickerView(onPickSingle: { _ in context.showExercisePicker = false })
         }
-    }
-
-    private func loadRecentExercises() async {
-        struct ListResponse: Decodable { let exercises: [ExercisePickerViewModel.ExerciseResponse] }
-        do {
-            let r: ListResponse = try await ApiClient.shared.get("/exercises/recent?limit=8")
-            recentExercises = r.exercises
-        } catch {}
     }
 
     private var quickActions: some View {

@@ -25,7 +25,7 @@ export class SessionService {
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id, user_id,
          started_at::text, finished_at::text,
-         session_rpe, notes, template_id::text, total_volume,
+         session_rpe, notes, template_id::text, total_volume::float,
          created_at::text`,
       [userId, started_at, finished_at, session_rpe, notes, template_id, total_volume]
     );
@@ -36,7 +36,7 @@ export class SessionService {
     const result = await this.db.query<WorkoutSession>(
       `SELECT id, user_id,
          started_at::text, finished_at::text,
-         session_rpe, notes, template_id::text, total_volume,
+         session_rpe, notes, template_id::text, total_volume::float,
          created_at::text
        FROM workout_sessions
        WHERE user_id = $1
@@ -51,7 +51,7 @@ export class SessionService {
     const result = await this.db.query<WorkoutSession>(
       `SELECT id, user_id,
          started_at::text, finished_at::text,
-         session_rpe, notes, template_id::text, total_volume,
+         session_rpe, notes, template_id::text, total_volume::float,
          created_at::text
        FROM workout_sessions
        WHERE id = $1 AND user_id = $2`,
@@ -83,7 +83,7 @@ export class SessionService {
        WHERE id = $${idx} AND user_id = $${idx + 1}
        RETURNING id, user_id,
          started_at::text, finished_at::text,
-         session_rpe, notes, template_id::text, total_volume,
+         session_rpe, notes, template_id::text, total_volume::float,
          created_at::text`,
       values
     );
@@ -113,7 +113,7 @@ export class SessionService {
          (session_id, user_id, exercise_name, set_index, weight_kg, reps, rpe, rir, completed_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id, session_id, user_id, exercise_name, set_index,
-         weight_kg, reps, rpe, rir,
+         weight_kg::float, reps, rpe::float, rir,
          completed_at::text, created_at::text`,
       [sessionId, userId, exercise_name, set_index, weight_kg, reps, rpe, rir, completed_at]
     );
@@ -123,7 +123,7 @@ export class SessionService {
   async getSessionSets(sessionId: string, userId: string): Promise<ExerciseSet[]> {
     const result = await this.db.query<ExerciseSet>(
       `SELECT id, session_id, user_id, exercise_name, set_index,
-         weight_kg, reps, rpe, rir,
+         weight_kg::float, reps, rpe::float, rir,
          completed_at::text, created_at::text
        FROM exercise_sets
        WHERE session_id = $1 AND user_id = $2

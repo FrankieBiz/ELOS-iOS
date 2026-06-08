@@ -26,6 +26,13 @@ final class ApiClient {
     private let baseURL = "https://elos.onrender.com"
     #endif
 
+    private let session: URLSession = {
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest  = 30
+        cfg.timeoutIntervalForResource = 60
+        return URLSession(configuration: cfg)
+    }()
+
     private func makeRequest(method: String, path: String, body: (any Encodable)? = nil) async throws -> URLRequest {
         guard let url = URL(string: baseURL + path) else { throw ApiError.invalidURL }
         var request = URLRequest(url: url)
@@ -43,28 +50,36 @@ final class ApiClient {
     }
 
     func post<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
-        let request = try await makeRequest(method: "POST", path: path, body: body)
-        return try await perform(request)
+        try await send(method: "POST", path: path, body: body)
     }
 
     func get<R: Decodable>(_ path: String) async throws -> R {
-        let request = try await makeRequest(method: "GET", path: path)
-        return try await perform(request)
+        try await send(method: "GET", path: path, body: nil)
     }
 
     func patch<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
-        let request = try await makeRequest(method: "PATCH", path: path, body: body)
-        return try await perform(request)
+        try await send(method: "PATCH", path: path, body: body)
     }
 
     func put<B: Encodable, R: Decodable>(_ path: String, body: B) async throws -> R {
-        let request = try await makeRequest(method: "PUT", path: path, body: body)
-        return try await perform(request)
+        try await send(method: "PUT", path: path, body: body)
     }
 
     func delete<R: Decodable>(_ path: String) async throws -> R {
-        let request = try await makeRequest(method: "DELETE", path: path)
-        return try await perform(request)
+        try await send(method: "DELETE", path: path, body: nil)
+    }
+
+    /// Build → perform, and on a 401 force a session refresh and retry once
+    /// (covers a request that races a just-expired access token).
+    private func send<R: Decodable>(method: String, path: String, body: (any Encodable)?) async throws -> R {
+        let request = try await makeRequest(method: method, path: path, body: body)
+        do {
+            return try await perform(request)
+        } catch ApiError.httpError(401, _) {
+            _ = try? await SupabaseManager.shared.client.auth.refreshSession()
+            let retry = try await makeRequest(method: method, path: path, body: body)
+            return try await perform(retry)
+        }
     }
 
     func warmup() async {
@@ -73,7 +88,7 @@ final class ApiClient {
 
     func deleteNoContent(_ path: String) async throws {
         let request = try await makeRequest(method: "DELETE", path: path)
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await session.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 204 else {
             throw ApiError.httpError(
                 (response as? HTTPURLResponse)?.statusCode ?? 0,
@@ -84,7 +99,7 @@ final class ApiClient {
 
     private func perform<R: Decodable>(_ request: URLRequest) async throws -> R {
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else {
                 throw ApiError.networkError(URLError(.badServerResponse))
             }
