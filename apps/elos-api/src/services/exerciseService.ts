@@ -96,26 +96,24 @@ export class ExerciseService {
 
   async getRecentExercises(userId: string, limit = 10): Promise<ExerciseDefinition[]> {
     const clamped = Math.min(Math.max(limit, 1), 50);
+    // Compute each definition's last-used time once in a CTE, then order by it —
+    // avoids the per-row correlated subquery the previous query used.
     const result = await this.db.query<ExerciseDefinition>(
-      `SELECT ed.id, ed.owner_id::text, ed.name, ed.primary_muscle,
-         ed.secondary_muscles, ed.equipment, ed.movement_pattern,
-         ed.is_custom, ed.created_at::text
-       FROM exercise_definitions ed
-       WHERE ed.id IN (
-         SELECT DISTINCT ON (ed2.id) ed2.id
+      `WITH last_used AS (
+         SELECT ed2.id AS def_id, MAX(es.completed_at) AS last_at
          FROM exercise_sets es
          JOIN exercise_definitions ed2 ON lower(ed2.name) = lower(es.exercise_name)
            AND (ed2.owner_id IS NULL OR ed2.owner_id = $1)
          WHERE es.user_id = $1
            AND es.completed_at IS NOT NULL
          GROUP BY ed2.id
-         ORDER BY ed2.id, MAX(es.completed_at) DESC
        )
-       ORDER BY (
-         SELECT MAX(es.completed_at)
-         FROM exercise_sets es
-         WHERE es.user_id = $1 AND lower(es.exercise_name) = lower(ed.name)
-       ) DESC NULLS LAST
+       SELECT ed.id, ed.owner_id::text, ed.name, ed.primary_muscle,
+         ed.secondary_muscles, ed.equipment, ed.movement_pattern,
+         ed.is_custom, ed.created_at::text
+       FROM exercise_definitions ed
+       JOIN last_used lu ON lu.def_id = ed.id
+       ORDER BY lu.last_at DESC NULLS LAST
        LIMIT $2`,
       [userId, clamped]
     );

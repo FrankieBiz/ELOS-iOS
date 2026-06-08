@@ -58,6 +58,29 @@ describe("zod schemas", () => {
       });
       expect(result.success).toBe(false);
     });
+
+    it("accepts machine/equipment fields", () => {
+      const result = createSetSchema.safeParse({
+        exercise_name: "Lat Pulldown",
+        set_index: 0,
+        weight_kg: 50,
+        reps: 10,
+        equipment_id: "eq_hammer_lat_pulldown",
+        equipment_dedupe_key: "hammer-strength|lat-pulldown|iso",
+        equipment_brand_name: "Hammer Strength",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("still accepts a set with equipment fields omitted (backward compat)", () => {
+      const result = createSetSchema.safeParse({
+        exercise_name: "Lat Pulldown",
+        set_index: 0,
+        weight_kg: 50,
+        reps: 10,
+      });
+      expect(result.success).toBe(true);
+    });
   });
 
   describe("createReadinessSchema", () => {
@@ -199,6 +222,26 @@ describe("zod schemas", () => {
             target_sets: 3,
             target_reps: "8-10",
             rest_seconds: 90,
+          },
+        ],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts exercises with notes and machine/equipment fields", () => {
+      const result = createTemplateSchema.safeParse({
+        name: "Pull Day",
+        exercises: [
+          {
+            exercise_name: "Lat Pulldown",
+            order_index: 0,
+            target_sets: 3,
+            target_reps: "8-12",
+            rest_seconds: 90,
+            notes: "wide grip",
+            equipment_id: "eq_hammer_lat_pulldown",
+            equipment_dedupe_key: "hammer-strength|lat-pulldown|iso",
+            equipment_brand_name: "Hammer Strength",
           },
         ],
       });

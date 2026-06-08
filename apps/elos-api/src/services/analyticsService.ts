@@ -107,9 +107,11 @@ export class AnalyticsService {
     }
 
     const lastWeight = sets[0].weight_kg;
-    const avgReps = sets.slice(0, 3).reduce((s, r) => s + r.reps, 0) / Math.min(sets.length, 3);
-    const avgRPE = sets.slice(0, 3).filter((r) => r.rpe).reduce((s, r) => s + (r.rpe ?? 0), 0) /
-      (sets.slice(0, 3).filter((r) => r.rpe).length || 1);
+    const recent = sets.slice(0, 3);
+    const avgReps = recent.reduce((s, r) => s + r.reps, 0) / Math.min(sets.length, 3);
+    const rpeValues = recent.map((r) => r.rpe).filter((v): v is number => v != null && v > 0);
+    const hasRPE = rpeValues.length > 0;
+    const avgRPE = hasRPE ? rpeValues.reduce((s, v) => s + v, 0) / rpeValues.length : 0;
 
     // Parse target from template if available
     const targetReps = sets[0].target_reps ?? "8-10";
@@ -123,12 +125,15 @@ export class AnalyticsService {
     let suggestedWeight = lastWeight;
     let reasoning: string;
 
-    if (avgRPE > 0 && avgRPE >= 9.5) {
+    if (hasRPE && avgRPE >= 9.5) {
       suggestedWeight = Math.max(0, lastWeight - weightIncrement);
       reasoning = `RPE averaged ${avgRPE.toFixed(1)} — reduce load to manage fatigue.`;
-    } else if (avgReps >= targetMin && (avgRPE === 0 || avgRPE <= 8.0)) {
+    } else if (avgReps >= targetMin && hasRPE && avgRPE <= 8.0) {
       suggestedWeight = lastWeight + weightIncrement;
       reasoning = `Hit target reps at RPE ≤ 8 — increase load by ${weightIncrement} kg.`;
+    } else if (avgReps >= targetMin && !hasRPE) {
+      // Reps met but no effort data — progress via reps, not load, until RPE is logged.
+      reasoning = `Hit target reps — log RPE to gauge readiness for more load, or add a rep.`;
     } else if (avgReps < targetMin) {
       reasoning = `Missed target reps last session — keep same weight, aim for ${targetMin}+ reps.`;
     } else {

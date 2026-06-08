@@ -56,4 +56,12 @@ router.get("/:id/sets", requireAuth, async (req: Request, res: Response) => {
   res.json({ sets });
 });
 
+router.delete("/:id/sets/:setId", requireAuth, async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const setId = req.params.setId as string;
+  const deleted = await service.deleteSet(id, setId, req.user!.id);
+  if (!deleted) { res.status(404).json({ error: "Set not found" }); return; }
+  res.status(204).send();
+});
+
 export default router;

@@ -50,6 +50,10 @@ export interface ExerciseSet {
   rir: number | null;
   completed_at: string | null;
   created_at: string;
+  // Machine/equipment identity (null = generic, not tied to a specific machine).
+  equipment_id: string | null;
+  equipment_dedupe_key: string | null;
+  equipment_brand_name: string | null;
 }
 
 export interface CreateSetBody {
@@ -60,6 +64,9 @@ export interface CreateSetBody {
   rpe?: number | null;
   rir?: number | null;
   completed_at?: string;
+  equipment_id?: string | null;
+  equipment_dedupe_key?: string | null;
+  equipment_brand_name?: string | null;
 }
 
 export interface ExerciseDefinition {
@@ -100,6 +107,11 @@ export interface TemplateExercise {
   target_reps: string;
   target_rpe: number | null;
   rest_seconds: number;
+  notes: string | null;
+  // Machine/equipment identity (null = generic).
+  equipment_id: string | null;
+  equipment_dedupe_key: string | null;
+  equipment_brand_name: string | null;
 }
 
 export interface CreateTemplateBody {

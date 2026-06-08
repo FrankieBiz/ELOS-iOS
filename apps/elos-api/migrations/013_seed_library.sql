@@ -82,7 +82,7 @@ INSERT INTO machines (name, slug, alternate_names, category, equipment_type, pri
    'smith-machine',
    ARRAY['Smith Press'],
    'smith', 'smith',
-   ARRAY[], ARRAY[],
+   ARRAY[]::text[], ARRAY[]::text[],
    'varies',
    'A barbell fixed to vertical rails, allowing pressing, squatting, and row variations with added stability. Suitable for many compound lifts.'),
 
@@ -106,7 +106,7 @@ INSERT INTO machines (name, slug, alternate_names, category, equipment_type, pri
    'leg-extension',
    ARRAY['Knee Extension Machine'],
    'legs', 'selectorized',
-   ARRAY['quads'], ARRAY[],
+   ARRAY['quads'], ARRAY[]::text[],
    'knee_extension',
    'An isolation machine for the quadriceps. Effective for finishing sets and targeting VMO development through the full extension range.'),
 
@@ -146,7 +146,7 @@ INSERT INTO machines (name, slug, alternate_names, category, equipment_type, pri
    'hip-adductor',
    ARRAY['Inner Thigh Machine'],
    'glutes', 'selectorized',
-   ARRAY['adductors'], ARRAY[],
+   ARRAY['adductors'], ARRAY[]::text[],
    'hip_adduction',
    'Trains the inner thigh adductors through a controlled hip adduction movement. Supports knee stability and overall leg balance.'),
 
@@ -154,7 +154,7 @@ INSERT INTO machines (name, slug, alternate_names, category, equipment_type, pri
    'calf-raise',
    ARRAY['Calf Raise Machine','Standing Calf Raise'],
    'legs', 'selectorized',
-   ARRAY['calves'], ARRAY[],
+   ARRAY['calves'], ARRAY[]::text[],
    'plantarflexion',
    'Isolates the calf muscles (gastrocnemius and soleus) through loaded plantarflexion. The seated version emphasises the soleus due to the bent knee.'),
 
@@ -170,7 +170,7 @@ INSERT INTO machines (name, slug, alternate_names, category, equipment_type, pri
    'preacher-curl',
    ARRAY['Scott Curl Machine'],
    'arms', 'selectorized',
-   ARRAY['biceps'], ARRAY[],
+   ARRAY['biceps'], ARRAY[]::text[],
    'elbow_flexion',
    'An arm-isolation machine that stabilises the upper arm against a pad, preventing cheating and maximising bicep tension throughout the curl.'),
 
@@ -178,7 +178,7 @@ INSERT INTO machines (name, slug, alternate_names, category, equipment_type, pri
    'tricep-extension-machine',
    ARRAY['Overhead Tricep Machine','Tricep Pushdown Machine'],
    'arms', 'selectorized',
-   ARRAY['triceps'], ARRAY[],
+   ARRAY['triceps'], ARRAY[]::text[],
    'elbow_extension',
    'Isolates all three heads of the triceps through a guided extension. Overhead variation emphasises the long head for complete tricep development.'),
 

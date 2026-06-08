@@ -2,7 +2,7 @@
 -- Subqueries resolve machine_id and brand_id by slug to keep this declarative.
 
 INSERT INTO machine_models (machine_id, brand_id, model_name, equipment_type, rep_range_rec, form_cues, beginner_tips)
-SELECT m.id, b.id, model_name, equipment_type, rep_range_rec, form_cues, beginner_tips
+SELECT m.id, b.id, seed.model_name, seed.equipment_type, seed.rep_range_rec, seed.form_cues, seed.beginner_tips
 FROM (VALUES
   -- ── Seated Chest Press ──
   ('seated-chest-press',      'life-fitness',     'Insignia Series Chest Press',      'selectorized', '8-12', ARRAY['Squeeze chest at lockout','Keep shoulders pinned to pad'], ARRAY['Start with low weight to learn the path']),

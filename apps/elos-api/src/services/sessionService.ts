@@ -98,6 +98,14 @@ export class SessionService {
     return (result.rowCount ?? 0) > 0;
   }
 
+  async deleteSet(sessionId: string, setId: string, userId: string): Promise<boolean> {
+    const result = await this.db.query(
+      `DELETE FROM exercise_sets WHERE id = $1 AND session_id = $2 AND user_id = $3`,
+      [setId, sessionId, userId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async addSet(sessionId: string, userId: string, body: CreateSetBody): Promise<ExerciseSet> {
     const {
       exercise_name,
@@ -107,15 +115,21 @@ export class SessionService {
       rpe = null,
       rir = null,
       completed_at = null,
+      equipment_id = null,
+      equipment_dedupe_key = null,
+      equipment_brand_name = null,
     } = body;
     const result = await this.db.query<ExerciseSet>(
       `INSERT INTO exercise_sets
-         (session_id, user_id, exercise_name, set_index, weight_kg, reps, rpe, rir, completed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         (session_id, user_id, exercise_name, set_index, weight_kg, reps, rpe, rir, completed_at,
+          equipment_id, equipment_dedupe_key, equipment_brand_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING id, session_id, user_id, exercise_name, set_index,
          weight_kg::float, reps, rpe::float, rir,
-         completed_at::text, created_at::text`,
-      [sessionId, userId, exercise_name, set_index, weight_kg, reps, rpe, rir, completed_at]
+         completed_at::text, created_at::text,
+         equipment_id, equipment_dedupe_key, equipment_brand_name`,
+      [sessionId, userId, exercise_name, set_index, weight_kg, reps, rpe, rir, completed_at,
+       equipment_id, equipment_dedupe_key, equipment_brand_name]
     );
     return result.rows[0];
   }
@@ -124,7 +138,8 @@ export class SessionService {
     const result = await this.db.query<ExerciseSet>(
       `SELECT id, session_id, user_id, exercise_name, set_index,
          weight_kg::float, reps, rpe::float, rir,
-         completed_at::text, created_at::text
+         completed_at::text, created_at::text,
+         equipment_id, equipment_dedupe_key, equipment_brand_name
        FROM exercise_sets
        WHERE session_id = $1 AND user_id = $2
        ORDER BY exercise_name, set_index`,

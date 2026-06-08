@@ -26,6 +26,9 @@ export const createSetSchema = z.object({
   rpe: z.number().min(0).max(10).nullable().optional(),
   rir: z.number().int().min(0).max(20).nullable().optional(),
   completed_at: isoDate.optional(),
+  equipment_id: z.string().max(64).nullable().optional(),
+  equipment_dedupe_key: z.string().max(300).nullable().optional(),
+  equipment_brand_name: z.string().max(200).nullable().optional(),
 });
 
 export const createExerciseSchema = z.object({
@@ -67,6 +70,10 @@ export const createTemplateSchema = z.object({
         target_reps: z.string().max(50),
         target_rpe: z.number().min(0).max(10).nullable().optional(),
         rest_seconds: z.number().int().min(0).max(3600),
+        notes: z.string().max(2000).nullable().optional(),
+        equipment_id: z.string().max(64).nullable().optional(),
+        equipment_dedupe_key: z.string().max(300).nullable().optional(),
+        equipment_brand_name: z.string().max(200).nullable().optional(),
       })
     )
     .max(50)

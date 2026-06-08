@@ -17,7 +17,8 @@ export class TemplateService {
     const templateIds = templatesResult.rows.map((t) => t.id);
     const exResult = await this.db.query<TemplateExercise>(
       `SELECT id, template_id, exercise_id::text, exercise_name, order_index,
-         target_sets, target_reps, target_rpe, rest_seconds
+         target_sets, target_reps, target_rpe, rest_seconds, notes,
+         equipment_id, equipment_dedupe_key, equipment_brand_name
        FROM template_exercises
        WHERE template_id = ANY($1)
        ORDER BY template_id, order_index`,
@@ -54,13 +55,16 @@ export class TemplateService {
         const eResult = await client.query<TemplateExercise>(
           `INSERT INTO template_exercises
              (template_id, user_id, exercise_id, exercise_name, order_index,
-              target_sets, target_reps, target_rpe, rest_seconds)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              target_sets, target_reps, target_rpe, rest_seconds, notes,
+              equipment_id, equipment_dedupe_key, equipment_brand_name)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
            RETURNING id, template_id, exercise_id::text, exercise_name, order_index,
-             target_sets, target_reps, target_rpe, rest_seconds`,
+             target_sets, target_reps, target_rpe, rest_seconds, notes,
+             equipment_id, equipment_dedupe_key, equipment_brand_name`,
           [
             template.id, userId, ex.exercise_id ?? null, ex.exercise_name, ex.order_index,
-            ex.target_sets, ex.target_reps, ex.target_rpe ?? null, ex.rest_seconds,
+            ex.target_sets, ex.target_reps, ex.target_rpe ?? null, ex.rest_seconds, ex.notes ?? null,
+            ex.equipment_id ?? null, ex.equipment_dedupe_key ?? null, ex.equipment_brand_name ?? null,
           ]
         );
         exercises.push(eResult.rows[0]);
@@ -90,7 +94,8 @@ export class TemplateService {
     if (!result.rows[0]) return null;
     const exResult = await this.db.query<TemplateExercise>(
       `SELECT id, template_id, exercise_id::text, exercise_name, order_index,
-         target_sets, target_reps, target_rpe, rest_seconds
+         target_sets, target_reps, target_rpe, rest_seconds, notes,
+         equipment_id, equipment_dedupe_key, equipment_brand_name
        FROM template_exercises WHERE template_id = $1 ORDER BY order_index`,
       [templateId]
     );
