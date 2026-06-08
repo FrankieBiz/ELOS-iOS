@@ -7,7 +7,7 @@ final class ProfileEditViewModel: ObservableObject {
     @Published var lastName      = ""
     @Published var heightFeet    = 5
     @Published var heightInches  = 10
-    @Published var weightLbs: Double = 160
+    @Published var weightKg: Double = 72.5
     @Published var ageYears      = 17
     @Published var experience    = "beginner"
     @Published var trainingGoal  = "hypertrophy"
@@ -28,7 +28,7 @@ final class ProfileEditViewModel: ObservableObject {
         let totalIn  = Int(record.heightCm / 2.54)
         heightFeet   = max(3, totalIn / 12)
         heightInches = totalIn % 12
-        weightLbs    = record.weightKg > 0 ? record.weightKg / 0.453592 : 160
+        weightKg     = record.weightKg > 0 ? record.weightKg : 72.5
         ageYears     = record.ageYears > 0 ? record.ageYears : 17
         experience   = record.trainingExperience.isEmpty ? "beginner" : record.trainingExperience
         trainingGoal = record.trainingGoal.isEmpty ? "hypertrophy" : record.trainingGoal
@@ -41,7 +41,6 @@ final class ProfileEditViewModel: ObservableObject {
     }
 
     private var heightCm: Double { Double(heightFeet * 12 + heightInches) * 2.54 }
-    private var weightKg: Double { weightLbs * 0.453592 }
 
     func save(record: UserProfileRecord, context: ModelContext, appVM: AppViewModel, useImperial: Bool) async {
         isLoading    = true
@@ -109,7 +108,6 @@ struct ProfileEditView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @StateObject private var editVM = ProfileEditViewModel()
-    @AppStorage("preferLbs") private var preferLbs: Bool = false
 
     private let experienceOptions: [(String, String)] = [
         ("beginner",     "Beginner"),
@@ -171,22 +169,23 @@ struct ProfileEditView: View {
                     HStack {
                         Text("Weight")
                         Spacer()
-                        if preferLbs {
-                            Text(String(format: "%.0f lbs", editVM.weightLbs))
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text(String(format: "%.1f kg", editVM.weightLbs * 0.453592))
-                                .foregroundStyle(.secondary)
-                        }
-                        Stepper("", value: $editVM.weightLbs, in: 50...500, step: 1)
+                        Text(vm.weightUnit.formatWeight(kg: editVM.weightKg))
+                            .foregroundStyle(.secondary)
+                        Stepper("", value: Binding(
+                            get: { vm.weightUnit.fromKg(editVM.weightKg) },
+                            set: { editVM.weightKg = vm.weightUnit.toKg($0) }
+                        ), in: vm.weightUnit == .kg ? 20...300 : 50...660, step: 1)
                             .labelsHidden()
                     }
                     HStack {
                         Text("Unit")
                         Spacer()
-                        Picker("", selection: $preferLbs) {
-                            Text("kg").tag(false)
-                            Text("lbs").tag(true)
+                        Picker("", selection: Binding(
+                            get: { vm.weightUnit },
+                            set: { vm.setWeightUnit($0) }
+                        )) {
+                            Text("kg").tag(WeightUnit.kg)
+                            Text("lb").tag(WeightUnit.lb)
                         }
                         .pickerStyle(.segmented)
                         .fixedSize()
@@ -252,8 +251,6 @@ struct ProfileEditView: View {
         let desc = FetchDescriptor<UserProfileRecord>(predicate: #Predicate { $0.ownerID == uid })
         if let record = try? modelContext.fetch(desc).first {
             editVM.load(from: record)
-            // Reflect the account's stored unit preference in the local display toggle.
-            preferLbs = record.useImperial
         }
         // If no local record the form shows default values — that's fine,
         // saveProfile() will create the record on first save.
@@ -272,6 +269,6 @@ struct ProfileEditView: View {
             modelContext.insert(newRecord)
             record = newRecord
         }
-        await editVM.save(record: record, context: modelContext, appVM: vm, useImperial: preferLbs)
+        await editVM.save(record: record, context: modelContext, appVM: vm, useImperial: vm.weightUnit.useImperial)
     }
 }

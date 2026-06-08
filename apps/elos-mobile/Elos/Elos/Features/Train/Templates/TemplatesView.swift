@@ -49,7 +49,10 @@ class TemplatesViewModel: ObservableObject {
                                 targetReps: ex.target_reps,
                                 targetRPE: ex.target_rpe ?? 0,
                                 restSeconds: ex.rest_seconds,
-                                notes: ex.notes ?? ""
+                                notes: ex.notes ?? "",
+                                equipmentId: ex.equipment_id,
+                                equipmentDedupeKey: ex.equipment_dedupe_key,
+                                equipmentBrandName: ex.equipment_brand_name
                             ))
                         }
                     }
@@ -98,7 +101,10 @@ class TemplatesViewModel: ObservableObject {
                         target_reps: ex.targetReps,
                         target_rpe: ex.targetRPE > 0 ? ex.targetRPE : nil,
                         rest_seconds: ex.restSeconds,
-                        notes: ex.notes.isEmpty ? nil : ex.notes
+                        notes: ex.notes.isEmpty ? nil : ex.notes,
+                        equipment_id: ex.equipmentId,
+                        equipment_dedupe_key: ex.equipmentDedupeKey,
+                        equipment_brand_name: ex.equipmentBrandName
                     )
                 }
             )
@@ -163,7 +169,10 @@ class TemplatesViewModel: ObservableObject {
                         target_reps: ex.targetReps,
                         target_rpe: ex.targetRPE > 0 ? ex.targetRPE : nil,
                         rest_seconds: ex.restSeconds,
-                        notes: ex.notes.isEmpty ? nil : ex.notes
+                        notes: ex.notes.isEmpty ? nil : ex.notes,
+                        equipment_id: ex.equipmentId,
+                        equipment_dedupe_key: ex.equipmentDedupeKey,
+                        equipment_brand_name: ex.equipmentBrandName
                     )
                 }
             )
@@ -218,6 +227,9 @@ struct TemplateExerciseResponse: Decodable {
     let target_rpe: Double?
     let rest_seconds: Int
     let notes: String?
+    let equipment_id: String?
+    let equipment_dedupe_key: String?
+    let equipment_brand_name: String?
 }
 
 private struct CreateTemplateRequest: Encodable {
@@ -239,6 +251,9 @@ private struct TemplateExerciseRequest: Encodable {
     let target_rpe: Double?
     let rest_seconds: Int
     let notes: String?
+    let equipment_id: String?
+    let equipment_dedupe_key: String?
+    let equipment_brand_name: String?
 }
 
 private struct EmptyResponse: Decodable {}

@@ -78,6 +78,19 @@ struct SettingsView: View {
                         .pickerStyle(.segmented)
                         .frame(width: 180)
                     }
+                    HStack {
+                        Label("Units", systemImage: "scalemass")
+                        Spacer()
+                        Picker("", selection: Binding(
+                            get: { vm.weightUnit },
+                            set: { vm.setWeightUnit($0) }
+                        )) {
+                            Text("kg").tag(WeightUnit.kg)
+                            Text("lb").tag(WeightUnit.lb)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 120)
+                    }
                 }
 
                 Section("Training") {

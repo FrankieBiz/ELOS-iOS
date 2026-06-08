@@ -1,9 +1,11 @@
 import SwiftUI
 
 struct PlateCalculatorView: View {
+    @EnvironmentObject private var vm: AppViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var targetWeight: Double = 135
     @State private var useKg = false
+    @State private var didInit = false
 
     private let barWeightLbs: Double = 45
     private let barWeightKg: Double  = 20
@@ -53,6 +55,12 @@ struct PlateCalculatorView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }.fontWeight(.semibold)
                 }
+            }
+            .onAppear {
+                guard !didInit else { return }
+                didInit = true
+                useKg = vm.weightUnit == .kg
+                targetWeight = useKg ? 60 : 135
             }
         }
     }

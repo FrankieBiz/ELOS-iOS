@@ -19,10 +19,8 @@ struct PostSessionSummaryView: View {
         Int(Date().timeIntervalSince(summary.startedAt)) / 60
     }
 
-    private var volumeLbs: String {
-        let lbs = summary.totalVolumeKg * 2.205
-        if lbs >= 1000 { return String(format: "%.1fk lbs", lbs / 1000) }
-        return String(format: "%.0f lbs", lbs)
+    private var volumeText: String {
+        vm.weightUnit.formatVolume(kg: summary.totalVolumeKg)
     }
 
     private var thisSessionXP: Int {
@@ -68,7 +66,7 @@ struct PostSessionSummaryView: View {
         HStack(spacing: 0) {
             statColumn(title: "\(durationMinutes) min", sub: "Duration")
             Divider().frame(height: 40)
-            statColumn(title: volumeLbs, sub: "Volume")
+            statColumn(title: volumeText, sub: "Volume")
             Divider().frame(height: 40)
             statColumn(title: "\(trainVM.sessionSets.filter(\.isDone).count)", sub: "Sets")
         }

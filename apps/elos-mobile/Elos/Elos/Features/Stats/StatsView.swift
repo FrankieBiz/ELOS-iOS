@@ -84,10 +84,11 @@ struct StatsView: View {
                 color: Color.tint
             )
             summaryCell(
-                value: totalVolumeKg >= 1000
-                    ? String(format: "%.0fk", totalVolumeKg / 1000)
-                    : String(format: "%.0f", totalVolumeKg),
-                unit: "kg",
+                value: {
+                    let v = vm.weightUnit.fromKg(totalVolumeKg)
+                    return v >= 1000 ? String(format: "%.0fk", v / 1000) : String(format: "%.0f", v)
+                }(),
+                unit: vm.weightUnit.label,
                 label: "Volume Lifted",
                 icon: "scalemass.fill",
                 color: Color.good
@@ -170,7 +171,7 @@ struct StatsView: View {
                 if analyticsVM.isLoading { ProgressView().scaleEffect(0.7) }
                 if let last = analyticsVM.e1rmHistory.last {
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text(String(format: "%.1f kg", last.e1rm))
+                        Text(vm.weightUnit.formatWeight(kg: last.e1rm))
                             .font(.system(size: 18, weight: .bold, design: .monospaced))
                         Text("current").font(.caption).foregroundStyle(.secondary)
                     }
@@ -178,12 +179,12 @@ struct StatsView: View {
             }
             if analyticsVM.e1rmHistory.count >= 2 {
                 Chart(analyticsVM.e1rmHistory) { p in
-                    LineMark(x: .value("Day", p.day), y: .value("e1RM", p.e1rm))
+                    LineMark(x: .value("Day", p.day), y: .value("e1RM", vm.weightUnit.fromKg(p.e1rm)))
                         .foregroundStyle(Color.tint).interpolationMethod(.catmullRom)
-                    AreaMark(x: .value("Day", p.day), y: .value("e1RM", p.e1rm))
+                    AreaMark(x: .value("Day", p.day), y: .value("e1RM", vm.weightUnit.fromKg(p.e1rm)))
                         .foregroundStyle(Color.tint.opacity(0.12)).interpolationMethod(.catmullRom)
                 }
-                .frame(height: 160).chartXAxis(.hidden).chartYAxisLabel("kg")
+                .frame(height: 160).chartXAxis(.hidden).chartYAxisLabel(vm.weightUnit.label)
             } else {
                 Text("Log a few sessions to see your e1RM trend.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -235,9 +236,9 @@ struct StatsView: View {
                 ForEach(analyticsVM.prs.prefix(8)) { pr in
                     HStack {
                         Text(pr.exerciseName).font(.subheadline).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                        Text(String(format: "%.1f kg", pr.weightKg)).font(.system(size: 15, weight: .bold, design: .monospaced))
+                        Text(vm.weightUnit.formatWeight(kg: pr.weightKg)).font(.system(size: 15, weight: .bold, design: .monospaced))
                         Text("×\(pr.reps)").font(.caption).foregroundStyle(.secondary).frame(width: 30)
-                        Text(String(format: "e1RM %.0f", pr.e1rm)).font(.caption2).foregroundStyle(Color.good)
+                        Text("e1RM \(vm.weightUnit.formatValue(kg: pr.e1rm, decimals: 0))").font(.caption2).foregroundStyle(Color.good)
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Color.good.opacity(0.12)).clipShape(Capsule())
                     }

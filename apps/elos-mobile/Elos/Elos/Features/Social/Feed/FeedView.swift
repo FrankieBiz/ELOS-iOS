@@ -230,12 +230,11 @@ struct ReactionBar: View {
 // MARK: - Content blocks
 
 struct WorkoutPostContent: View {
+    @EnvironmentObject private var appVM: AppViewModel
     let payload: FeedPayload
 
     private var volumeString: String {
-        let v = payload.volume_kg ?? 0
-        if v >= 1000 { return String(format: "%.1fk kg", v / 1000) }
-        return String(format: "%.0f kg", v)
+        appVM.weightUnit.formatVolume(kg: payload.volume_kg ?? 0)
     }
 
     var body: some View {
@@ -252,7 +251,7 @@ struct WorkoutPostContent: View {
             if let top = payload.top_lift {
                 badge(icon: "flame.fill", color: Color.tint,
                       text: "Top Lift · \(top.name)",
-                      trailing: String(format: "%.0f kg × %d", top.weight_kg, top.reps))
+                      trailing: "\(appVM.weightUnit.formatWeight(kg: top.weight_kg, decimals: 0)) × \(top.reps)")
             }
             if let pr = payload.pr {
                 badge(icon: "trophy.fill", color: .yellow, text: "PR · \(pr)", trailing: nil)
@@ -285,6 +284,7 @@ struct WorkoutPostContent: View {
 }
 
 struct PrPostContent: View {
+    @EnvironmentObject private var appVM: AppViewModel
     let payload: FeedPayload
 
     var body: some View {
@@ -294,13 +294,13 @@ struct PrPostContent: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(payload.exercise_name ?? "Personal Record")
                     .font(.system(size: 16, weight: .bold))
-                Text(String(format: "%.0f kg × %d", payload.weight_kg ?? 0, payload.reps ?? 0))
+                Text("\(appVM.weightUnit.formatWeight(kg: payload.weight_kg ?? 0, decimals: 0)) × \(payload.reps ?? 0)")
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
             Spacer()
             VStack(spacing: 1) {
-                Text(String(format: "%.0f", payload.e1rm ?? 0))
+                Text(appVM.weightUnit.formatValue(kg: payload.e1rm ?? 0, decimals: 0))
                     .font(.system(size: 18, weight: .bold, design: .monospaced))
                     .foregroundStyle(Color.tint)
                 Text("e1RM").font(.system(size: 10)).foregroundStyle(.secondary)

@@ -12,6 +12,7 @@ class TrainViewModel: ObservableObject {
     @Published var prsHitThisSession: [String] = []
     @Published var showSessionRPEPrompt = false
     @Published var showDeloadSuggestion = false
+    @Published var deloadMessage = "Recent sessions have been very hard. Consider reducing volume this week to recover."
     @Published var recentExercises: [ExercisePickerViewModel.ExerciseResponse] = []
 
     init(context: ModelContext) {
@@ -25,7 +26,9 @@ class TrainViewModel: ObservableObject {
         do {
             let r: ListResponse = try await ApiClient.shared.get("/exercises/recent?limit=8")
             recentExercises = r.exercises
-        } catch {}
+        } catch {
+            // Offline-first: recent-exercise hints are a non-fatal enrichment.
+        }
     }
 
     // MARK: - Session lifecycle
@@ -48,7 +51,10 @@ class TrainViewModel: ObservableObject {
         weightKg: Double,
         reps: Int,
         rpe: Double,
-        ownerID: String
+        ownerID: String,
+        equipmentId: String? = nil,
+        equipmentDedupeKey: String? = nil,
+        equipmentBrandName: String? = nil
     ) {
         guard let session = currentSession else { return }
         let now = Date()
@@ -63,6 +69,9 @@ class TrainViewModel: ObservableObject {
             rpe: rpe,
             isDone: true,
             completedAt: now,
+            equipmentId: equipmentId,
+            equipmentDedupeKey: equipmentDedupeKey,
+            equipmentBrandName: equipmentBrandName,
             syncPending: true
         )
         context.insert(record)
@@ -71,7 +80,9 @@ class TrainViewModel: ObservableObject {
         try? context.save()
 
         checkAndUpdatePR(exerciseName: exerciseName, weightKg: weightKg, reps: reps,
-                         sessionID: session.id, ownerID: ownerID)
+                         sessionID: session.id, ownerID: ownerID,
+                         equipmentDedupeKey: equipmentDedupeKey,
+                         equipmentBrandName: equipmentBrandName)
 
         Task { await WorkoutSyncService.shared.pushSet(record, session: session, context: context) }
     }
@@ -92,12 +103,21 @@ class TrainViewModel: ObservableObject {
             }
         )
         guard let records = try? context.fetch(desc), !records.isEmpty else { return }
+        let serverSessionID = session.serverID
+        let deletedServerIDs = records.map(\.serverID).filter { !$0.isEmpty }
         for record in records {
             session.totalVolume -= record.weightKg * Double(max(record.reps, 0))
             context.delete(record)
         }
         sessionSets.removeAll { $0.exerciseName == exerciseName && $0.setIndex == setIndex && $0.sessionID == sid }
         try? context.save()
+
+        // Propagate the deletion to the server so it doesn't resurrect on re-sync.
+        if !serverSessionID.isEmpty {
+            for setServerID in deletedServerIDs {
+                Task { await WorkoutSyncService.shared.deleteSet(serverSessionID: serverSessionID, setServerID: setServerID) }
+            }
+        }
     }
 
     func finishSession(sessionRPE: Int, ownerID: String) {
@@ -170,13 +190,35 @@ class TrainViewModel: ObservableObject {
         )
     }
 
+    // MARK: - Lift identity (per-machine progressive overload)
+
+    /// Treat nil / empty dedupe keys as "generic".
+    private func normalizedKey(_ key: String?) -> String? {
+        guard let k = key, !k.isEmpty else { return nil }
+        return k
+    }
+
+    /// Two sets are the "same lift" iff both have equal non-empty dedupe keys
+    /// (machine-specific), or both are generic and the names match. This is what
+    /// keeps progressive overload / PRs scoped to a specific machine.
+    private func sameLift(_ record: ExerciseSetRecord, exerciseName: String, dedupeKey: String?) -> Bool {
+        let target = normalizedKey(dedupeKey)
+        let recordKey = normalizedKey(record.equipmentDedupeKey)
+        if let target, let recordKey { return target == recordKey }
+        if target == nil && recordKey == nil {
+            return record.exerciseName.caseInsensitiveCompare(exerciseName) == .orderedSame
+        }
+        return false
+    }
+
     // MARK: - Previous set lookup for pre-filling
 
-    func previousSets(for exerciseName: String, ownerID: String) -> [ExerciseSetRecord] {
+    func previousSets(for exerciseName: String, ownerID: String, equipmentDedupeKey: String? = nil) -> [ExerciseSetRecord] {
         let desc = FetchDescriptor<ExerciseSetRecord>(
             predicate: #Predicate { $0.ownerID == ownerID && $0.exerciseName == exerciseName && $0.isDone == true }
         )
-        let all = (try? context.fetch(desc)) ?? []
+        let all = ((try? context.fetch(desc)) ?? [])
+            .filter { sameLift($0, exerciseName: exerciseName, dedupeKey: equipmentDedupeKey) }
         guard !all.isEmpty else { return [] }
 
         let currentID = currentSession?.id ?? ""
@@ -189,20 +231,52 @@ class TrainViewModel: ObservableObject {
         return prior.filter { $0.sessionID == latestID }.sorted { $0.setIndex < $1.setIndex }
     }
 
-    // Returns a human-readable suggestion string, or nil if no suggestion
-    func overloadSuggestion(for exerciseName: String, ownerID: String) -> String? {
-        let prev = previousSets(for: exerciseName, ownerID: ownerID)
-        guard !prev.isEmpty else { return nil }
-        let validRPE = prev.filter { $0.rpe > 0 }
-        let avgRPE = validRPE.isEmpty ? 0.0 :
-            validRPE.map(\.rpe).reduce(0, +) / Double(validRPE.count)
-        let lastWeight = prev.last?.weightKg ?? 0
-        if avgRPE > 0 && avgRPE <= 8.0 {
-            return String(format: "Try +2.5 kg → %.1f", lastWeight + 2.5)
-        } else if avgRPE >= 9.5 {
-            return String(format: "Consider %.1f kg (high RPE last time)", max(0, lastWeight - 2.5))
+    /// Per-session average RPE (nil if none logged) + top weight, most-recent first.
+    private func recentSessionStats(for exerciseName: String, ownerID: String, equipmentDedupeKey: String?)
+        -> [(avgRPE: Double?, topWeightKg: Double, lastCompleted: Date)] {
+        let desc = FetchDescriptor<ExerciseSetRecord>(
+            predicate: #Predicate { $0.ownerID == ownerID && $0.exerciseName == exerciseName && $0.isDone == true }
+        )
+        let all = ((try? context.fetch(desc)) ?? [])
+            .filter { sameLift($0, exerciseName: exerciseName, dedupeKey: equipmentDedupeKey) }
+        let bySession = Dictionary(grouping: all, by: { $0.sessionID })
+        return bySession.values.map { sets -> (Double?, Double, Date) in
+            let rpes = sets.map(\.rpe).filter { $0 > 0 }
+            let avg = rpes.isEmpty ? nil : rpes.reduce(0, +) / Double(rpes.count)
+            let top = sets.map(\.weightKg).max() ?? 0
+            let when = sets.compactMap(\.completedAt).max() ?? .distantPast
+            return (avg, top, when)
         }
-        return nil
+        .sorted { $0.2 > $1.2 }
+    }
+
+    // Returns a human-readable suggestion string (in the user's unit), or nil if no suggestion.
+    // Fatigue-aware: weighs the RPE trend across recent sessions, not just the last one,
+    // and avoids recommending progression when there's no RPE data to justify it.
+    func overloadSuggestion(for exerciseName: String, ownerID: String, unit: WeightUnit, equipmentDedupeKey: String? = nil) -> String? {
+        let sessions = recentSessionStats(for: exerciseName, ownerID: ownerID, equipmentDedupeKey: equipmentDedupeKey)
+        guard let last = sessions.first else { return nil }
+
+        let lastDisplay = unit.fromKg(last.topWeightKg)
+        let inc = unit.increment
+        let incStr = unit == .kg ? String(format: "%.1f", inc) : String(format: "%.0f", inc)
+        func up() -> String { "Try +\(incStr) \(unit.label) → \(unit.formatWeight(kg: unit.toKg(unit.round(lastDisplay + inc))))" }
+        func down() -> String { "Ease off to \(unit.formatWeight(kg: unit.toKg(max(0, unit.round(lastDisplay - inc))))) — RPE was high" }
+
+        guard let lastRPE = last.avgRPE else {
+            // No RPE logged — can't gauge effort; nudge toward a small progression via reps.
+            return "Log RPE to tune suggestions — or add a rep this session"
+        }
+
+        // Fatigue check: RPE climbing across the last 2–3 sessions.
+        let priorRPEs = sessions.dropFirst().prefix(2).compactMap(\.avgRPE)
+        if let prevAvg = priorRPEs.first, lastRPE - prevAvg >= 1.5, lastRPE >= 8.5 {
+            return "RPE climbing (\(String(format: "%.1f", prevAvg))→\(String(format: "%.1f", lastRPE))) — hold weight, watch fatigue"
+        }
+
+        if lastRPE >= 9.5 { return down() }
+        if lastRPE <= 8.0 { return up() }
+        return "Solid effort — add a rep before adding load"
     }
 
     // MARK: - Weekly volume (computed locally from SwiftData)
@@ -240,7 +314,9 @@ class TrainViewModel: ObservableObject {
 
     private func checkAndUpdatePR(
         exerciseName: String, weightKg: Double, reps: Int,
-        sessionID: String, ownerID: String
+        sessionID: String, ownerID: String,
+        equipmentDedupeKey: String? = nil,
+        equipmentBrandName: String? = nil
     ) {
         guard reps > 0, reps <= 30, weightKg > 0 else { return }
         let newE1RM = weightKg * (1.0 + Double(reps) / 30.0)
@@ -249,21 +325,34 @@ class TrainViewModel: ObservableObject {
             predicate: #Predicate { $0.ownerID == ownerID && $0.exerciseName == exerciseName && $0.isDone == true }
         )
         let all = (try? context.fetch(desc)) ?? []
-        let historical = all.filter { $0.sessionID != sessionID && $0.reps > 0 && $0.reps <= 30 && $0.weightKg > 0 }
+        // Only compare against history for the SAME machine (or generic) — per-machine PRs.
+        let historical = all.filter {
+            $0.sessionID != sessionID && $0.reps > 0 && $0.reps <= 30 && $0.weightKg > 0
+            && sameLift($0, exerciseName: exerciseName, dedupeKey: equipmentDedupeKey)
+        }
         let maxPrior = historical.map { $0.weightKg * (1.0 + Double($0.reps) / 30.0) }.max() ?? 0
 
         guard newE1RM > maxPrior else { return }
 
-        withAnimation(.spring(duration: 0.3)) {
-            newPRExerciseName = exerciseName
+        // Label the PR with the brand for machine-specific lifts so two machines
+        // surface as distinct PRs.
+        let prLabel: String
+        if let brand = equipmentBrandName, !brand.isEmpty {
+            prLabel = "\(brand) \(exerciseName)"
+        } else {
+            prLabel = exerciseName
         }
-        if !prsHitThisSession.contains(exerciseName) {
-            prsHitThisSession.append(exerciseName)
+
+        withAnimation(.spring(duration: 0.3)) {
+            newPRExerciseName = prLabel
+        }
+        if !prsHitThisSession.contains(prLabel) {
+            prsHitThisSession.append(prLabel)
         }
         Task {
             try? await Task.sleep(nanoseconds: 3_500_000_000)
             withAnimation {
-                if self.newPRExerciseName == exerciseName {
+                if self.newPRExerciseName == prLabel {
                     self.newPRExerciseName = nil
                 }
             }
@@ -281,14 +370,37 @@ class TrainViewModel: ObservableObject {
         let recent = (try? context.fetch(desc)) ?? []
         let finished = recent.filter { $0.finishedAt != nil }
         guard finished.count >= 3 else { return }
-        if finished.prefix(3).filter({ $0.sessionRPE >= 9 }).count >= 3 {
+        let lastThree = Array(finished.prefix(3))
+        if lastThree.filter({ $0.sessionRPE >= 9 }).count >= 3 {
+            let avg = lastThree.map { Double($0.sessionRPE) }.reduce(0, +) / Double(lastThree.count)
+            deloadMessage = "Last 3 sessions averaged RPE \(String(format: "%.1f", avg)). Consider reducing volume ~40% this week to recover."
             showDeloadSuggestion = true
         }
     }
 
-    // MARK: - Muscle group heuristic
+    // MARK: - Muscle group mapping
 
+    /// Lazy name → primary-muscle map from the synced exercise catalog.
+    private var dbMuscleByName: [String: String]?
+
+    private func dbPrimaryMuscle(for exerciseName: String) -> String? {
+        if dbMuscleByName == nil {
+            let defs = (try? context.fetch(FetchDescriptor<ExerciseDefinitionRecord>())) ?? []
+            var map: [String: String] = [:]
+            for d in defs where !d.primaryMuscle.isEmpty {
+                map[d.name.lowercased()] = d.primaryMuscle.lowercased()
+            }
+            dbMuscleByName = map
+        }
+        guard let m = dbMuscleByName?[exerciseName.lowercased()], !m.isEmpty else { return nil }
+        return m
+    }
+
+    /// Resolve the trained muscle for an exercise. Prefer the canonical
+    /// `ExerciseDefinitionRecord.primary_muscle` from the synced catalog; fall
+    /// back to a name heuristic for custom/unmatched exercises.
     func muscleGroup(for exerciseName: String) -> String {
+        if let dbMuscle = dbPrimaryMuscle(for: exerciseName) { return dbMuscle }
         let n = exerciseName.lowercased()
         if n.contains("bench") || n.contains("fly") || (n.contains("push") && !n.contains("pushdown")) { return "chest" }
         if n.contains("squat") || n.contains("leg press") || n.contains("lunge") || n.contains("extension") { return "quads" }

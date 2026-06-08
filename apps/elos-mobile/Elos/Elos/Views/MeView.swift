@@ -295,8 +295,6 @@ struct MeView: View {
                 }
             }
 
-            heatmapGrid
-
             if vm.habits.isEmpty {
                 Button {
                     vm.showingAddHabit = true
@@ -341,24 +339,6 @@ struct MeView: View {
         }
         .padding(16)
         .elosCard()
-    }
-
-    private var heatmapGrid: some View {
-        let cols = 24
-        let rows = 7
-        return LazyVGrid(
-            columns: Array(repeating: GridItem(.fixed(10), spacing: 2), count: cols),
-            spacing: 2
-        ) {
-            ForEach(0..<(cols * rows), id: \.self) { i in
-                let level = (i * 31) % 100 / 25
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(level == 0
-                          ? Color.secondary.opacity(0.12)
-                          : Color.mHabits.opacity(Double(level) * 0.22))
-                    .frame(width: 10, height: 10)
-            }
-        }
     }
 
     // MARK: Settings List

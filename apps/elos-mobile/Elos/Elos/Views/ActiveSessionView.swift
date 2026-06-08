@@ -71,7 +71,7 @@ struct ActiveSessionView: View {
             Button("Finish", role: .destructive) { showRPEPrompt = true }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(String(format: "Volume: %.0f kg", trainVM.currentSession?.totalVolume ?? vm.sessionVolume))
+            Text("Volume: \(vm.weightUnit.formatVolume(kg: trainVM.currentSession?.totalVolume ?? vm.sessionVolumeKg))")
         }
         .sheet(isPresented: $showRPEPrompt) {
             SessionRPESheet(rpe: $pendingSessionRPE) {
@@ -94,7 +94,11 @@ struct ActiveSessionView: View {
                     secondaryMuscles: [],
                     setsLabel: "3×10",
                     lastBest: "",
-                    sets: (0..<3).map { _ in WorkSet(weight: "", reps: "10", rpe: "") }
+                    sets: (0..<3).map { _ in WorkSet(weight: "", reps: "10", rpe: "") },
+                    equipmentId: picked.equipmentId,
+                    equipmentDedupeKey: picked.equipmentDedupeKey,
+                    equipmentBrandName: picked.equipmentBrandName,
+                    isGenericExercise: picked.isGenericExercise
                 )
                 vm.exercises.append(newEx)
                 showExercisePicker = false
@@ -212,9 +216,7 @@ struct ActiveSessionView: View {
     }
 
     private var volumeFormatted: String {
-        let vol = trainVM.currentSession?.totalVolume ?? vm.sessionVolume
-        if vol >= 1000 { return String(format: "%.1fk", vol / 1000) }
-        return String(format: "%.0f kg", vol)
+        vm.weightUnit.formatVolume(kg: trainVM.currentSession?.totalVolume ?? vm.sessionVolumeKg)
     }
 
     // MARK: Rest Timer
@@ -276,7 +278,7 @@ struct ActiveSessionView: View {
                     let isDone = ex.sets.allSatisfy(\.done)
                     let isActive = activeExerciseId == ex.id
                     let doneSets = ex.sets.filter(\.done).count
-                    let suggestion = trainVM.overloadSuggestion(for: ex.name, ownerID: vm.currentUserID)
+                    let suggestion = trainVM.overloadSuggestion(for: ex.name, ownerID: vm.currentUserID, unit: vm.weightUnit, equipmentDedupeKey: ex.equipmentDedupeKey)
 
                     SessionExerciseCard(
                         exercise: $ex,
@@ -284,41 +286,65 @@ struct ActiveSessionView: View {
                         isActive: isActive,
                         doneCount: doneSets,
                         overloadSuggestion: suggestion,
-                        previousSets: trainVM.previousSets(for: ex.name, ownerID: vm.currentUserID),
+                        previousSets: trainVM.previousSets(for: ex.name, ownerID: vm.currentUserID, equipmentDedupeKey: ex.equipmentDedupeKey),
+                        unit: vm.weightUnit,
                         onSelect: {
                             withAnimation { activeExerciseId = ex.id }
                         },
                         onSetToggle: { sIdx in
                             let wasDone = ex.sets[sIdx].done
                             let eIdx = vm.exercises.firstIndex(where: { $0.id == ex.id }) ?? 0
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
-                                vm.toggleSet(exerciseIndex: eIdx, setIndex: sIdx)
-                            }
+
+                            // Validate before logging so empty/garbage sets never persist.
                             if !wasDone {
-                                HapticManager.impact(.medium)
-                                NotificationManager.scheduleRestTimer(seconds: 90)
-                                let weightKg = (Double(ex.sets[sIdx].weight) ?? 0) * 0.453592
                                 let reps = Int(ex.sets[sIdx].reps) ?? 0
-                                let rpe = Double(ex.sets[sIdx].rpe) ?? 0
+                                guard reps > 0 else {
+                                    vm.showError("Enter reps before completing this set.")
+                                    return
+                                }
+                                let weightVal = max(0, Double(ex.sets[sIdx].weight) ?? 0)
+                                let weightKg = vm.weightUnit.toKg(weightVal)
+                                let rpe = min(10, max(0, Double(ex.sets[sIdx].rpe) ?? 0))
+                                let rest = ex.restSeconds > 0 ? ex.restSeconds : 90
+
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+                                    vm.toggleSet(exerciseIndex: eIdx, setIndex: sIdx)
+                                }
+                                HapticManager.impact(.medium)
+                                NotificationManager.scheduleRestTimer(seconds: rest)
                                 trainVM.logCompletedSet(
                                     exerciseName: ex.name,
                                     setIndex: sIdx,
                                     weightKg: weightKg,
                                     reps: reps,
                                     rpe: rpe,
-                                    ownerID: vm.currentUserID
+                                    ownerID: vm.currentUserID,
+                                    equipmentId: ex.equipmentId,
+                                    equipmentDedupeKey: ex.equipmentDedupeKey,
+                                    equipmentBrandName: ex.equipmentBrandName
                                 )
-                                restSeconds = 90
+                                restSeconds = rest
                                 restActive  = true
                                 restPaused  = false
                                 activeExerciseId = ex.id
                             } else {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+                                    vm.toggleSet(exerciseIndex: eIdx, setIndex: sIdx)
+                                }
                                 trainVM.unlogCompletedSet(
                                     exerciseName: ex.name,
                                     setIndex: sIdx,
                                     ownerID: vm.currentUserID
                                 )
                             }
+                        },
+                        onSetDelete: { sIdx in
+                            // Only offered for not-yet-logged sets, so there's no
+                            // server record to remove — just drop the planned row.
+                            let eIdx = vm.exercises.firstIndex(where: { $0.id == ex.id }) ?? 0
+                            guard sIdx < vm.exercises[eIdx].sets.count,
+                                  !vm.exercises[eIdx].sets[sIdx].done else { return }
+                            withAnimation { vm.exercises[eIdx].sets.remove(at: sIdx) }
                         }
                     )
                 }
@@ -437,8 +463,10 @@ private struct SessionExerciseCard: View {
     let doneCount: Int
     let overloadSuggestion: String?
     let previousSets: [ExerciseSetRecord]
+    let unit: WeightUnit
     let onSelect: () -> Void
     let onSetToggle: (Int) -> Void
+    let onSetDelete: (Int) -> Void
 
     @State private var expanded = true
     @State private var showingSwap = false
@@ -491,7 +519,7 @@ private struct SessionExerciseCard: View {
                     Divider()
                     HStack {
                         Text("#").frame(width: 24)
-                        Text("Weight (lb)").frame(maxWidth: .infinity)
+                        Text("Weight (\(unit.label))").frame(maxWidth: .infinity)
                         Text("Reps").frame(width: 50)
                         Text("RPE").frame(width: 40)
                         Image(systemName: "checkmark").frame(width: 36)
@@ -502,17 +530,18 @@ private struct SessionExerciseCard: View {
                     ForEach(exercise.sets.indices, id: \.self) { i in
                         let s = exercise.sets[i]
                         let prevWeight: String = i < previousSets.count
-                            ? String(format: "%.0f", previousSets[i].weightKg / 0.453592) : ""
+                            ? unit.formatValue(kg: previousSets[i].weightKg) : ""
                         HStack(spacing: 8) {
                             Text("\(i + 1)")
                                 .font(.caption.monospaced()).foregroundStyle(.secondary)
                                 .frame(width: 24)
 
-                            TextField(prevWeight.isEmpty ? "lb" : prevWeight,
+                            TextField(prevWeight.isEmpty ? unit.label : prevWeight,
                                       text: $exercise.sets[i].weight)
                                 .font(.system(size: 14, design: .monospaced))
                                 .multilineTextAlignment(.center)
                                 .keyboardType(.decimalPad)
+                                .disabled(s.done)
                                 .padding(.horizontal, 8).padding(.vertical, 6)
                                 .background(Color(.tertiarySystemBackground))
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -524,6 +553,7 @@ private struct SessionExerciseCard: View {
                                 .font(.system(size: 14, design: .monospaced))
                                 .multilineTextAlignment(.center)
                                 .keyboardType(.numberPad)
+                                .disabled(s.done)
                                 .padding(.horizontal, 8).padding(.vertical, 6)
                                 .background(Color(.tertiarySystemBackground))
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -533,6 +563,7 @@ private struct SessionExerciseCard: View {
                                 .font(.system(size: 13, design: .monospaced))
                                 .multilineTextAlignment(.center)
                                 .keyboardType(.decimalPad)
+                                .disabled(s.done)
                                 .padding(.horizontal, 6).padding(.vertical, 6)
                                 .background(Color(.tertiarySystemBackground))
                                 .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -548,6 +579,19 @@ private struct SessionExerciseCard: View {
                         }
                         .padding(.horizontal, 14)
                         .opacity(s.done ? 0.55 : 1)
+                        .contextMenu {
+                            if s.done {
+                                // Logged sets are edited by un-marking (which deletes the
+                                // record locally + server), then re-entering values.
+                                Button {
+                                    onSetToggle(i)
+                                } label: { Label("Edit set", systemImage: "pencil") }
+                            } else {
+                                Button(role: .destructive) {
+                                    onSetDelete(i)
+                                } label: { Label("Delete set", systemImage: "trash") }
+                            }
+                        }
                     }
 
                     Divider()

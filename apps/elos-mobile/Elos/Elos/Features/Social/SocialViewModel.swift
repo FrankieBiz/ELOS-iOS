@@ -189,9 +189,9 @@ class SocialViewModel: ObservableObject {
         }
     }
 
-    func formattedValue(_ value: Double, metric: String) -> String {
+    func formattedValue(_ value: Double, metric: String, unit: WeightUnit = .kg) -> String {
         switch metric {
-        case "volume":   return String(format: "%.0f kg", value)
+        case "volume":   return unit.formatVolume(kg: value)
         case "sessions": return "\(Int(value)) sessions"
         case "streak":   return "\(Int(value)) days"
         case "prs":      return "\(Int(value)) PRs"

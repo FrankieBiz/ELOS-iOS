@@ -40,7 +40,10 @@ final class ExercisePickerViewModel: ObservableObject {
         do {
             let response: ListResponse = try await ApiClient.shared.get("/exercises/recent?limit=15")
             recent = response.exercises
-        } catch {}
+        } catch {
+            // Offline-first: the picker's main list comes from local @Query;
+            // these server enrichments are non-fatal if the network is down.
+        }
     }
 
     func loadFavorites() async {
@@ -50,14 +53,20 @@ final class ExercisePickerViewModel: ObservableObject {
             let response: ListResponse = try await ApiClient.shared.get("/exercises/favorites")
             favorites = response.exercises
             favoriteIDs = Set(response.exercises.map(\.id))
-        } catch {}
+        } catch {
+            // Offline-first: the picker's main list comes from local @Query;
+            // these server enrichments are non-fatal if the network is down.
+        }
     }
 
     func loadBrands() async {
         do {
             let response: BrandsListResponse = try await ApiClient.shared.get("/machines/brands")
             brands = response.brands.sorted { $0.name < $1.name }
-        } catch {}
+        } catch {
+            // Offline-first: the picker's main list comes from local @Query;
+            // these server enrichments are non-fatal if the network is down.
+        }
     }
 
     func loadByBrand(_ brandSlug: String) async {
@@ -74,26 +83,37 @@ final class ExercisePickerViewModel: ObservableObject {
 
     // Syncs the global exercise catalog into SwiftData so the @Query in
     // ExercisePickerView reflects the latest server data on every open.
+    // Upserts by ID so equipment/name changes from backend migrations propagate.
     func syncExercises(into context: ModelContext) async {
         guard let response = try? await ApiClient.shared.get("/exercises?limit=500") as ListResponse else { return }
         let incoming = response.exercises
         guard !incoming.isEmpty else { return }
 
         let existing = (try? context.fetch(FetchDescriptor<ExerciseDefinitionRecord>())) ?? []
-        let existingIDs = Set(existing.map(\.id))
+        let existingByID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
 
-        for ex in incoming where !existingIDs.contains(ex.id) {
-            let record = ExerciseDefinitionRecord(
-                id: ex.id,
-                ownerID: ex.owner_id ?? "",
-                name: ex.name,
-                primaryMuscle: ex.primary_muscle,
-                secondaryMusclesJSON: (try? String(data: JSONEncoder().encode(ex.secondary_muscles), encoding: .utf8)) ?? "[]",
-                equipment: ex.equipment,
-                movementPattern: ex.movement_pattern,
-                isCustom: ex.is_custom
-            )
-            context.insert(record)
+        for ex in incoming {
+            let secondaryJSON = (try? String(data: JSONEncoder().encode(ex.secondary_muscles), encoding: .utf8)) ?? "[]"
+            if let record = existingByID[ex.id] {
+                // Update mutable fields so backend corrections (e.g. equipment type) propagate
+                record.name = ex.name
+                record.equipment = ex.equipment
+                record.primaryMuscle = ex.primary_muscle
+                record.secondaryMusclesJSON = secondaryJSON
+                record.movementPattern = ex.movement_pattern
+            } else {
+                let record = ExerciseDefinitionRecord(
+                    id: ex.id,
+                    ownerID: ex.owner_id ?? "",
+                    name: ex.name,
+                    primaryMuscle: ex.primary_muscle,
+                    secondaryMusclesJSON: secondaryJSON,
+                    equipment: ex.equipment,
+                    movementPattern: ex.movement_pattern,
+                    isCustom: ex.is_custom
+                )
+                context.insert(record)
+            }
         }
         try? context.save()
     }

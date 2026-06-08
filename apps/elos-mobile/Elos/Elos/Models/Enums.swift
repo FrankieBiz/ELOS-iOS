@@ -105,6 +105,15 @@ struct Exercise: Identifiable {
     var setsLabel: String
     var lastBest: String
     var sets: [WorkSet]
+
+    // Machine/equipment identity (nil = generic exercise, not tied to a specific machine).
+    var equipmentId: String? = nil
+    var equipmentDedupeKey: String? = nil
+    var equipmentBrandName: String? = nil
+    var isGenericExercise: Bool = true
+
+    // Per-exercise rest target (seconds) used to seed the rest timer.
+    var restSeconds: Int = 90
 }
 
 struct MuscleVolume: Identifiable {

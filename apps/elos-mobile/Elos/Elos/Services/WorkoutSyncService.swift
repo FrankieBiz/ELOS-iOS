@@ -26,8 +26,37 @@ final class WorkoutSyncService {
         let reps: Int
         let rpe: Double?
         let completed_at: String
+        let equipment_id: String?
+        let equipment_dedupe_key: String?
+        let equipment_brand_name: String?
     }
     private struct IDResponse: Decodable { let id: String }
+
+    // MARK: - Down-sync response shapes (GET /sessions, GET /sessions/:id/sets)
+
+    private struct SessionListResponse: Decodable { let sessions: [SessionResponse] }
+    private struct SessionResponse: Decodable {
+        let id: String
+        let started_at: String?
+        let finished_at: String?
+        let session_rpe: Int?
+        let notes: String?
+        let template_id: String?
+        let total_volume: Double?
+    }
+    private struct SetListResponse: Decodable { let sets: [SetResponse] }
+    private struct SetResponse: Decodable {
+        let id: String
+        let exercise_name: String
+        let set_index: Int
+        let weight_kg: Double
+        let reps: Int
+        let rpe: Double?
+        let completed_at: String?
+        let equipment_id: String?
+        let equipment_dedupe_key: String?
+        let equipment_brand_name: String?
+    }
 
     // MARK: - Live push (called as the workout happens)
 
@@ -56,6 +85,12 @@ final class WorkoutSyncService {
         guard set.serverID.isEmpty else { return }
         guard !session.serverID.isEmpty else { set.syncPending = true; try? context.save(); return }
         await postSet(set, serverSessionID: session.serverID, context: context)
+    }
+
+    /// DELETE a previously-synced set server-side (when the user un-checks/removes it).
+    func deleteSet(serverSessionID: String, setServerID: String) async {
+        guard !serverSessionID.isEmpty, !setServerID.isEmpty else { return }
+        try? await ApiClient.shared.deleteNoContent("/sessions/\(serverSessionID)/sets/\(setServerID)")
     }
 
     /// PATCH the session's finish payload. Left pending if the id isn't known yet.
@@ -98,6 +133,70 @@ final class WorkoutSyncService {
                 try? context.save()
             }
         }
+
+        // After pushing anything local, pull server history to fill gaps
+        // (fresh install / new device). Self-bounding: only sessions missing
+        // locally trigger a per-session sets fetch.
+        await hydrateFromServer(ownerID: ownerID, context: context)
+    }
+
+    // MARK: - Down-sync (restore history on reinstall / new device)
+
+    /// Pull recent sessions + their sets from the server and insert any that are
+    /// missing locally (matched by `serverID`). Without this, a reinstall loses
+    /// all logged history and every PR / overload baseline resets.
+    func hydrateFromServer(ownerID: String, context: ModelContext) async {
+        guard !ownerID.isEmpty else { return }
+        let remote: SessionListResponse
+        do {
+            remote = try await ApiClient.shared.get("/sessions?limit=100")
+        } catch {
+            return  // offline — local state stands
+        }
+
+        // Server ids already present locally → skip (dedup).
+        let existing = (try? context.fetch(FetchDescriptor<WorkoutSessionRecord>(
+            predicate: #Predicate { $0.ownerID == ownerID }
+        ))) ?? []
+        let knownServerIDs = Set(existing.map(\.serverID).filter { !$0.isEmpty })
+
+        for s in remote.sessions where !knownServerIDs.contains(s.id) {
+            let session = WorkoutSessionRecord(
+                ownerID: ownerID,
+                startedAt: ServerDate.parse(s.started_at) ?? Date(),
+                finishedAt: ServerDate.parse(s.finished_at),
+                sessionRPE: s.session_rpe ?? 0,
+                notes: s.notes ?? "",
+                templateID: s.template_id ?? "",
+                totalVolume: s.total_volume ?? 0,
+                serverID: s.id,
+                syncPending: false
+            )
+            context.insert(session)
+
+            // Pull this session's sets (only runs for genuinely missing sessions).
+            if let setList: SetListResponse = try? await ApiClient.shared.get("/sessions/\(s.id)/sets") {
+                for set in setList.sets {
+                    context.insert(ExerciseSetRecord(
+                        ownerID: ownerID,
+                        sessionID: session.id,
+                        exerciseName: set.exercise_name,
+                        setIndex: set.set_index,
+                        weightKg: set.weight_kg,
+                        reps: set.reps,
+                        rpe: set.rpe ?? 0,
+                        isDone: true,
+                        completedAt: ServerDate.parse(set.completed_at),
+                        equipmentId: set.equipment_id,
+                        equipmentDedupeKey: set.equipment_dedupe_key,
+                        equipmentBrandName: set.equipment_brand_name,
+                        serverID: set.id,
+                        syncPending: false
+                    ))
+                }
+            }
+            try? context.save()
+        }
     }
 
     // MARK: - Helpers
@@ -110,7 +209,10 @@ final class WorkoutSyncService {
                 weight_kg: set.weightKg,
                 reps: set.reps,
                 rpe: set.rpe > 0 ? set.rpe : nil,
-                completed_at: iso.string(from: set.completedAt ?? Date())
+                completed_at: iso.string(from: set.completedAt ?? Date()),
+                equipment_id: set.equipmentId,
+                equipment_dedupe_key: set.equipmentDedupeKey,
+                equipment_brand_name: set.equipmentBrandName
             )
             let resp: IDResponse = try await ApiClient.shared.post("/sessions/\(serverSessionID)/sets", body: body)
             set.serverID = resp.id

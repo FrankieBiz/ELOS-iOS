@@ -51,19 +51,19 @@ struct ExerciseDetailView: View {
             Chart(detailVM.e1rmHistory, id: \.day) { point in
                 LineMark(
                     x: .value("Day", point.day),
-                    y: .value("e1RM (kg)", point.e1rm)
+                    y: .value("e1RM", vm.weightUnit.fromKg(point.e1rm))
                 )
                 .foregroundStyle(Color.tint)
                 .interpolationMethod(.catmullRom)
 
                 PointMark(
                     x: .value("Day", point.day),
-                    y: .value("e1RM (kg)", point.e1rm)
+                    y: .value("e1RM", vm.weightUnit.fromKg(point.e1rm))
                 )
                 .foregroundStyle(Color.tint)
             }
             .frame(height: 160)
-            .chartYAxisLabel("kg")
+            .chartYAxisLabel(vm.weightUnit.label)
         }
         .padding(16)
         .elosCard()

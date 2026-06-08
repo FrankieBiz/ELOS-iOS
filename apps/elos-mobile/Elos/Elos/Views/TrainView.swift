@@ -260,7 +260,9 @@ struct TrainView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Deload Suggested")
                     .font(.subheadline).fontWeight(.semibold)
-                Text("3 high-RPE sessions in a row. Consider reducing volume by 40% this week.")
+                Text(trainVM.showDeloadSuggestion
+                     ? trainVM.deloadMessage
+                     : "Your readiness is low today — consider lighter volume to recover.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
@@ -413,7 +415,7 @@ struct TrainView: View {
                     if let standings = socialVM.standings {
                         let rank = rankValue(for: socialVM.selectedMetric, standings: standings)
                         let val  = metricValue(for: socialVM.selectedMetric, standings: standings)
-                        Text("You're #\(rank) · \(socialVM.formattedValue(val, metric: socialVM.selectedMetric))")
+                        Text("You're #\(rank) · \(socialVM.formattedValue(val, metric: socialVM.selectedMetric, unit: vm.weightUnit))")
                             .font(.caption).foregroundStyle(Color.tint)
                     }
                 }
@@ -592,6 +594,7 @@ struct TrainView: View {
                     ExerciseCard(
                         exercise: $exercise,
                         isExpanded: expandedExercise == exercise.id,
+                        unit: vm.weightUnit,
                         onSelect: {
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 expandedExercise = expandedExercise == exercise.id ? nil : exercise.id
@@ -857,6 +860,7 @@ private struct WeekDayCard: View {
 private struct ExerciseCard: View {
     @Binding var exercise: Exercise
     let isExpanded: Bool
+    let unit: WeightUnit
     let onSelect: () -> Void
 
     @State private var showingSwap = false
@@ -896,7 +900,7 @@ private struct ExerciseCard: View {
                     Divider()
                     HStack {
                         Text("#").frame(width: 20)
-                        Text("Weight (lb)").frame(maxWidth: .infinity)
+                        Text("Weight (\(unit.label))").frame(maxWidth: .infinity)
                         Text("Reps").frame(width: 50)
                         Text("RPE").frame(width: 40)
                         Image(systemName: "checkmark").frame(width: 30)
@@ -906,7 +910,7 @@ private struct ExerciseCard: View {
                     ForEach(exercise.sets.indices, id: \.self) { i in
                         HStack {
                             Text("\(i + 1)").font(.caption.monospaced()).frame(width: 20).foregroundStyle(.secondary)
-                            Text(exercise.sets[i].weight.isEmpty ? "— lb" : "\(exercise.sets[i].weight) lb")
+                            Text(exercise.sets[i].weight.isEmpty ? "— \(unit.label)" : "\(exercise.sets[i].weight) \(unit.label)")
                                 .font(.system(size: 14, design: .monospaced))
                                 .foregroundStyle(exercise.sets[i].done ? .secondary : .primary)
                                 .frame(maxWidth: .infinity)

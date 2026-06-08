@@ -134,7 +134,10 @@ struct CreateSplitView: View {
                 case .exercise(let i):
                     ExercisePickerView(onPickSingle: { picked in
                         if !dayExercises[i].contains(where: { $0.id == picked.id }) {
-                            dayExercises[i].append(DayExercise(id: picked.id, name: picked.name))
+                            dayExercises[i].append(DayExercise(id: picked.id, name: picked.name,
+                                equipmentId: picked.equipmentId,
+                                equipmentDedupeKey: picked.equipmentDedupeKey,
+                                equipmentBrandName: picked.equipmentBrandName))
                         }
                     })
                 }

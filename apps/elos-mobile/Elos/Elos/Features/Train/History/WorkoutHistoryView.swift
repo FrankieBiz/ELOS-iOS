@@ -51,10 +51,11 @@ struct WorkoutHistoryView: View {
                                 )
                                 Divider().frame(height: 32)
                                 summaryCell(
-                                    value: totalVolumeKg >= 1000
-                                        ? String(format: "%.1fk", totalVolumeKg / 1000)
-                                        : String(format: "%.0f", totalVolumeKg),
-                                    label: "kg lifted"
+                                    value: {
+                                        let v = vm.weightUnit.fromKg(totalVolumeKg)
+                                        return v >= 1000 ? String(format: "%.1fk", v / 1000) : String(format: "%.0f", v)
+                                    }(),
+                                    label: "\(vm.weightUnit.label) lifted"
                                 )
                                 Divider().frame(height: 32)
                                 summaryCell(
@@ -72,7 +73,8 @@ struct WorkoutHistoryView: View {
                                 SessionRow(
                                     session: session,
                                     formatter: dateFormatter,
-                                    exerciseNames: sessionExerciseNames[session.id] ?? []
+                                    exerciseNames: sessionExerciseNames[session.id] ?? [],
+                                    unit: vm.weightUnit
                                 )
                             }
                         }
@@ -141,6 +143,7 @@ private struct SessionRow: View {
     let session: WorkoutSessionRecord
     let formatter: DateFormatter
     let exerciseNames: [String]
+    let unit: WeightUnit
 
     private var durationText: String {
         guard let finished = session.finishedAt else { return "In progress" }
@@ -172,7 +175,7 @@ private struct SessionRow: View {
                     .lineLimit(1)
             }
             HStack(spacing: 12) {
-                Label(String(format: "%.0f kg", session.totalVolume), systemImage: "scalemass")
+                Label(unit.formatVolume(kg: session.totalVolume), systemImage: "scalemass")
                     .font(.caption).foregroundStyle(.secondary)
                 if session.sessionRPE > 0 {
                     Label("RPE \(session.sessionRPE)", systemImage: "heart.text.square")

@@ -84,13 +84,20 @@ struct ExercisePickerView: View {
             }
         }
 
-        // Apply search query
+        // Apply search query with token-based multi-field matching + relevance sort
         if !query.isEmpty {
-            pool = pool.filter {
-                $0.machineName.localizedCaseInsensitiveContains(query) ||
-                $0.brandName.localizedCaseInsensitiveContains(query) ||
-                $0.modelSeries.localizedCaseInsensitiveContains(query)
+            let tokens = Self.searchTokens(from: query)
+            let nq = Self.normalize(Self.gymAliases[query.lowercased().trimmingCharacters(in: .whitespaces)] ?? query)
+            guard !tokens.isEmpty else {
+                return pool.sorted { $0.brandName == $1.brandName ? $0.machineName < $1.machineName : $0.brandName < $1.brandName }
             }
+            return pool
+                .compactMap { r -> (EquipmentRecord, Int)? in
+                    guard let s = Self.machineScore(r, tokens: tokens, normalizedQuery: nq) else { return nil }
+                    return (r, s)
+                }
+                .sorted { $0.1 > $1.1 }
+                .map { $0.0 }
         }
 
         return pool.sorted {
@@ -329,7 +336,16 @@ struct ExercisePickerView: View {
             result = result.filter { $0.movementPattern.lowercased() == movementFilter.rawValue.lowercased() }
         }
         if !query.isEmpty {
-            result = result.filter { $0.name.localizedCaseInsensitiveContains(query) }
+            let tokens = Self.searchTokens(from: query)
+            let nq = Self.normalize(Self.gymAliases[query.lowercased().trimmingCharacters(in: .whitespaces)] ?? query)
+            guard !tokens.isEmpty else { return result }
+            return result
+                .compactMap { row -> (Row, Int)? in
+                    guard let score = Self.exerciseScore(row, tokens: tokens, normalizedQuery: nq) else { return nil }
+                    return (row, score)
+                }
+                .sorted { $0.1 > $1.1 }
+                .map { $0.0 }
         }
         return result
     }
@@ -338,25 +354,96 @@ struct ExercisePickerView: View {
         "Storage", "Storage / Accessory", "Storage / Storage / Accessory", "Cardio"
     ]
 
+    // MARK: - Search helpers
+
+    // Common abbreviations and muscle nicknames → expanded search terms
+    private static let gymAliases: [String: String] = [
+        "rdl":       "romanian deadlift",
+        "ohp":       "overhead press",
+        "cgbp":      "close grip bench press",
+        "bp":        "bench press",
+        "dl":        "deadlift",
+        "pd":        "pulldown",
+        "db":        "dumbbell",
+        "bb":        "barbell",
+        "bw":        "bodyweight",
+        "bis":       "bicep",
+        "tris":      "tricep",
+        "hams":      "hamstring",
+        "quads":     "quad",
+        "delts":     "delt",
+        "glutes":    "glute",
+        "calves":    "calf",
+        "abs":       "core abdominal",
+        "pecs":      "chest pec",
+        "lats":      "lat",
+        "traps":     "trap",
+        "shoulders": "delt shoulder",
+        "arms":      "bicep tricep",
+        "legs":      "quad hamstring leg",
+    ]
+
+    // Normalize text for matching: lowercase + replace underscores so
+    // "rear_delts" matches "rear delt" queries.
+    private static func normalize(_ text: String) -> String {
+        text.lowercased().replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
+    }
+
+    // Expand aliases for the full query, then split into tokens (min 2 chars).
+    private static func searchTokens(from raw: String) -> [String] {
+        let lower = raw.lowercased().trimmingCharacters(in: .whitespaces)
+        let expanded = gymAliases[lower] ?? lower
+        return expanded
+            .components(separatedBy: .whitespaces)
+            .map { $0.trimmingCharacters(in: .punctuationCharacters) }
+            .filter { $0.count >= 2 }
+    }
+
+    // Score a generic exercise row. Returns nil if it doesn't match.
+    // Higher score = better match; sorts to the top.
+    private static func exerciseScore(_ row: Row, tokens: [String], normalizedQuery: String) -> Int? {
+        let name  = normalize(row.name)
+        let full  = "\(name) \(normalize(row.primaryMuscle)) \(normalize(row.equipment)) \(normalize(row.movementPattern))"
+        guard tokens.allSatisfy({ full.contains($0) }) else { return nil }
+        if name == normalizedQuery                          { return 100 }
+        if name.hasPrefix(normalizedQuery)                  { return  90 }
+        if name.contains(normalizedQuery)                   { return  80 }
+        if tokens.allSatisfy({ name.contains($0) })         { return  70 }
+        return 50   // tokens matched in muscle/equipment/movement fields
+    }
+
+    // Score an EquipmentRecord. Returns nil if it doesn't match.
+    private static func machineScore(_ r: EquipmentRecord, tokens: [String], normalizedQuery: String) -> Int? {
+        let name   = normalize(r.machineName)
+        let brand  = normalize(r.brandName)
+        let series = normalize(r.modelSeries)
+        let parts  = r.bodyParts.map { normalize($0) }.joined(separator: " ")
+        let type   = normalize(r.equipmentType)
+        let full   = "\(name) \(brand) \(series) \(parts) \(type)"
+        guard tokens.allSatisfy({ full.contains($0) }) else { return nil }
+        if name == normalizedQuery                          { return 100 }
+        if name.hasPrefix(normalizedQuery)                  { return  90 }
+        if name.contains(normalizedQuery)                   { return  80 }
+        if tokens.allSatisfy({ name.contains($0) })         { return  70 }
+        if brand.contains(normalizedQuery)                  { return  60 }
+        return 50
+    }
+
     // Search-based machine results (fallback when no brand selected)
     private var machineResults: [EquipmentRecord] {
         guard query.count >= 2, tab == .all else { return [] }
-        let q = query.lowercased()
-        let results = EquipmentDatabase.all.filter {
-            ($0.machineName.lowercased().contains(q) ||
-             $0.brandName.lowercased().contains(q) ||
-             $0.modelSeries.lowercased().contains(q)) &&
-            !Self.excludedEquipmentTypes.contains($0.equipmentType)
-        }
-        return results.sorted {
-            let aExact = $0.machineName.lowercased() == q
-            let bExact = $1.machineName.lowercased() == q
-            if aExact != bExact { return aExact }
-            let aEnd = $0.machineName.lowercased().hasSuffix(q)
-            let bEnd = $1.machineName.lowercased().hasSuffix(q)
-            if aEnd != bEnd { return aEnd }
-            return $0.brandName < $1.brandName
-        }.prefix(30).map { $0 }
+        let tokens = Self.searchTokens(from: query)
+        let nq = Self.normalize(Self.gymAliases[query.lowercased().trimmingCharacters(in: .whitespaces)] ?? query)
+        guard !tokens.isEmpty else { return [] }
+        return EquipmentDatabase.all
+            .filter { !Self.excludedEquipmentTypes.contains($0.equipmentType) }
+            .compactMap { r -> (EquipmentRecord, Int)? in
+                guard let s = Self.machineScore(r, tokens: tokens, normalizedQuery: nq) else { return nil }
+                return (r, s)
+            }
+            .sorted { $0.1 > $1.1 }
+            .prefix(30)
+            .map { $0.0 }
     }
 
     // MARK: Exercise List

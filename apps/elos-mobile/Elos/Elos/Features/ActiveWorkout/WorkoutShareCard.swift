@@ -8,6 +8,7 @@ struct WorkoutShareCard: View {
     let uniqueExercises: Int
     let topLift: (name: String, weightKg: Double, reps: Int)?
     let capturedPR: String?
+    var unit: WeightUnit = .kg
 
     private var dateString: String {
         let f = DateFormatter()
@@ -94,7 +95,7 @@ struct WorkoutShareCard: View {
                             .foregroundStyle(.white.opacity(0.7))
                             .lineLimit(1)
                         Spacer()
-                        Text(String(format: "%.0f kg × %d", top.weightKg, top.reps))
+                        Text("\(unit.formatWeight(kg: top.weightKg, decimals: 0)) × \(top.reps)")
                             .font(.system(size: 13, weight: .bold, design: .monospaced))
                             .foregroundStyle(.white)
                     }

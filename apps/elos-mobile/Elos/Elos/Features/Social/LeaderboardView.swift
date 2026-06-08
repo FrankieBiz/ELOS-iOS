@@ -161,6 +161,7 @@ struct LeaderboardView: View {
 }
 
 private struct LeaderboardRow: View {
+    @EnvironmentObject private var appVM: AppViewModel
     let entry: LeaderboardEntryResponse
     let metric: String
 
@@ -202,7 +203,7 @@ private struct LeaderboardRow: View {
 
     private func formattedValue(_ value: Double, metric: String) -> String {
         switch metric {
-        case "volume":   return String(format: "%.0f kg", value)
+        case "volume":   return appVM.weightUnit.formatVolume(kg: value)
         case "sessions": return "\(Int(value))"
         case "streak":   return "\(Int(value))d"
         case "prs":      return "\(Int(value)) PRs"

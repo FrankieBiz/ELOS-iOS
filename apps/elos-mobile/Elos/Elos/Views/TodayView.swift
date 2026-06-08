@@ -256,13 +256,13 @@ struct TodayView: View {
     private var gymVolCard: some View {
         StatCard(color: .mGym, label: "GYM VOL",
                  value: gymVolString,
-                 sub: "lb this session") {
+                 sub: "\(vm.weightUnit.label) this session") {
             vm.selectedTab = .train
         }
     }
 
     private var gymVolString: String {
-        let vol = vm.sessionVolume
+        let vol = vm.weightUnit.fromKg(vm.sessionVolumeKg)
         if vol >= 1000 { return String(format: "%.1fk", vol / 1000) }
         return String(format: "%.0f", vol)
     }

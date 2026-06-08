@@ -3,6 +3,7 @@ import SwiftData
 
 struct SessionDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var vm: AppViewModel
 
     let session: WorkoutSessionRecord
 
@@ -40,7 +41,7 @@ struct SessionDetailView: View {
         HStack(spacing: 0) {
             statItem(value: durationText, label: "Duration")
             Divider().frame(height: 40)
-            statItem(value: String(format: "%.0f kg", session.totalVolume), label: "Volume")
+            statItem(value: vm.weightUnit.formatVolume(kg: session.totalVolume), label: "Volume")
             Divider().frame(height: 40)
             statItem(value: session.sessionRPE > 0 ? "\(session.sessionRPE)" : "—", label: "Session RPE")
         }
@@ -65,7 +66,7 @@ struct SessionDetailView: View {
             Divider()
             HStack {
                 Text("#").frame(width: 24)
-                Text("Weight (kg)").frame(maxWidth: .infinity)
+                Text("Weight (\(vm.weightUnit.label))").frame(maxWidth: .infinity)
                 Text("Reps").frame(width: 50)
                 Text("RPE").frame(width: 40)
             }
@@ -75,7 +76,7 @@ struct SessionDetailView: View {
             ForEach(group.sets) { s in
                 HStack {
                     Text("\(s.setIndex + 1)").font(.caption.monospaced()).foregroundStyle(.secondary).frame(width: 24)
-                    Text(String(format: "%.1f", s.weightKg)).font(.system(size: 14, design: .monospaced)).frame(maxWidth: .infinity)
+                    Text(vm.weightUnit.formatValue(kg: s.weightKg)).font(.system(size: 14, design: .monospaced)).frame(maxWidth: .infinity)
                     Text("\(s.reps)").font(.system(size: 14, design: .monospaced)).frame(width: 50)
                     Text(s.rpe > 0 ? String(format: "%.1f", s.rpe) : "—")
                         .font(.caption.monospaced()).foregroundStyle(.secondary).frame(width: 40)

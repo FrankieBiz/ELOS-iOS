@@ -83,6 +83,11 @@ class AppViewModel: ObservableObject {
     // MARK: - Favorites
     @Published var favoriteSplitKeys: Set<String> = []
 
+    // MARK: - Preferences
+    /// User's chosen weight unit. Mirrors `UserProfileRecord.useImperial`
+    /// (the persisted/synced flag); this is the typed projection views read.
+    @Published var weightUnit: WeightUnit = .localeDefault
+
     // MARK: - Init
     init(context: ModelContext) {
         self.context = context
@@ -95,10 +100,12 @@ class AppViewModel: ObservableObject {
     // MARK: - Computed Properties
     var doneHabits: Int { habits.filter { $0.done }.count }
 
-    var sessionVolume: Double {
+    /// In-progress session volume in KILOGRAMS (matches `WorkoutSessionRecord.totalVolume`).
+    /// Typed set weights are in the user's display unit, so convert to kg here.
+    var sessionVolumeKg: Double {
         let doneSets = exercises.flatMap(\.sets).filter(\.done)
         return doneSets.reduce(0.0) { sum, s in
-            (Double(s.weight) ?? 0) * (Double(s.reps) ?? 0) + sum
+            sum + weightUnit.toKg(Double(s.weight) ?? 0) * (Double(s.reps) ?? 0)
         }
     }
     var doneSetsCount: Int  { exercises.flatMap(\.sets).filter(\.done).count }
@@ -133,6 +140,7 @@ class AppViewModel: ObservableObject {
         )
         if let profile = try? context.fetch(profileDesc).first {
             displayName  = profile.firstName.isEmpty ? "there" : profile.firstName
+            weightUnit   = WeightUnit(useImperial: profile.useImperial)
             userProfile  = UserProfileSnapshot(
                 firstName:  profile.firstName,
                 lastName:   profile.lastName,
@@ -206,6 +214,21 @@ class AppViewModel: ObservableObject {
         Task { await syncSplitsFromServer() }
         Task { await syncProfileFromServer() }
         Task { await WorkoutSyncService.shared.reconcile(ownerID: uid, context: context) }
+    }
+
+    /// Change the user's weight unit. Persists to `UserProfileRecord.useImperial`
+    /// (the synced flag) and pushes to the server, reusing the profile sync path.
+    func setWeightUnit(_ unit: WeightUnit) {
+        guard unit != weightUnit else { return }
+        weightUnit = unit
+        let uid = currentUserID
+        guard !uid.isEmpty else { return }
+        let desc = FetchDescriptor<UserProfileRecord>(predicate: #Predicate { $0.ownerID == uid })
+        guard let profile = try? context.fetch(desc).first else { return }
+        profile.useImperial = unit.useImperial
+        profile.syncPending = true
+        try? context.save()
+        Task { await pushProfileToServer(profile) }
     }
 
     func clearData() {
@@ -534,7 +557,11 @@ class AppViewModel: ObservableObject {
                     .trimmingCharacters(in: .whitespaces) ?? "10"
                 return Exercise(name: info.name, primaryMuscle: "", secondaryMuscles: [],
                                 setsLabel: "\(info.sets)×\(info.reps)", lastBest: "",
-                                sets: (0..<info.sets).map { _ in WorkSet(weight: "", reps: baseReps, rpe: "") })
+                                sets: (0..<info.sets).map { _ in WorkSet(weight: "", reps: baseReps, rpe: "") },
+                                equipmentId: info.equipmentId,
+                                equipmentDedupeKey: info.equipmentDedupeKey,
+                                equipmentBrandName: info.equipmentBrandName,
+                                isGenericExercise: (info.equipmentDedupeKey ?? "").isEmpty)
             }
             return
         }
@@ -554,7 +581,12 @@ class AppViewModel: ObservableObject {
                      sets: (0..<ex.targetSets).map { _ in
                          WorkSet(weight: "", reps: ex.targetReps.components(separatedBy: "-").first ?? "10",
                                  rpe: ex.targetRPE > 0 ? String(Int(ex.targetRPE)) : "")
-                     })
+                     },
+                     equipmentId: ex.equipmentId,
+                     equipmentDedupeKey: ex.equipmentDedupeKey,
+                     equipmentBrandName: ex.equipmentBrandName,
+                     isGenericExercise: (ex.equipmentDedupeKey ?? "").isEmpty,
+                     restSeconds: ex.restSeconds > 0 ? ex.restSeconds : 90)
         }
     }
 
@@ -990,6 +1022,7 @@ class AppViewModel: ObservableObject {
                 let fetchDesc = FetchDescriptor<UserProfileRecord>(predicate: #Predicate { $0.ownerID == uid })
                 if let profile = try? context.fetch(fetchDesc).first {
                     displayName = profile.firstName.isEmpty ? "there" : profile.firstName
+                    weightUnit  = WeightUnit(useImperial: profile.useImperial)
                     userProfile = UserProfileSnapshot(
                         firstName:  profile.firstName,
                         lastName:   profile.lastName,

@@ -34,7 +34,7 @@ final class OnboardingViewModel: ObservableObject {
     @Published var heightInches = 10
     @Published var weightLbs: Double = 160
     @Published var ageYears  = 17
-    @Published var useImperial = true
+    @Published var useImperial = WeightUnit.localeDefault.useImperial
 
     // Step 3 — Experience & Goal
     @Published var experience   = "beginner"
@@ -68,7 +68,7 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     var weightKg: Double {
-        useImperial ? weightLbs * 0.453592 : weightLbs
+        useImperial ? weightLbs * WeightUnit.kgPerLb : weightLbs
     }
 
     var autoCalcCalories: Int {
