@@ -19,6 +19,8 @@ struct ExercisePickerView: View {
     var onConfirmMulti: (([PickedExercise]) -> Void)? = nil
     var prefilterBrandSlug: String? = nil
     var prefilterMachineName: String? = nil
+    /// Split-day focus for Smart Sort. nil/empty when the picker is opened outside split building.
+    var dayContext: DayContext = .empty
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -36,6 +38,7 @@ struct ExercisePickerView: View {
     @State private var selectedIDs: Set<String> = []
     @State private var selectedItems: [PickedExercise] = []
     @State private var machinePick: MachinePick? = nil
+    @State private var sortMode: ExerciseSortMode = .smart
 
     private struct MachinePick: Identifiable {
         let id = UUID()
@@ -55,7 +58,7 @@ struct ExercisePickerView: View {
     }
 
     // EquipmentDatabase records are ONLY shown for Machine filter or when a brand is selected.
-    // Cable, Free Weight, and Bodyweight filters use the generic exercise list instead.
+    // Cable, Barbell, Dumbbell, and Bodyweight filters use the generic exercise list instead.
     private var prominentMachineResults: [EquipmentRecord] {
         guard equipFilter == .machine || equipFilter == .all || localBrandFilter != nil else { return [] }
         guard localBrandFilter != nil || equipFilter == .machine || !query.isEmpty else { return [] }
@@ -86,8 +89,8 @@ struct ExercisePickerView: View {
 
         // Apply search query with token-based multi-field matching + relevance sort
         if !query.isEmpty {
-            let tokens = Self.searchTokens(from: query)
-            let nq = Self.normalize(Self.gymAliases[query.lowercased().trimmingCharacters(in: .whitespaces)] ?? query)
+            let tokens = ExerciseSearch.tokens(from: query)
+            let nq = ExerciseSearch.normalizedQuery(query)
             guard !tokens.isEmpty else {
                 return pool.sorted { $0.brandName == $1.brandName ? $0.machineName < $1.machineName : $0.brandName < $1.brandName }
             }
@@ -217,6 +220,21 @@ struct ExercisePickerView: View {
                     chip(tag.rawValue, selected: bodyPartFilter == tag) { bodyPartFilter = tag; muscleFilter = "All" }
                 }
             }
+            HStack {
+                Spacer()
+                Menu {
+                    Picker("Sort", selection: $sortMode) {
+                        ForEach(ExerciseSortMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.arrow.down")
+                        Text(sortMode.rawValue)
+                    }
+                    .font(.caption).foregroundStyle(Color.tint)
+                }
+                .padding(.trailing, 16).padding(.vertical, 4)
+            }
             if bodyPartFilter != .all && availableMuscles.count > 1 {
                 Divider().padding(.leading, 16)
                 filterRow(label: "Muscle") {
@@ -321,6 +339,19 @@ struct ExercisePickerView: View {
         }
     }
 
+    private var personalizationSignals: PersonalizationSignals {
+        PersonalizationSignals(
+            favoriteNames: Set(vm.favorites.map { $0.name }),
+            recentOrder: vm.recent.map { $0.name },
+            frequency: [:]   // local-frequency wiring deferred; empty is fine
+        )
+    }
+    private func candidate(from row: Row) -> ExerciseCandidate {
+        ExerciseCandidate(id: row.id, name: row.name, primaryMuscle: row.primaryMuscle,
+                          secondaryMuscles: [], equipment: row.equipment,
+                          movementPattern: row.movementPattern, isCustom: row.isCustom)
+    }
+
     private var filtered: [Row] {
         var result = rowsForCurrentTab
         if equipFilter != .all {
@@ -335,19 +366,14 @@ struct ExercisePickerView: View {
         if movementFilter != .all {
             result = result.filter { $0.movementPattern.lowercased() == movementFilter.rawValue.lowercased() }
         }
-        if !query.isEmpty {
-            let tokens = Self.searchTokens(from: query)
-            let nq = Self.normalize(Self.gymAliases[query.lowercased().trimmingCharacters(in: .whitespaces)] ?? query)
-            guard !tokens.isEmpty else { return result }
-            return result
-                .compactMap { row -> (Row, Int)? in
-                    guard let score = Self.exerciseScore(row, tokens: tokens, normalizedQuery: nq) else { return nil }
-                    return (row, score)
-                }
-                .sorted { $0.1 > $1.1 }
-                .map { $0.0 }
-        }
-        return result
+        let candidates = result.map(candidate(from:))
+        let inputs = RankingInputs(context: dayContext,
+                                   personalization: PersonalizationProvider(signals: personalizationSignals),
+                                   isEquipmentAvailable: { _ in true },
+                                   query: query)
+        let rankedIDs = ExerciseRankingEngine.rank(candidates, inputs: inputs, mode: sortMode).map { $0.id }
+        let byID = Dictionary(result.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return rankedIDs.compactMap { byID[$0] }
     }
 
     private static let excludedEquipmentTypes: Set<String> = [
@@ -356,69 +382,13 @@ struct ExercisePickerView: View {
 
     // MARK: - Search helpers
 
-    // Common abbreviations and muscle nicknames → expanded search terms
-    private static let gymAliases: [String: String] = [
-        "rdl":       "romanian deadlift",
-        "ohp":       "overhead press",
-        "cgbp":      "close grip bench press",
-        "bp":        "bench press",
-        "dl":        "deadlift",
-        "pd":        "pulldown",
-        "db":        "dumbbell",
-        "bb":        "barbell",
-        "bw":        "bodyweight",
-        "bis":       "bicep",
-        "tris":      "tricep",
-        "hams":      "hamstring",
-        "quads":     "quad",
-        "delts":     "delt",
-        "glutes":    "glute",
-        "calves":    "calf",
-        "abs":       "core abdominal",
-        "pecs":      "chest pec",
-        "lats":      "lat",
-        "traps":     "trap",
-        "shoulders": "delt shoulder",
-        "arms":      "bicep tricep",
-        "legs":      "quad hamstring leg",
-    ]
-
-    // Normalize text for matching: lowercase + replace underscores so
-    // "rear_delts" matches "rear delt" queries.
-    private static func normalize(_ text: String) -> String {
-        text.lowercased().replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: "-", with: " ")
-    }
-
-    // Expand aliases for the full query, then split into tokens (min 2 chars).
-    private static func searchTokens(from raw: String) -> [String] {
-        let lower = raw.lowercased().trimmingCharacters(in: .whitespaces)
-        let expanded = gymAliases[lower] ?? lower
-        return expanded
-            .components(separatedBy: .whitespaces)
-            .map { $0.trimmingCharacters(in: .punctuationCharacters) }
-            .filter { $0.count >= 2 }
-    }
-
-    // Score a generic exercise row. Returns nil if it doesn't match.
-    // Higher score = better match; sorts to the top.
-    private static func exerciseScore(_ row: Row, tokens: [String], normalizedQuery: String) -> Int? {
-        let name  = normalize(row.name)
-        let full  = "\(name) \(normalize(row.primaryMuscle)) \(normalize(row.equipment)) \(normalize(row.movementPattern))"
-        guard tokens.allSatisfy({ full.contains($0) }) else { return nil }
-        if name == normalizedQuery                          { return 100 }
-        if name.hasPrefix(normalizedQuery)                  { return  90 }
-        if name.contains(normalizedQuery)                   { return  80 }
-        if tokens.allSatisfy({ name.contains($0) })         { return  70 }
-        return 50   // tokens matched in muscle/equipment/movement fields
-    }
-
     // Score an EquipmentRecord. Returns nil if it doesn't match.
     private static func machineScore(_ r: EquipmentRecord, tokens: [String], normalizedQuery: String) -> Int? {
-        let name   = normalize(r.machineName)
-        let brand  = normalize(r.brandName)
-        let series = normalize(r.modelSeries)
-        let parts  = r.bodyParts.map { normalize($0) }.joined(separator: " ")
-        let type   = normalize(r.equipmentType)
+        let name   = ExerciseSearch.normalize(r.machineName)
+        let brand  = ExerciseSearch.normalize(r.brandName)
+        let series = ExerciseSearch.normalize(r.modelSeries)
+        let parts  = r.bodyParts.map { ExerciseSearch.normalize($0) }.joined(separator: " ")
+        let type   = ExerciseSearch.normalize(r.equipmentType)
         let full   = "\(name) \(brand) \(series) \(parts) \(type)"
         guard tokens.allSatisfy({ full.contains($0) }) else { return nil }
         if name == normalizedQuery                          { return 100 }
@@ -432,8 +402,8 @@ struct ExercisePickerView: View {
     // Search-based machine results (fallback when no brand selected)
     private var machineResults: [EquipmentRecord] {
         guard query.count >= 2, tab == .all else { return [] }
-        let tokens = Self.searchTokens(from: query)
-        let nq = Self.normalize(Self.gymAliases[query.lowercased().trimmingCharacters(in: .whitespaces)] ?? query)
+        let tokens = ExerciseSearch.tokens(from: query)
+        let nq = ExerciseSearch.normalizedQuery(query)
         guard !tokens.isEmpty else { return [] }
         return EquipmentDatabase.all
             .filter { !Self.excludedEquipmentTypes.contains($0.equipmentType) }
@@ -724,7 +694,9 @@ struct ExercisePickerView: View {
         let color: Color
         if normalized.contains("machine") { label = "Machine"; color = Color.tint }
         else if normalized.contains("cable") { label = "Cable"; color = Color.good }
-        else if normalized.contains("barbell") || normalized.contains("dumbbell") || normalized.contains("free") { label = "Free Weight"; color = Color.warn }
+        else if normalized.contains("barbell") { label = "Barbell"; color = Color.warn }
+        else if normalized.contains("kettlebell") { label = "Kettlebell"; color = Color.warn }
+        else if normalized.contains("dumbbell") { label = "Dumbbell"; color = Color.warn }
         else if normalized.contains("body") || normalized.isEmpty { label = "Bodyweight"; color = Color.secondary }
         else { label = equipment.capitalized; color = Color.secondary }
         return Text(label)
@@ -739,11 +711,12 @@ struct ExercisePickerView: View {
 // MARK: - Filter taxonomies
 
 enum EquipmentFilter: String, CaseIterable {
-    case all         = "All"
-    case machine     = "Machine"
-    case cable       = "Cable"
-    case freeWeight  = "Free Weight"
-    case bodyweight  = "Bodyweight"
+    case all        = "All"
+    case machine    = "Machine"
+    case cable      = "Cable"
+    case barbell    = "Barbell"
+    case dumbbell   = "Dumbbell"
+    case bodyweight = "Bodyweight"
 
     static func matches(_ filter: EquipmentFilter, dbEquipment: String) -> Bool {
         if filter == .all { return true }
@@ -752,7 +725,8 @@ enum EquipmentFilter: String, CaseIterable {
         case .all:        return true
         case .machine:    return normalized.contains("machine")
         case .cable:      return normalized.contains("cable")
-        case .freeWeight: return normalized.contains("barbell") || normalized.contains("dumbbell") || normalized.contains("free")
+        case .barbell:    return normalized.contains("barbell")
+        case .dumbbell:   return normalized.contains("dumbbell") || normalized.contains("kettlebell")
         case .bodyweight: return normalized.contains("body") || normalized.isEmpty
         }
     }

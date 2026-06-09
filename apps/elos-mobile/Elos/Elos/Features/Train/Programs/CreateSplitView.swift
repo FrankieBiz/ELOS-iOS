@@ -5,6 +5,8 @@ import SwiftData
 struct CreateSplitView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \WorkoutTemplateRecord.name) private var templates: [WorkoutTemplateRecord]
+    @Query(sort: \ExerciseDefinitionRecord.name) private var exerciseDefs: [ExerciseDefinitionRecord]
+    private var exerciseCatalog: [ExerciseCandidate] { exerciseDefs.map(ExerciseCandidate.init(record:)) }
     @EnvironmentObject var vm: AppViewModel
 
     let onSave: () -> Void
@@ -132,14 +134,20 @@ struct CreateSplitView: View {
                         if dayNames[i].isEmpty { dayNames[i] = templateName }
                     }
                 case .exercise(let i):
-                    ExercisePickerView(onPickSingle: { picked in
-                        if !dayExercises[i].contains(where: { $0.id == picked.id }) {
-                            dayExercises[i].append(DayExercise(id: picked.id, name: picked.name,
-                                equipmentId: picked.equipmentId,
-                                equipmentDedupeKey: picked.equipmentDedupeKey,
-                                equipmentBrandName: picked.equipmentBrandName))
-                        }
-                    })
+                    ExercisePickerView(
+                        onPickSingle: { picked in
+                            if !dayExercises[i].contains(where: { $0.id == picked.id }) {
+                                let pattern = exerciseCatalog.first { $0.id == picked.id }?.movementPattern ?? ""
+                                let def = SetRepDefaults.defaults(forMovementPattern: pattern)
+                                dayExercises[i].append(DayExercise(id: picked.id, name: picked.name,
+                                    sets: def.sets, reps: def.reps,
+                                    equipmentId: picked.equipmentId,
+                                    equipmentDedupeKey: picked.equipmentDedupeKey,
+                                    equipmentBrandName: picked.equipmentBrandName))
+                            }
+                        },
+                        dayContext: DayContextInferrer.infer(dayName: dayNames[i], added: dayExercises[i], catalog: exerciseCatalog)
+                    )
                 }
             }
             .confirmationDialog("Discard this split?", isPresented: $showDiscardConfirm, titleVisibility: .visible) {
