@@ -42,6 +42,7 @@ struct ExercisePickerView: View {
     @State private var machinePick: MachinePick? = nil
     @State private var sortMode: ExerciseSortMode = .smart
     @State private var coverageExpanded = true
+    @State private var didSeedCoverage = false
 
     private struct MachinePick: Identifiable {
         let id = UUID()
@@ -156,6 +157,11 @@ struct ExercisePickerView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search exercises")
+            .onAppear {
+                guard !didSeedCoverage else { return }
+                coverageExpanded = (GuidanceLevel(trainingExperience: profiles.first?.trainingExperience ?? "") == .full)
+                didSeedCoverage = true
+            }
             .task {
                 async let r: Void = vm.loadRecent()
                 async let f: Void = vm.loadFavorites()
