@@ -18,13 +18,23 @@ enum ExerciseRankingEngine {
                      mode: ExerciseSortMode = .smart) -> [ExerciseCandidate] {
         let searching = inputs.query.trimmingCharacters(in: .whitespaces).count >= 2
 
+        // Apply the search filter in every sort mode: when the user is searching,
+        // drop non-matching candidates first, then let each mode sort the pool.
+        let pool: [ExerciseCandidate]
+        if searching {
+            let toks = ExerciseSearch.tokens(from: inputs.query)
+            pool = candidates.filter { ExerciseSearch.score($0, tokens: toks, query: inputs.query) != nil }
+        } else {
+            pool = candidates
+        }
+
         switch mode {
         case .alphabetical:
-            return candidates.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            return pool.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         case .mostUsed:
-            return candidates.sorted { inputs.personalization.score(forName: $0.name) > inputs.personalization.score(forName: $1.name) }
+            return pool.sorted { inputs.personalization.score(forName: $0.name) > inputs.personalization.score(forName: $1.name) }
         case .byMuscle:
-            return candidates.sorted {
+            return pool.sorted {
                 let a = $0.primaryMuscle, b = $1.primaryMuscle
                 return a == b ? $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending : a < b
             }
@@ -32,7 +42,7 @@ enum ExerciseRankingEngine {
             break
         }
 
-        let scored: [(ExerciseCandidate, Double)] = candidates.compactMap { c in
+        let scored: [(ExerciseCandidate, Double)] = pool.compactMap { c in
             if searching {
                 let toks = ExerciseSearch.tokens(from: inputs.query)
                 guard let s = ExerciseSearch.score(c, tokens: toks, query: inputs.query) else { return nil }

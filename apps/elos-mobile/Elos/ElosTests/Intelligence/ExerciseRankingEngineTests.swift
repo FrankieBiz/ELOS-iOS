@@ -48,4 +48,11 @@ struct ExerciseRankingEngineTests {
             inputs: inputs(.empty), mode: .alphabetical)
         #expect(ranked.map { $0.name } == ["Barbell Bench Press", "Cable Fly", "Leg Curl"])
     }
+    @Test func searchFiltersInNonSmartModes() {
+        let ctx = DayContext.empty
+        for mode in [ExerciseSortMode.alphabetical, .mostUsed, .byMuscle] {
+            let ranked = ExerciseRankingEngine.rank([curl, fly, bench], inputs: inputs(ctx, query: "bench"), mode: mode)
+            #expect(ranked.map { $0.id } == ["bench"], "mode \(mode) should drop non-matching exercises when searching")
+        }
+    }
 }
