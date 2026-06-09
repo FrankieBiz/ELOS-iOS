@@ -26,6 +26,8 @@ struct ExercisePickerView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var vm = ExercisePickerViewModel()
     @Query(sort: \ExerciseDefinitionRecord.name) private var dbExercises: [ExerciseDefinitionRecord]
+    @Query private var profiles: [UserProfileRecord]
+    private var equipmentPreference: EquipmentPreference { profiles.first?.equipmentPreference ?? .fullGym }
 
     @State private var tab: Tab = .all
     @State private var query = ""
@@ -369,7 +371,7 @@ struct ExercisePickerView: View {
         let candidates = result.map(candidate(from:))
         let inputs = RankingInputs(context: dayContext,
                                    personalization: PersonalizationProvider(signals: personalizationSignals),
-                                   isEquipmentAvailable: { _ in true },
+                                   isEquipmentAvailable: { equipmentPreference.isAvailable(equipment: $0) },
                                    query: query)
         let rankedIDs = ExerciseRankingEngine.rank(candidates, inputs: inputs, mode: sortMode).map { $0.id }
         let byID = Dictionary(result.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })

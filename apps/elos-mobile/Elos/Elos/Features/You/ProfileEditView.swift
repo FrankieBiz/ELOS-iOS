@@ -17,6 +17,8 @@ final class ProfileEditViewModel: ObservableObject {
     @Published var proteinGoal   = 180
     @Published var carbGoal      = 300
     @Published var fatGoal       = 80
+    @Published var equipmentPosture: EquipmentPosture = .fullGym
+    @Published var equipmentCustomTypes: Set<String> = []
 
     @Published var isLoading     = false
     @Published var errorMessage: String?
@@ -38,6 +40,9 @@ final class ProfileEditViewModel: ObservableObject {
         proteinGoal  = record.proteinGoal > 0 ? record.proteinGoal : 180
         carbGoal     = record.carbGoal > 0 ? record.carbGoal : 300
         fatGoal      = record.fatGoal > 0 ? record.fatGoal : 80
+        let pref     = record.equipmentPreference
+        equipmentPosture     = pref.posture
+        equipmentCustomTypes = pref.customTypes
     }
 
     private var heightCm: Double { Double(heightFeet * 12 + heightInches) * 2.54 }
@@ -86,6 +91,7 @@ final class ProfileEditViewModel: ObservableObject {
         record.carbGoal           = carbGoal
         record.fatGoal            = fatGoal
         record.useImperial        = useImperial
+        record.equipmentPreference = EquipmentPreference(posture: equipmentPosture, customTypes: equipmentCustomTypes)
         record.syncPending        = !networkSucceeded
         try? context.save()
 
@@ -126,6 +132,16 @@ struct ProfileEditView: View {
         ("junior",    "Junior"),
         ("senior",    "Senior"),
     ]
+    private let customEquipmentOptions: [EquipmentFilter] =
+        EquipmentFilter.allCases.filter { $0 != .all }
+
+    private func postureLabel(_ posture: EquipmentPosture) -> String {
+        switch posture {
+        case .fullGym: return "Full gym"
+        case .home:    return "Home"
+        case .custom:  return "Custom"
+        }
+    }
 
     var body: some View {
         NavigationView {
@@ -146,6 +162,26 @@ struct ProfileEditView: View {
                     Picker("Primary Goal", selection: $editVM.trainingGoal) {
                         ForEach(goalOptions, id: \.0) { id, label in
                             Text(label).tag(id)
+                        }
+                    }
+                }
+
+                Section("Equipment") {
+                    Picker("Available", selection: $editVM.equipmentPosture) {
+                        ForEach(EquipmentPosture.allCases, id: \.self) { posture in
+                            Text(postureLabel(posture)).tag(posture)
+                        }
+                    }
+                    if editVM.equipmentPosture == .custom {
+                        ForEach(customEquipmentOptions, id: \.self) { filter in
+                            let token = filter.rawValue.lowercased()
+                            Toggle(filter.rawValue, isOn: Binding(
+                                get: { editVM.equipmentCustomTypes.contains(token) },
+                                set: { isOn in
+                                    if isOn { editVM.equipmentCustomTypes.insert(token) }
+                                    else    { editVM.equipmentCustomTypes.remove(token) }
+                                }
+                            ))
                         }
                     }
                 }

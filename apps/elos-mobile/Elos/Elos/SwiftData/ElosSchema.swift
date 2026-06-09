@@ -704,6 +704,7 @@ final class UserProfileRecord {
     var onboardingComplete: Bool
     var syncPending: Bool = false
     var useImperial: Bool = true
+    var equipmentPreferenceJSON: String = ""
 
     init(id: String, ownerID: String, email: String,
          firstName: String = "", lastName: String = "",
@@ -713,7 +714,8 @@ final class UserProfileRecord {
          calGoal: Int = 2500, proteinGoal: Int = 180, carbGoal: Int = 300, fatGoal: Int = 80,
          onboardingComplete: Bool = false,
          syncPending: Bool = false,
-         useImperial: Bool = true) {
+         useImperial: Bool = true,
+         equipmentPreferenceJSON: String = "") {
         self.id                 = id
         self.ownerID            = ownerID
         self.email              = email
@@ -733,5 +735,11 @@ final class UserProfileRecord {
         self.onboardingComplete = onboardingComplete
         self.syncPending        = syncPending
         self.useImperial        = useImperial
+        self.equipmentPreferenceJSON = equipmentPreferenceJSON
+    }
+
+    var equipmentPreference: EquipmentPreference {
+        get { EquipmentPreference(json: equipmentPreferenceJSON) }
+        set { equipmentPreferenceJSON = newValue.json }
     }
 }
