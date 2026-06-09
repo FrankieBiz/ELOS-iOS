@@ -41,6 +41,7 @@ struct ExercisePickerView: View {
     @State private var selectedItems: [PickedExercise] = []
     @State private var machinePick: MachinePick? = nil
     @State private var sortMode: ExerciseSortMode = .smart
+    @State private var coverageExpanded = true
 
     private struct MachinePick: Identifiable {
         let id = UUID()
@@ -139,6 +140,9 @@ struct ExercisePickerView: View {
             VStack(spacing: 0) {
                 tabPicker
                 filterArea
+                if dayContext.hasFocus && !coverageChips.isEmpty {
+                    coverageStrip
+                }
                 Divider()
                 exerciseList
                 if isMultiSelect && !selectedItems.isEmpty {
@@ -291,6 +295,79 @@ struct ExercisePickerView: View {
                 .padding(.horizontal, 12).padding(.vertical, 6)
                 .background(selected ? Color.tint : Color(.secondarySystemBackground))
                 .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Coverage Strip
+
+    private var addedDayCandidates: [ExerciseCandidate] {
+        dbExercises.filter { dayContext.addedExerciseIDs.contains($0.id) }.map(ExerciseCandidate.init(record:))
+    }
+
+    private var coverageChips: [CoverageChip] {
+        MuscleCoverage.chips(context: dayContext, addedCandidates: addedDayCandidates)
+    }
+
+    @ViewBuilder private var coverageStrip: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Coverage")
+                    .font(.caption2).fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    withAnimation { coverageExpanded.toggle() }
+                } label: {
+                    Image(systemName: coverageExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(coverageExpanded ? "Collapse coverage" : "Expand coverage")
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+
+            if coverageExpanded {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 7) {
+                        ForEach(coverageChips) { chip in
+                            coverageChipView(chip)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                }
+                .scrollDismissesKeyboard(.immediately)
+            }
+        }
+        .background(Color(.systemBackground))
+    }
+
+    private func coverageChipView(_ chip: CoverageChip) -> some View {
+        let glyph: String
+        let color: Color
+        switch chip.level {
+        case .good: glyph = "✓✓"; color = Color.good
+        case .some: glyph = "✓";  color = Color.good
+        case .none: glyph = "✗";  color = Color.warn
+        }
+        return Button {
+            bodyPartFilter = BodyPartFilter(rawValue: chip.muscleGroup) ?? .all
+            muscleFilter = "All"
+        } label: {
+            HStack(spacing: 4) {
+                Text(chip.muscleGroup)
+                    .font(.caption).fontWeight(.regular)
+                    .foregroundStyle(Color.primary)
+                Text(glyph)
+                    .font(.caption).fontWeight(.semibold)
+                    .foregroundStyle(color)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(Capsule())
         }
         .buttonStyle(.plain)
     }
