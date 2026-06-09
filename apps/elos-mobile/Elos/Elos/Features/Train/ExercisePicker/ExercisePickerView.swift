@@ -308,7 +308,11 @@ struct ExercisePickerView: View {
     // MARK: Coverage Strip
 
     private var addedDayCandidates: [ExerciseCandidate] {
-        dbExercises.filter { dayContext.addedExerciseIDs.contains($0.id) }.map(ExerciseCandidate.init(record:))
+        let ids = dayContext.addedExerciseIDs
+        let names = dayContext.addedExerciseNames   // already normalized
+        return dbExercises
+            .filter { ids.contains($0.id) || names.contains(MuscleTaxonomy.normalize($0.name)) }
+            .map(ExerciseCandidate.init(record:))
     }
 
     private var coverageChips: [CoverageChip] {
