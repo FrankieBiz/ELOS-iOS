@@ -205,6 +205,23 @@ struct CreateSplitView: View {
                 // Exercises for this day
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
+                        if dayExercises[i].count > 1 {
+                            Button {
+                                withAnimation { dayExercises[i] = ExerciseOrderer.order(dayExercises[i], catalog: exerciseCatalog) }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.up.arrow.down")
+                                        .font(.caption2)
+                                    Text("Sort")
+                                        .font(.caption2)
+                                }
+                                .foregroundStyle(Color.tint)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Color.tint.opacity(0.1))
+                                .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
                         ForEach(Array(dayExercises[i].enumerated()), id: \.element.id) { j, ex in
                             HStack(spacing: 4) {
                                 Text(ex.name)
@@ -214,6 +231,8 @@ struct CreateSplitView: View {
                                     ForEach([2, 3, 4, 5], id: \.self) { s in
                                         Button("\(s) sets") { dayExercises[i][j].sets = s }
                                     }
+                                    if j > 0 { Button { withAnimation { dayExercises[i].swapAt(j, j - 1) } } label: { Label("Move left", systemImage: "arrow.left") } }
+                                    if j < dayExercises[i].count - 1 { Button { withAnimation { dayExercises[i].swapAt(j, j + 1) } } label: { Label("Move right", systemImage: "arrow.right") } }
                                 } label: {
                                     Text("\(ex.sets)×")
                                         .font(.caption2).fontWeight(.semibold)
