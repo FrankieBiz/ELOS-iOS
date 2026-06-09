@@ -6,7 +6,10 @@ struct CreateSplitView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \WorkoutTemplateRecord.name) private var templates: [WorkoutTemplateRecord]
     @Query(sort: \ExerciseDefinitionRecord.name) private var exerciseDefs: [ExerciseDefinitionRecord]
+    @Query private var profiles: [UserProfileRecord]
     private var exerciseCatalog: [ExerciseCandidate] { exerciseDefs.map(ExerciseCandidate.init(record:)) }
+    private var equipmentPreference: EquipmentPreference { profiles.first?.equipmentPreference ?? .fullGym }
+    private var guidanceLevel: GuidanceLevel { GuidanceLevel(trainingExperience: profiles.first?.trainingExperience ?? "") }
     @EnvironmentObject var vm: AppViewModel
 
     let onSave: () -> Void
@@ -35,6 +38,7 @@ struct CreateSplitView: View {
     @State private var dayExercises: [[DayExercise]] = Array(repeating: [], count: 7)
     @State private var activePicker: ActivePicker? = nil
     @State private var showDiscardConfirm = false
+    @State private var balanceExpanded = false
 
     private var hasUnsavedContent: Bool {
         !splitName.trimmingCharacters(in: .whitespaces).isEmpty
@@ -198,6 +202,31 @@ struct CreateSplitView: View {
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background((dayTemplateIDs[i].isEmpty ? Color.tint : Color.good).opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if dayExercises[i].isEmpty, MuscleTaxonomy.archetype(forDayName: dayNames[i]) != nil {
+                    Button {
+                        if let arch = MuscleTaxonomy.archetype(forDayName: dayNames[i]) {
+                            withAnimation {
+                                dayExercises[i] = SplitScaffolds.recommend(
+                                    archetype: arch, catalog: exerciseCatalog,
+                                    personalization: PersonalizationProvider(signals: .init()),
+                                    isEquipmentAvailable: { equipmentPreference.isAvailable(equipment: $0) })
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkles")
+                                .font(.caption2)
+                            Text("Auto-fill recommended")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(Color.tint)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.tint.opacity(0.1))
+                        .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
                 }
