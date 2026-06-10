@@ -359,9 +359,9 @@ struct ExercisePickerView: View {
         let glyph: String
         let color: Color
         switch chip.level {
-        case .good: glyph = "✓✓"; color = Color.good
-        case .some: glyph = "✓";  color = Color.good
-        case .none: glyph = "✗";  color = Color.warn
+        case .good: glyph = "✓✓"; color = Color.good        // 2+ exercises — well covered
+        case .some: glyph = "✓";  color = Color.warn        // 1 exercise — partial, room for more
+        case .none: glyph = "○";  color = Color.secondary   // gap — not yet covered (neutral, not alarming)
         }
         return Button {
             bodyPartFilter = BodyPartFilter(rawValue: chip.muscleGroup) ?? .all

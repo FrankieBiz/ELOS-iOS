@@ -173,7 +173,10 @@ struct CreateSplitView: View {
 
     @ViewBuilder private var balanceBanner: some View {
         let warnings = balanceWarnings
-        if !warnings.isEmpty {
+        let populatedDays = dayExercises.filter { !$0.isEmpty }.count
+        // Hold balance feedback until the split is meaningfully built — a half-finished week
+        // would flag "low volume" on everything, which reads as nagging rather than guidance.
+        if !warnings.isEmpty && populatedDays >= 2 {
             switch guidanceLevel {
             case .full:
                 VStack(alignment: .leading, spacing: 6) {
@@ -319,19 +322,28 @@ struct CreateSplitView: View {
                         }
                         ForEach(Array(dayExercises[i].enumerated()), id: \.element.id) { j, ex in
                             HStack(spacing: 4) {
-                                Text(ex.name)
-                                    .font(.caption2)
-                                    .lineLimit(1)
+                                // Tapping the exercise opens its options — sets AND reorder live
+                                // here (a chevron hints at the menu) so reordering is discoverable.
                                 Menu {
-                                    ForEach([2, 3, 4, 5], id: \.self) { s in
-                                        Button("\(s) sets") { dayExercises[i][j].sets = s }
+                                    Section("Sets") {
+                                        ForEach([2, 3, 4, 5], id: \.self) { s in
+                                            Button("\(s) sets") { dayExercises[i][j].sets = s }
+                                        }
                                     }
                                     if j > 0 { Button { withAnimation { dayExercises[i].swapAt(j, j - 1) } } label: { Label("Move left", systemImage: "arrow.left") } }
                                     if j < dayExercises[i].count - 1 { Button { withAnimation { dayExercises[i].swapAt(j, j + 1) } } label: { Label("Move right", systemImage: "arrow.right") } }
                                 } label: {
-                                    Text("\(ex.sets)×")
-                                        .font(.caption2).fontWeight(.semibold)
-                                        .foregroundStyle(Color.tint.opacity(0.7))
+                                    HStack(spacing: 4) {
+                                        Text(ex.name)
+                                            .font(.caption2)
+                                            .lineLimit(1)
+                                        Text("\(ex.sets)×")
+                                            .font(.caption2).fontWeight(.semibold)
+                                            .foregroundStyle(Color.tint.opacity(0.7))
+                                        Image(systemName: "chevron.down")
+                                            .font(.system(size: 7, weight: .semibold))
+                                            .foregroundStyle(Color.tint.opacity(0.5))
+                                    }
                                 }
                                 Button {
                                     dayExercises[i].removeAll { $0.id == ex.id }
