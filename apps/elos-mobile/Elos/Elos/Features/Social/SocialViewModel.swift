@@ -59,7 +59,16 @@ struct UserSearchResultResponse: Codable, Identifiable {
     let last_name: String
     let avatar_color: String?
     let friendship_status: String
+    let friendship_id: String?
     // displayName / initials / avatarHex come from the NamedUser protocol.
+}
+
+struct PublicProfileResponse: Codable {
+    let user_id: String
+    let first_name: String
+    let last_name: String
+    let username: String?
+    let avatar_color: String?
 }
 
 private struct FriendsListResponse: Codable { let friends: [FriendProfileResponse] }
@@ -75,6 +84,7 @@ class SocialViewModel: ObservableObject {
 
     @Published var friends: [FriendProfileResponse] = []
     @Published var pendingRequests: [FriendProfileResponse] = []
+    @Published var sentRequests: [FriendProfileResponse] = []
     @Published var weeklyBoard: [LeaderboardEntryResponse] = []
     @Published var selectedMetric = "volume"
     @Published var standings: MyStandingsResponse?
@@ -90,8 +100,8 @@ class SocialViewModel: ObservableObject {
     func load(ownerID: String) async {
         async let f: Void = syncFriends()
         async let r: Void = syncRequests()
-        await f
-        await r
+        async let s: Void = syncSentRequests()
+        await f; await r; await s
     }
 
     func syncFriends() async {
@@ -105,6 +115,13 @@ class SocialViewModel: ObservableObject {
         do {
             let resp: RequestsListResponse = try await ApiClient.shared.get("/social/friends/requests")
             pendingRequests = resp.requests
+        } catch {}
+    }
+
+    func syncSentRequests() async {
+        do {
+            let resp: RequestsListResponse = try await ApiClient.shared.get("/social/friends/sent")
+            sentRequests = resp.requests
         } catch {}
     }
 
@@ -130,6 +147,12 @@ class SocialViewModel: ObservableObject {
     func sendRequest(to addresseeId: String) async {
         struct Body: Encodable { let addresseeId: String }
         _ = try? await ApiClient.shared.post("/social/friends/request", body: Body(addresseeId: addresseeId)) as OkResponse
+        await syncSentRequests()
+    }
+
+    func cancelSentRequest(friendshipId: String) async {
+        _ = try? await ApiClient.shared.delete("/social/friends/\(friendshipId)") as OkResponse
+        sentRequests.removeAll { $0.friendship_id == friendshipId }
     }
 
     func accept(friendshipId: String) async {
@@ -148,6 +171,7 @@ class SocialViewModel: ObservableObject {
     func remove(friendshipId: String) async {
         _ = try? await ApiClient.shared.delete("/social/friends/\(friendshipId)") as OkResponse
         friends.removeAll { $0.friendship_id == friendshipId }
+        sentRequests.removeAll { $0.friendship_id == friendshipId }
     }
 
     func search(query: String) async -> [UserSearchResultResponse] {
@@ -187,6 +211,10 @@ class SocialViewModel: ObservableObject {
         } catch {
             return false
         }
+    }
+
+    func lookupPublicProfile(userId: String) async -> PublicProfileResponse? {
+        try? await ApiClient.shared.get("/social/profile/\(userId)") as PublicProfileResponse
     }
 
     func formattedValue(_ value: Double, metric: String, unit: WeightUnit = .kg) -> String {

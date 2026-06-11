@@ -155,6 +155,9 @@ export class FriendService {
   }
 
   async searchUsers(query: string, currentUserId: string): Promise<UserSearchResult[]> {
+    // Users naturally type "@handle" — strip the leading @ so it matches.
+    const q = query.replace(/^@+/, "").trim();
+    if (!q) return [];
     const result = await this.db.query<UserSearchResult>(
       `SELECT
          p.user_id,
@@ -168,7 +171,8 @@ export class FriendService {
            WHEN f.requester_id = $2 AND f.status = 'pending' THEN 'pending_sent'
            WHEN f.addressee_id = $2 AND f.status = 'pending' THEN 'pending_received'
            ELSE 'none'
-         END AS friendship_status
+         END AS friendship_status,
+         f.id::text AS friendship_id
        FROM profiles p
        LEFT JOIN friendships f
          ON (f.requester_id = $2 AND f.addressee_id = p.user_id)
@@ -182,9 +186,19 @@ export class FriendService {
          )
        ORDER BY p.first_name, p.last_name
        LIMIT 30`,
-      [query, currentUserId]
+      [q, currentUserId]
     );
     return result.rows;
+  }
+
+  async getPublicProfile(userId: string): Promise<{ user_id: string; first_name: string; last_name: string; username: string | null; avatar_color: string } | null> {
+    const result = await this.db.query(
+      `SELECT user_id, COALESCE(first_name, '') AS first_name, COALESCE(last_name, '') AS last_name,
+              username, COALESCE(avatar_color, '#6C47FF') AS avatar_color
+       FROM profiles WHERE user_id = $1`,
+      [userId]
+    );
+    return result.rows[0] ?? null;
   }
 
   async getFriendStats(viewerUserId: string, friendUserId: string) {

@@ -4,11 +4,26 @@ import SwiftData
 struct CrewView: View {
     @EnvironmentObject private var socialVM: SocialViewModel
     @EnvironmentObject private var vm: AppViewModel
+    @EnvironmentObject private var feedVM: FeedViewModel
 
     @State private var tab = 0
     @State private var showSearch = false
     @State private var friendPendingRemove: FriendProfileResponse?
+    @State private var splitShared = false
     @Environment(\.dismiss) private var dismiss
+
+    private var inviteURL: URL? {
+        let userId = vm.currentUserID
+        guard !userId.isEmpty else { return nil }
+        return URL(string: "elos://add-friend?userId=\(userId)")
+    }
+
+    private var inviteMessage: String {
+        if let uname = vm.userProfile?.username, !uname.isEmpty {
+            return "Add me on Elos — @\(uname) 💪"
+        }
+        return "Join my crew on Elos! 💪"
+    }
 
     var body: some View {
         NavigationView {
@@ -37,12 +52,34 @@ struct CrewView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if tab == 1 {
-                        Button {
-                            showSearch = true
-                        } label: {
-                            Image(systemName: "person.badge.plus")
+                        HStack(spacing: 16) {
+                            if let serverID = vm.activeSplit?.serverID, !serverID.isEmpty {
+                                Button {
+                                    HapticManager.success()
+                                    Task {
+                                        let ok = await feedVM.shareSplit(serverID: serverID)
+                                        if ok { splitShared = true }
+                                    }
+                                } label: {
+                                    Image(systemName: splitShared ? "checkmark.circle.fill" : "calendar.badge.plus")
+                                        .foregroundStyle(splitShared ? Color.good : Color.tint)
+                                }
+                                .accessibilityLabel("Share my split to crew feed")
+                                .disabled(splitShared)
+                            }
+                            if let url = inviteURL {
+                                ShareLink(item: url, message: Text(inviteMessage)) {
+                                    Image(systemName: "square.and.arrow.up")
+                                }
+                                .accessibilityLabel("Share invite link")
+                            }
+                            Button {
+                                showSearch = true
+                            } label: {
+                                Image(systemName: "person.badge.plus")
+                            }
+                            .accessibilityLabel("Search for friends")
                         }
-                        .accessibilityLabel("Search for friends")
                     }
                 }
             }
@@ -82,7 +119,10 @@ struct CrewView: View {
                 if !socialVM.pendingRequests.isEmpty {
                     pendingSection
                 }
-                if socialVM.friends.isEmpty && socialVM.pendingRequests.isEmpty {
+                if !socialVM.sentRequests.isEmpty {
+                    sentSection
+                }
+                if socialVM.friends.isEmpty && socialVM.pendingRequests.isEmpty && socialVM.sentRequests.isEmpty {
                     emptyState
                 } else if !socialVM.friends.isEmpty {
                     friendsSection
@@ -131,6 +171,42 @@ struct CrewView: View {
                 }
                 .padding(12)
                 .elosCard()
+            }
+        }
+    }
+
+    private var sentSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Sent")
+                .font(.subheadline).fontWeight(.semibold)
+                .padding(.horizontal, 4)
+            ForEach(socialVM.sentRequests) { req in
+                HStack(spacing: 12) {
+                    AvatarCircle(initials: req.initials, hex: req.avatarHex, size: 40)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(req.displayName).font(.subheadline).fontWeight(.semibold)
+                        if let uname = req.username {
+                            Text("@\(uname)").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Text("Pending")
+                        .font(.caption).fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Color(.tertiarySystemBackground))
+                        .clipShape(Capsule())
+                }
+                .padding(12)
+                .elosCard()
+                .contextMenu {
+                    Button(role: .destructive) {
+                        HapticManager.impact(.light)
+                        Task { await socialVM.cancelSentRequest(friendshipId: req.friendship_id) }
+                    } label: {
+                        Label("Cancel Request", systemImage: "xmark.circle")
+                    }
+                }
             }
         }
     }

@@ -45,6 +45,21 @@ class TrainViewModel: ObservableObject {
         Task { await WorkoutSyncService.shared.pushSessionCreate(session, context: context) }
     }
 
+    /// Re-attach an unfinished session recovered after relaunch — WITHOUT creating
+    /// a new one. Loads its persisted sets so volume/PR logic continues correctly.
+    /// Setting `currentSession` here makes `startSession`'s guard a no-op when
+    /// `ActiveSessionView.onAppear` fires.
+    func adoptRecoveredSession(_ session: WorkoutSessionRecord) {
+        currentSession = session
+        let sid = session.id
+        let desc = FetchDescriptor<ExerciseSetRecord>(
+            predicate: #Predicate { $0.sessionID == sid }
+        )
+        sessionSets = (try? context.fetch(desc)) ?? []
+        prsHitThisSession = []
+        newPRExerciseName = nil
+    }
+
     func logCompletedSet(
         exerciseName: String,
         setIndex: Int,

@@ -39,12 +39,14 @@ struct FriendProfileView: View {
 
     @EnvironmentObject private var socialVM: SocialViewModel
     @EnvironmentObject private var appVM: AppViewModel
+    @EnvironmentObject private var feedVM: FeedViewModel
     @StateObject private var profileVM = FriendProfileViewModel()
     @State private var showingReportSheet = false
     @State private var reportCategory = "other"
     @State private var reportNote = ""
     @State private var showingReportConfirmation = false
     @State private var showingBlockConfirm = false
+    @State private var splitShared = false
     @Environment(\.dismiss) private var dismiss
 
     private var initials: String {
@@ -80,6 +82,22 @@ struct FriendProfileView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    if let serverID = appVM.activeSplit?.serverID, !serverID.isEmpty {
+                        Button {
+                            HapticManager.success()
+                            Task {
+                                let ok = await feedVM.shareSplit(serverID: serverID)
+                                if ok { splitShared = true }
+                            }
+                        } label: {
+                            Label(
+                                splitShared ? "Split Shared to Feed" : "Share my split",
+                                systemImage: splitShared ? "checkmark.circle" : "calendar.badge.plus"
+                            )
+                        }
+                        .disabled(splitShared)
+                        Divider()
+                    }
                     Button {
                         showingReportSheet = true
                     } label: {

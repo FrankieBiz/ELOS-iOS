@@ -160,6 +160,7 @@ final class WorkoutSyncService {
         ))) ?? []
         let knownServerIDs = Set(existing.map(\.serverID).filter { !$0.isEmpty })
 
+        var insertedAny = false
         for s in remote.sessions where !knownServerIDs.contains(s.id) {
             let session = WorkoutSessionRecord(
                 ownerID: ownerID,
@@ -173,6 +174,7 @@ final class WorkoutSyncService {
                 syncPending: false
             )
             context.insert(session)
+            insertedAny = true
 
             // Pull this session's sets (only runs for genuinely missing sessions).
             if let setList: SetListResponse = try? await ApiClient.shared.get("/sessions/\(s.id)/sets") {
@@ -195,8 +197,9 @@ final class WorkoutSyncService {
                     ))
                 }
             }
-            try? context.save()
         }
+        // Single save after all inserts — avoids blocking the main actor once per session.
+        if insertedAny { try? context.save() }
     }
 
     // MARK: - Helpers

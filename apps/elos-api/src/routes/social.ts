@@ -21,6 +21,12 @@ router.get("/friends/requests", requireAuth, async (req: Request, res: Response)
   res.json({ requests });
 });
 
+router.get("/friends/sent", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const requests = await service.getSentRequests(userId);
+  res.json({ requests });
+});
+
 router.post("/friends/request", requireAuth, validateBody(friendRequestSchema), async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const { addresseeId } = req.body as { addresseeId: string };
@@ -52,6 +58,12 @@ router.get("/search", requireAuth, async (req: Request, res: Response) => {
   if (!q || q.trim().length < 1) { res.json({ users: [] }); return; }
   const users = await service.searchUsers(q.trim(), userId);
   res.json({ users });
+});
+
+router.get("/profile/:userId", requireAuth, async (req: Request, res: Response) => {
+  const profile = await service.getPublicProfile(req.params.userId as string);
+  if (!profile) { res.status(404).json({ error: "User not found" }); return; }
+  res.json(profile);
 });
 
 router.get("/friends/:userId/stats", requireAuth, async (req: Request, res: Response) => {

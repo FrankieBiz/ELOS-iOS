@@ -1,6 +1,11 @@
 import SwiftUI
 import SwiftData
 
+private struct InviteTarget: Identifiable {
+    let userId: String
+    var id: String { userId }
+}
+
 @main
 struct ElosApp: App {
     @StateObject private var authStore = AuthStore()
@@ -41,7 +46,6 @@ struct ElosApp: App {
         let (c, err) = Self.makeContainer(schema: schema)
         container = c
         launchError = err
-        if err == nil { ExerciseCatalog.seedIfNeeded(context: c.mainContext) }
         _viewModel = StateObject(wrappedValue: AppViewModel(context: c.mainContext))
         _trainViewModel = StateObject(wrappedValue: TrainViewModel(context: c.mainContext))
         _socialViewModel = StateObject(wrappedValue: SocialViewModel(context: c.mainContext))
@@ -112,8 +116,33 @@ struct ElosApp: App {
                     .modelContainer(container)
                     .onAppear {
                         NotificationManager.requestAuthorization()
-                        NotificationManager.scheduleHabitReminder(hour: 20, minute: 0)
+                        NotificationManager.scheduleDailyNotifications(
+                            viewModel.upcomingNotificationDays(), hour: 20, minute: 0
+                        )
                         Task { await ApiClient.shared.warmup() }
+                        let ctx = container.mainContext
+                        Task { ExerciseCatalog.seedIfNeeded(context: ctx) }
+                    }
+                    .onChange(of: viewModel.activeSplit?.id) { _, _ in
+                        NotificationManager.scheduleDailyNotifications(
+                            viewModel.upcomingNotificationDays(), hour: 20, minute: 0
+                        )
+                    }
+                    .onOpenURL { url in
+                        guard url.scheme == "elos",
+                              url.host == "add-friend",
+                              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                              let userId = components.queryItems?.first(where: { $0.name == "userId" })?.value,
+                              !userId.isEmpty
+                        else { return }
+                        viewModel.pendingFriendInviteUserId = userId
+                    }
+                    .sheet(item: Binding(
+                        get: { viewModel.pendingFriendInviteUserId.map { InviteTarget(userId: $0) } },
+                        set: { if $0 == nil { viewModel.pendingFriendInviteUserId = nil } }
+                    )) { target in
+                        FriendInviteSheet(inviterUserId: target.userId)
+                            .environmentObject(socialViewModel)
                     }
             }
         }

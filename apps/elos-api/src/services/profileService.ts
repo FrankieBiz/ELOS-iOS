@@ -1,9 +1,11 @@
 import { supabaseAdmin } from "../supabase";
 import { pool } from "../db";
+import { conflict } from "../lib/httpError";
 
 export interface ProfileFields {
   first_name?: string | null;
   last_name?: string | null;
+  username?: string | null;
   height_cm?: number | null;
   weight_kg?: number | null;
   age_years?: number | null;
@@ -42,12 +44,79 @@ export async function upsertProfile(userID: string, fields: ProfileFields) {
     )
     .select()
     .single();
-  if (error) throw error;
+  if (error) {
+    // Postgres unique-violation on the username index → surface as a 409 the
+    // client can show as "username taken" rather than a generic 500.
+    if (isUsernameConflict(error)) {
+      throw conflict("That username is taken", "USERNAME_TAKEN");
+    }
+    throw error;
+  }
   return data;
 }
 
+/** True when a Supabase/Postgres error is the unique violation on profiles.username. */
+function isUsernameConflict(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  if (error.code === "23505") return true;
+  return /username/i.test(error.message ?? "");
+}
+
+/**
+ * Is `username` free (case-insensitive), ignoring the caller's own row so a user
+ * re-saving their existing handle doesn't see a false "taken".
+ */
+export async function usernameAvailable(username: string, forUserId: string): Promise<boolean> {
+  const result = await pool.query(
+    `SELECT 1 FROM profiles WHERE lower(username) = lower($1) AND user_id <> $2 LIMIT 1`,
+    [username, forUserId]
+  );
+  return result.rows.length === 0;
+}
+
+/**
+ * Guarantee a user is findable: if they have no username, derive one from their
+ * first name (fallback "athlete") plus random digits, retrying on collision.
+ */
+export async function ensureUsername(userID: string): Promise<void> {
+  const existing = await pool.query<{ first_name: string | null; username: string | null }>(
+    `SELECT first_name, username FROM profiles WHERE user_id = $1`,
+    [userID]
+  );
+  const row = existing.rows[0];
+  if (!row || (row.username && row.username.trim() !== "")) return;
+
+  const base =
+    (row.first_name ?? "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 12) || "athlete";
+  // Ensure it starts with a letter (the base could be empty/numeric after stripping).
+  const safeBase = /^[a-z]/.test(base) ? base : `a${base}`;
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const candidate = `${safeBase}${Math.floor(100 + Math.random() * 9900)}`;
+    try {
+      const res = await pool.query(
+        `UPDATE profiles SET username = $1, updated_at = now()
+         WHERE user_id = $2 AND (username IS NULL OR username = '')`,
+        [candidate, userID]
+      );
+      if ((res.rowCount ?? 0) > 0) return; // assigned (or another writer already set one)
+      return; // username got set concurrently — nothing to do
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code;
+      if (code === "23505") continue; // candidate taken — retry with new digits
+      throw err;
+    }
+  }
+}
+
 export async function completeOnboarding(userID: string) {
-  return upsertProfile(userID, { onboarding_complete: true });
+  const profile = await upsertProfile(userID, { onboarding_complete: true });
+  // Safety net so users who somehow finished without a username stay findable.
+  await ensureUsername(userID);
+  return profile;
 }
 
 /**

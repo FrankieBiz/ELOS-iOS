@@ -136,6 +136,38 @@ describe("zod schemas", () => {
       const result = upsertProfileSchema.safeParse({ onboarding_complete: true });
       expect(result.success).toBe(true);
     });
+
+    it("accepts a body that omits username (backward compatible)", () => {
+      const result = upsertProfileSchema.safeParse({ first_name: "Frank" });
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts a valid username and lowercases it", () => {
+      const result = upsertProfileSchema.safeParse({ username: "Frank_B" });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.username).toBe("frank_b");
+    });
+
+    it("accepts an explicit null username (clearing)", () => {
+      const result = upsertProfileSchema.safeParse({ username: null });
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects a too-short username", () => {
+      expect(upsertProfileSchema.safeParse({ username: "ab" }).success).toBe(false);
+    });
+
+    it("rejects a username with illegal characters", () => {
+      expect(upsertProfileSchema.safeParse({ username: "frank!" }).success).toBe(false);
+    });
+
+    it("rejects a username starting with a digit", () => {
+      expect(upsertProfileSchema.safeParse({ username: "1frank" }).success).toBe(false);
+    });
+
+    it("rejects a username longer than 20 characters", () => {
+      expect(upsertProfileSchema.safeParse({ username: "a".repeat(21) }).success).toBe(false);
+    });
   });
 
   describe("searchExercisesQuerySchema", () => {

@@ -2,6 +2,8 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var vm: AppViewModel
+    @EnvironmentObject var trainVM: TrainViewModel
+    @EnvironmentObject var trainingContext: TrainingContext
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -10,6 +12,12 @@ struct ContentView: View {
                 .animation(.easeInOut(duration: 0.2), value: vm.selectedTab)
 
             ElosTabBar()
+
+            if vm.recoverableSession != nil && !vm.showingSession {
+                ResumeSessionPrompt()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(15)
+            }
         }
         .ignoresSafeArea(edges: .bottom)
         .overlay {
@@ -19,6 +27,7 @@ struct ContentView: View {
                     .zIndex(10)
             }
         }
+        .animation(.spring(duration: 0.32), value: vm.recoverableSession != nil)
         .overlay(alignment: .top) {
             if let message = vm.errorBanner {
                 ErrorBanner(message: message) { vm.dismissError() }
@@ -78,6 +87,78 @@ private struct ErrorBanner: View {
         .padding(.horizontal, 14)
         .padding(.top, 8)
         .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
+    }
+}
+
+// MARK: - Resume Session Prompt
+private struct ResumeSessionPrompt: View {
+    @EnvironmentObject var vm: AppViewModel
+    @EnvironmentObject var trainVM: TrainViewModel
+    @EnvironmentObject var trainingContext: TrainingContext
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .full
+        return f
+    }()
+
+    private var subtitle: String {
+        guard let s = vm.recoverableSession else { return "" }
+        let when = Self.relativeFormatter.localizedString(for: s.startedAt, relativeTo: Date())
+        let count = vm.loggedSetCount(for: s)
+        let setsLabel = count == 1 ? "1 set logged" : "\(count) sets logged"
+        return "Started \(when) · \(setsLabel)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "figure.strengthtraining.traditional")
+                    .font(.title3).foregroundStyle(Color.tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Workout in progress")
+                        .font(.subheadline).fontWeight(.semibold)
+                    Text(subtitle)
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            HStack(spacing: 10) {
+                Button {
+                    HapticManager.warning()
+                    vm.discardRecoveredSession(trainVM: trainVM)
+                } label: {
+                    Text("Discard")
+                        .font(.subheadline).fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color(.tertiarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    HapticManager.success()
+                    vm.resumeRecoveredSession(trainVM: trainVM, context: trainingContext)
+                } label: {
+                    Text("Resume")
+                        .font(.subheadline).fontWeight(.semibold)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.tint)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.15), radius: 10, y: 4)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 96)   // clear the tab bar
     }
 }
 

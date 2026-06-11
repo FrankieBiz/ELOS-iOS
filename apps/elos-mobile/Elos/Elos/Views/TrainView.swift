@@ -18,6 +18,7 @@ struct TrainView: View {
     @EnvironmentObject var vm: AppViewModel
     @EnvironmentObject var trainVM: TrainViewModel
     @EnvironmentObject var socialVM: SocialViewModel
+    @EnvironmentObject var feedVM: FeedViewModel
     @EnvironmentObject var context: TrainingContext
     @Environment(\.modelContext) private var modelContext
 
@@ -124,6 +125,7 @@ struct TrainView: View {
             CrewView()
                 .environmentObject(socialVM)
                 .environmentObject(vm)
+                .environmentObject(feedVM)
         }
         .sheet(isPresented: $context.showReadinessSheet) {
             ReadinessCheckInView(

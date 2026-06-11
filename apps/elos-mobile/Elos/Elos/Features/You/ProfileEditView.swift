@@ -2,9 +2,14 @@ import SwiftUI
 import SwiftData
 import Combine
 
+@MainActor
 final class ProfileEditViewModel: ObservableObject {
     @Published var firstName     = ""
     @Published var lastName      = ""
+    @Published var username      = ""
+    @Published var usernameStatus: OnboardingViewModel.UsernameStatus = .empty
+    private var originalUsername = ""
+    private var usernameCheckTask: Task<Void, Never>?
     @Published var heightFeet    = 5
     @Published var heightInches  = 10
     @Published var weightKg: Double = 72.5
@@ -27,6 +32,16 @@ final class ProfileEditViewModel: ObservableObject {
     func load(from record: UserProfileRecord) {
         firstName    = record.firstName
         lastName     = record.lastName
+        originalUsername = record.username
+        if record.username.isEmpty {
+            // Legacy user with no handle yet — pre-fill a suggestion and check it.
+            let suggestion = Self.suggestedUsername(first: record.firstName, last: record.lastName)
+            username = suggestion
+            onUsernameChanged(suggestion)
+        } else {
+            username = record.username
+            usernameStatus = .available
+        }
         let totalIn  = Int(record.heightCm / 2.54)
         heightFeet   = max(3, totalIn / 12)
         heightInches = totalIn % 12
@@ -47,6 +62,45 @@ final class ProfileEditViewModel: ObservableObject {
 
     private var heightCm: Double { Double(heightFeet * 12 + heightInches) * 2.54 }
 
+    static func suggestedUsername(first: String, last: String) -> String {
+        let base = (first + last.prefix(1))
+            .lowercased()
+            .replacingOccurrences(of: "[^a-z0-9_]", with: "", options: .regularExpression)
+        let trimmed = String(base.prefix(18))
+        if trimmed.count >= 3, trimmed.first?.isLetter == true { return trimmed }
+        return "athlete"
+    }
+
+    /// Validate + debounce-check the username (mirrors onboarding). The user's own
+    /// current handle is always treated as available.
+    func onUsernameChanged(_ raw: String) {
+        let normalized = raw.lowercased()
+            .replacingOccurrences(of: "@", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        if normalized != username { username = normalized; return }
+
+        usernameCheckTask?.cancel()
+        if !originalUsername.isEmpty && normalized == originalUsername {
+            usernameStatus = .available
+            return
+        }
+        guard !normalized.isEmpty else { usernameStatus = .empty; return }
+        guard OnboardingViewModel.isValidUsername(normalized) else { usernameStatus = .invalid; return }
+
+        usernameStatus = .checking
+        usernameCheckTask = Task { [normalized] in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            let available = await OnboardingViewModel.checkAvailability(normalized)
+            guard !Task.isCancelled, self.username == normalized else { return }
+            switch available {
+            case .some(true):  self.usernameStatus = .available
+            case .some(false): self.usernameStatus = .taken
+            case .none:        self.usernameStatus = .unknown
+            }
+        }
+    }
+
     func save(record: UserProfileRecord, context: ModelContext, appVM: AppViewModel, useImperial: Bool) async {
         isLoading    = true
         errorMessage = nil
@@ -55,6 +109,7 @@ final class ProfileEditViewModel: ObservableObject {
         let body = ProfileUpdateBody(
             first_name:          firstName,
             last_name:           lastName,
+            username:            username.isEmpty ? nil : username,
             height_cm:           heightCm,
             weight_kg:           weightKg,
             age_years:           ageYears,
@@ -73,12 +128,18 @@ final class ProfileEditViewModel: ObservableObject {
         do {
             let _: ProfileResponse = try await ApiClient.shared.patch("/profile", body: body)
             networkSucceeded = true
+        } catch ApiError.httpError(409, _) {
+            // Username taken — surface it and don't persist (let the user pick another).
+            errorMessage = "That username is taken — try another."
+            usernameStatus = .taken
+            return
         } catch {
-            // Save locally; syncPending triggers a retry from syncProfileFromServer on next launch.
+            // Other failure (offline): save locally; syncPending retries on next launch.
         }
 
         record.firstName          = firstName
         record.lastName           = lastName
+        record.username           = username
         record.heightCm           = heightCm
         record.weightKg           = weightKg
         record.ageYears           = ageYears
@@ -99,6 +160,7 @@ final class ProfileEditViewModel: ObservableObject {
         appVM.userProfile = UserProfileSnapshot(
             firstName:  firstName,
             lastName:   lastName,
+            username:   username,
             email:      record.email,
             schoolName: schoolName,
             schoolYear: schoolYear
@@ -143,6 +205,36 @@ struct ProfileEditView: View {
         }
     }
 
+    @ViewBuilder
+    private var usernameStatusIcon: some View {
+        switch editVM.usernameStatus {
+        case .checking:        ProgressView().controlSize(.small)
+        case .available:       Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.good)
+        case .taken, .invalid: Image(systemName: "xmark.circle.fill").foregroundStyle(Color.bad)
+        case .unknown:         Image(systemName: "wifi.slash").foregroundStyle(.secondary)
+        case .empty:           EmptyView()
+        }
+    }
+
+    private var usernameFooter: String {
+        switch editVM.usernameStatus {
+        case .empty:     return "This is how friends find you. Letters, numbers, underscore."
+        case .checking:  return "Checking availability…"
+        case .available: return "✓ Available"
+        case .taken:     return "That username is taken — try another."
+        case .invalid:   return "3–20 characters, must start with a letter."
+        case .unknown:   return "Couldn't check right now — you can still save."
+        }
+    }
+
+    private var usernameFooterColor: Color {
+        switch editVM.usernameStatus {
+        case .available: return Color.good
+        case .taken, .invalid: return Color.bad
+        default: return .secondary
+        }
+    }
+
     var body: some View {
         NavigationView {
             Form {
@@ -151,6 +243,24 @@ struct ProfileEditView: View {
                         .textContentType(.givenName)
                     TextField("Last Name", text: $editVM.lastName)
                         .textContentType(.familyName)
+                }
+
+                Section {
+                    HStack(spacing: 4) {
+                        Text("@").foregroundStyle(.secondary)
+                        TextField("username", text: $editVM.username)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .textContentType(.username)
+                            .onChange(of: editVM.username) { _, newValue in
+                                editVM.onUsernameChanged(newValue)
+                            }
+                        usernameStatusIcon
+                    }
+                } header: {
+                    Text("Username")
+                } footer: {
+                    Text(usernameFooter).foregroundStyle(usernameFooterColor)
                 }
 
                 Section("Training") {
@@ -271,7 +381,8 @@ struct ProfileEditView: View {
                             Text("Save").fontWeight(.semibold)
                         }
                     }
-                    .disabled(editVM.isLoading || editVM.firstName.isEmpty)
+                    .disabled(editVM.isLoading || editVM.firstName.isEmpty
+                              || !(editVM.usernameStatus == .available || editVM.usernameStatus == .unknown))
                 }
             }
             .onAppear { loadProfile() }

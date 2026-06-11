@@ -4,6 +4,7 @@ struct ProfileResponse: Decodable {
     let user_id: String
     let first_name: String?
     let last_name: String?
+    let username: String?
     let height_cm: Double?
     let weight_kg: Double?
     let age_years: Int?

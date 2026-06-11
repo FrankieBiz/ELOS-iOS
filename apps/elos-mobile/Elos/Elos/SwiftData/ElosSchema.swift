@@ -146,12 +146,17 @@ final class WorkoutSessionRecord {
     var totalVolume: Double
     var serverID: String = ""       // backend UUID, "" until the create POST is confirmed
     var syncPending: Bool = false   // true while create/sets/finish still need pushing
+    // JSON snapshot of the in-progress `[Exercise]` draft (planned + typed-but-uncommitted
+    // values + mid-session-added exercises). "" = no draft captured yet. Local-only:
+    // never sent to the server; used to rehydrate a session after backgrounding/termination.
+    var draftJSON: String = ""
 
     init(id: String = UUID().uuidString, ownerID: String,
          startedAt: Date = Date(), finishedAt: Date? = nil,
          sessionRPE: Int = 0, notes: String = "",
          templateID: String = "", totalVolume: Double = 0,
-         serverID: String = "", syncPending: Bool = false) {
+         serverID: String = "", syncPending: Bool = false,
+         draftJSON: String = "") {
         self.id          = id
         self.ownerID     = ownerID
         self.startedAt   = startedAt
@@ -162,6 +167,7 @@ final class WorkoutSessionRecord {
         self.totalVolume = totalVolume
         self.serverID    = serverID
         self.syncPending = syncPending
+        self.draftJSON   = draftJSON
     }
 }
 
@@ -690,6 +696,7 @@ final class UserProfileRecord {
     var email: String
     var firstName: String
     var lastName: String
+    var username: String = ""   // the @handle friends search for ("" until set)
     var heightCm: Double
     var weightKg: Double
     var ageYears: Int
@@ -707,7 +714,7 @@ final class UserProfileRecord {
     var equipmentPreferenceJSON: String = ""
 
     init(id: String, ownerID: String, email: String,
-         firstName: String = "", lastName: String = "",
+         firstName: String = "", lastName: String = "", username: String = "",
          heightCm: Double = 0, weightKg: Double = 0, ageYears: Int = 0,
          trainingExperience: String = "beginner", trainingGoal: String = "hypertrophy",
          schoolName: String = "", schoolYear: String = "sophomore",
@@ -721,6 +728,7 @@ final class UserProfileRecord {
         self.email              = email
         self.firstName          = firstName
         self.lastName           = lastName
+        self.username           = username
         self.heightCm           = heightCm
         self.weightKg           = weightKg
         self.ageYears           = ageYears

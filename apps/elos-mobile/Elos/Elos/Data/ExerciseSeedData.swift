@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 // Bump this number whenever new exercises are added — the app will reseed on next launch.
-private let kCatalogVersion = 2
+private let kCatalogVersion = 4
 
 enum ExerciseCatalog {
 
@@ -34,6 +34,21 @@ enum ExerciseCatalog {
     private static func encodeSecondary(_ muscles: [String]) -> String {
         (try? String(data: JSONEncoder().encode(muscles), encoding: .utf8)) ?? "[]"
     }
+
+    // Bodyweight exercises where the user can attach extra load (belt, vest, plate).
+    // The weight field for these exercises represents added weight only.
+    static let weightableBodyweightExercises: Set<String> = [
+        "Pull-Up", "Chin-Up", "Wide-Grip Pull-Up", "Neutral-Grip Pull-Up",
+        "Chest Dip", "Parallel Bar Dip",
+        "Inverted Row",
+        "Hyperextension",
+        "Glute-Ham Raise", "Nordic Hamstring Curl",
+        "Sissy Squat",
+        "Push-Up", "Wide Push-Up", "Diamond Push-Up", "Decline Push-Up",
+        "Plyometric Push-Up", "Handstand Push-Up",
+        "Hanging Leg Raise", "Toes-to-Bar",
+        "Ab Wheel Rollout",
+    ]
 
     // (name, primaryMuscle, secondaryMuscles, equipment, movementPattern)
     private static let catalog: [(String, String, [String], String, String)] = [
@@ -94,6 +109,8 @@ enum ExerciseCatalog {
         ("Seal Row",                        "lats",         ["biceps","rear_delts"],            "barbell",    "pull"),
         ("Meadows Row",                     "lats",         ["biceps","rear_delts"],            "barbell",    "pull"),
         ("T-Bar Row",                       "lats",         ["biceps","rear_delts","traps"],    "barbell",    "pull"),
+        ("Chest-Supported T-Bar Row",       "lats",         ["biceps","rear_delts","traps"],    "barbell",    "pull"),
+        ("T-Bar Row Machine",               "lats",         ["biceps","rear_delts","traps"],    "machine",    "pull"),
         ("Barbell Incline Row",             "lats",         ["biceps","rear_delts"],            "barbell",    "pull"),
         ("Barbell Rear Delt Row",           "rear_delts",   ["traps"],                          "barbell",    "pull"),
         ("One-Arm Dumbbell Row",            "lats",         ["biceps","rear_delts"],            "dumbbell",   "pull"),
@@ -104,6 +121,7 @@ enum ExerciseCatalog {
         ("Dumbbell Incline Row",            "lats",         ["rear_delts","biceps"],            "dumbbell",   "pull"),
         ("Dumbbell Chest-Supported Rear Delt Row", "rear_delts", ["traps"],                    "dumbbell",   "pull"),
         ("Dumbbell Rear Delt Row",          "rear_delts",   ["traps","biceps"],                 "dumbbell",   "pull"),
+        ("Spider Row",                      "lats",         ["biceps","rear_delts"],            "dumbbell",   "pull"),
         ("Dumbbell Face Pull",              "rear_delts",   ["traps","external_rotators"],      "dumbbell",   "pull"),
         ("Cable Row",                       "lats",         ["biceps","rear_delts"],            "cable",      "pull"),
         ("Seated Cable Row",                "lats",         ["biceps","rear_delts"],            "cable",      "pull"),
@@ -172,12 +190,19 @@ enum ExerciseCatalog {
         ("Half-Kneeling Cable Shoulder Press", "front_delts", ["core","triceps"],               "cable",      "push"),
         ("Machine Lateral Raise",           "side_delts",   [],                                 "machine",    "isolation"),
         ("Reverse Pec Deck",                "rear_delts",   ["traps"],                          "machine",    "isolation"),
+        ("Pec Deck Rear Delt Fly",          "rear_delts",   ["traps"],                          "machine",    "isolation"),
         ("Upright Row",                     "side_delts",   ["traps","biceps"],                 "barbell",    "pull"),
         ("EZ-Bar Upright Row",              "side_delts",   ["traps","biceps"],                 "barbell",    "pull"),
         ("Dumbbell Shrug",                  "traps",        [],                                 "dumbbell",   "isolation"),
         ("Barbell Shrug",                   "traps",        [],                                 "barbell",    "isolation"),
         ("Cable Shrug",                     "traps",        [],                                 "cable",      "isolation"),
         ("Trap Bar Shrug",                  "traps",        [],                                 "barbell",    "isolation"),
+        ("Machine Shrug",                   "traps",        [],                                 "machine",    "isolation"),
+        ("Smith Machine Shrug",             "traps",        [],                                 "machine",    "isolation"),
+        ("Behind-the-Back Barbell Shrug",   "traps",        [],                                 "barbell",    "isolation"),
+        ("Behind-the-Back Smith Shrug",     "traps",        [],                                 "machine",    "isolation"),
+        ("Kelso Shrug",                     "traps",        ["rear_delts","rhomboids"],          "barbell",    "isolation"),
+        ("T-Bar Kelso Shrug",               "traps",        ["rear_delts","rhomboids"],          "machine",    "isolation"),
         ("Face Pull",                       "rear_delts",   ["traps","external_rotators"],      "cable",      "pull"),
 
         // ── BICEPS ─────────────────────────────────────────────────────────────
@@ -285,6 +310,7 @@ enum ExerciseCatalog {
         ("Smith Machine Squat",             "quads",        ["glutes","hamstrings"],            "machine",    "squat"),
         ("Belt Squat",                      "quads",        ["glutes"],                         "machine",    "squat"),
         ("Leg Extension",                   "quads",        [],                                 "machine",    "isolation"),
+        ("Barbell Hack Squat",              "quads",        ["glutes","hamstrings"],            "barbell",    "squat"),
         ("Pistol Squat",                    "quads",        ["glutes","core"],                  "bodyweight", "squat"),
         ("Sissy Squat",                     "quads",        [],                                 "bodyweight", "isolation"),
         ("Cossack Squat",                   "quads",        ["glutes","adductors"],             "bodyweight", "squat"),
@@ -309,7 +335,7 @@ enum ExerciseCatalog {
         ("Dumbbell Sumo Deadlift",          "glutes",       ["quads","hamstrings"],             "dumbbell",   "hinge"),
         ("Dumbbell Stiff-Leg Deadlift",     "hamstrings",   ["glutes","lower_back"],            "dumbbell",   "hinge"),
         ("Dumbbell Staggered Stance RDL",   "hamstrings",   ["glutes","core"],                  "dumbbell",   "hinge"),
-        ("Kettlebell Swing",                "glutes",       ["hamstrings","core"],              "dumbbell",   "hinge"),
+        ("Kettlebell Swing",                "glutes",       ["hamstrings","core"],              "kettlebell", "hinge"),
         ("Cable Romanian Deadlift",         "hamstrings",   ["glutes","lower_back"],            "cable",      "hinge"),
         ("Cable Stiff-Leg Deadlift",        "hamstrings",   ["glutes","lower_back"],            "cable",      "hinge"),
         ("Cable B-Stance Romanian Deadlift","hamstrings",   ["glutes"],                         "cable",      "hinge"),
@@ -395,6 +421,24 @@ enum ExerciseCatalog {
         ("Captain's Chair Leg Raise",       "core",         ["hip_flexors"],                    "machine",    "isolation"),
         ("Barbell Rollout",                 "core",         ["lats"],                           "barbell",    "isolation"),
 
+        // ── LANDMINE ───────────────────────────────────────────────────────────
+        ("Landmine Press",                  "front_delts",  ["upper_chest","triceps"],           "barbell",    "push"),
+        ("Single-Arm Landmine Press",       "front_delts",  ["upper_chest","triceps"],           "barbell",    "push"),
+        ("Kneeling Landmine Press",         "front_delts",  ["core","triceps"],                  "barbell",    "push"),
+        ("Half-Kneeling Landmine Press",    "front_delts",  ["core","triceps"],                  "barbell",    "push"),
+        ("Landmine Row",                    "lats",         ["biceps","rear_delts"],             "barbell",    "pull"),
+        ("Single-Arm Landmine Row",         "lats",         ["biceps","rear_delts"],             "barbell",    "pull"),
+        ("Landmine Meadows Row",            "lats",         ["biceps","rear_delts"],             "barbell",    "pull"),
+        ("Landmine Squat",                  "quads",        ["glutes","core"],                   "barbell",    "squat"),
+        ("Landmine Goblet Squat",           "quads",        ["glutes","core"],                   "barbell",    "squat"),
+        ("Landmine Romanian Deadlift",      "hamstrings",   ["glutes","lower_back"],             "barbell",    "hinge"),
+        ("Single-Leg Landmine RDL",         "hamstrings",   ["glutes","core"],                   "barbell",    "hinge"),
+        ("Landmine Hip Thrust",             "glutes",       ["hamstrings"],                      "barbell",    "hinge"),
+        ("Landmine Lateral Raise",          "side_delts",   [],                                  "barbell",    "isolation"),
+        ("Landmine Shrug",                  "traps",        [],                                  "barbell",    "isolation"),
+        ("Landmine Twist",                  "obliques",     ["core"],                            "barbell",    "rotation"),
+        ("Landmine Anti-Rotation Press",    "obliques",     ["core"],                            "barbell",    "rotation"),
+
         // ── OLYMPIC / EXPLOSIVE ────────────────────────────────────────────────
         ("Power Clean",                     "traps",        ["quads","glutes","hamstrings"],    "barbell",    "pull"),
         ("Power Snatch",                    "traps",        ["quads","glutes","front_delts"],   "barbell",    "pull"),
@@ -410,5 +454,42 @@ enum ExerciseCatalog {
         ("Broad Jump",                      "quads",        ["glutes","hamstrings"],            "bodyweight", "squat"),
         ("Medicine Ball Slam",              "core",         ["front_delts","lats"],             "dumbbell",   "rotation"),
         ("Bottoms-Up Press",                "front_delts",  ["core","triceps"],                 "dumbbell",   "push"),
+
+        // ── KETTLEBELL ─────────────────────────────────────────────────────────
+        ("Kettlebell Goblet Squat",         "quads",        ["glutes","core"],                  "kettlebell", "squat"),
+        ("Kettlebell Front Squat",          "quads",        ["glutes","core"],                  "kettlebell", "squat"),
+        ("Kettlebell Lunge",                "quads",        ["glutes","hamstrings"],            "kettlebell", "squat"),
+        ("Kettlebell Reverse Lunge",        "glutes",       ["quads","hamstrings"],             "kettlebell", "squat"),
+        ("Kettlebell Clean",                "traps",        ["quads","glutes","hamstrings"],    "kettlebell", "pull"),
+        ("Kettlebell Clean And Press",      "front_delts",  ["quads","glutes","triceps"],       "kettlebell", "push"),
+        ("Kettlebell Snatch",               "traps",        ["quads","glutes","front_delts"],   "kettlebell", "pull"),
+        ("Kettlebell Turkish Get-Up",       "core",         ["glutes","front_delts","hip_flexors"], "kettlebell", "carry"),
+        ("Kettlebell Row",                  "lats",         ["biceps","rear_delts"],            "kettlebell", "pull"),
+        ("Kettlebell Single-Arm Row",       "lats",         ["biceps","rear_delts"],            "kettlebell", "pull"),
+        ("Kettlebell Overhead Press",       "front_delts",  ["triceps","core"],                 "kettlebell", "push"),
+        ("Kettlebell Windmill",             "obliques",     ["core","hamstrings"],              "kettlebell", "isolation"),
+        ("Kettlebell Farmer's Walk",        "traps",        ["core","forearms"],                "kettlebell", "carry"),
+
+        // ── CABLE — LEGS & GLUTES (additional) ────────────────────────────────
+        ("Cable Front Squat",               "quads",        ["glutes","core"],                  "cable",      "squat"),
+        ("Cable Lateral Lunge",             "adductors",    ["quads","glutes"],                 "cable",      "squat"),
+        ("Cable Step-Up",                   "quads",        ["glutes"],                         "cable",      "squat"),
+        ("Cable Hip Thrust",                "glutes",       ["hamstrings"],                     "cable",      "hinge"),
+        ("Cable Good Morning",              "hamstrings",   ["lower_back","glutes"],            "cable",      "hinge"),
+        ("Cable Standing Leg Extension",    "quads",        [],                                 "cable",      "isolation"),
+        ("Cable Forward Lunge",             "quads",        ["glutes","hamstrings"],            "cable",      "squat"),
+
+        // ── CABLE — CORE (additional) ─────────────────────────────────────────
+        ("Kneeling Pallof Press",           "obliques",     ["core"],                           "cable",      "rotation"),
+        ("Cable Reverse Crunch",            "abs",          ["hip_flexors"],                    "cable",      "isolation"),
+
+        // ── CABLE — UPPER (additional) ────────────────────────────────────────
+        ("Cable Decline Press",             "lower_chest",  ["triceps","front_delts"],          "cable",      "push"),
+        ("Cable Pullover",                  "lats",         ["triceps"],                        "cable",      "pull"),
+        ("Shotgun Row",                     "lats",         ["biceps","rear_delts"],            "cable",      "pull"),
+        ("Cable Row To Triceps Extension",  "lats",         ["triceps","biceps"],               "cable",      "pull"),
+        ("Cable Thruster",                  "quads",        ["front_delts","glutes","triceps"], "cable",      "push"),
+        ("Cable Split Squat To Press",      "quads",        ["front_delts","glutes"],           "cable",      "push"),
+        ("Cable Farmer Walk",               "traps",        ["core","forearms"],                "cable",      "carry"),
     ]
 }

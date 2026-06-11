@@ -5,6 +5,7 @@ import SwiftData
 struct ProfileUpdateBody: Codable {
     var first_name: String?
     var last_name: String?
+    var username: String?
     var height_cm: Double?
     var weight_kg: Double?
     var age_years: Int?
@@ -25,9 +26,16 @@ final class OnboardingViewModel: ObservableObject {
     @Published var step = 0
     let totalSteps = 6
 
-    // Step 1 — Name
+    // Step 1 — Name & username
     @Published var firstName = ""
     @Published var lastName  = ""
+    @Published var username  = ""
+    @Published var usernameStatus: UsernameStatus = .empty
+    private var usernameCheckTask: Task<Void, Never>?
+
+    enum UsernameStatus: Equatable {
+        case empty, checking, available, taken, invalid, unknown
+    }
 
     // Step 2 — Body Metrics
     @Published var heightFeet   = 5
@@ -55,9 +63,53 @@ final class OnboardingViewModel: ObservableObject {
 
     var canAdvance: Bool {
         switch step {
-        case 1: return !firstName.isEmpty
+        // A valid format is required; if the server can't be reached to confirm
+        // availability (.unknown), don't hard-block — the unique DB constraint is
+        // the authoritative guard at save time.
+        case 1: return !firstName.isEmpty && (usernameStatus == .available || usernameStatus == .unknown)
         default: return true
         }
+    }
+
+    // MARK: - Username validation & availability
+
+    static func isValidUsername(_ s: String) -> Bool {
+        s.range(of: "^[a-z][a-z0-9_]{2,19}$", options: .regularExpression) != nil
+    }
+
+    /// Called from the username field. Normalizes (lowercase, strip @/space),
+    /// validates format, then debounces a live availability check.
+    func onUsernameChanged(_ raw: String) {
+        let normalized = raw.lowercased()
+            .replacingOccurrences(of: "@", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        if normalized != username { username = normalized; return } // re-enters with clean value
+
+        usernameCheckTask?.cancel()
+        guard !normalized.isEmpty else { usernameStatus = .empty; return }
+        guard Self.isValidUsername(normalized) else { usernameStatus = .invalid; return }
+
+        usernameStatus = .checking
+        usernameCheckTask = Task { [normalized] in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            let available = await Self.checkAvailability(normalized)
+            guard !Task.isCancelled, self.username == normalized else { return }
+            switch available {
+            case .some(true):  self.usernameStatus = .available
+            case .some(false): self.usernameStatus = .taken
+            case .none:        self.usernameStatus = .unknown   // couldn't reach the server
+            }
+        }
+    }
+
+    /// Returns true/false when the server answers; nil when it couldn't be reached
+    /// (so callers can degrade gracefully instead of treating it as "taken").
+    static func checkAvailability(_ u: String) async -> Bool? {
+        struct Resp: Decodable { let available: Bool }
+        let encoded = u.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? u
+        let resp: Resp? = try? await ApiClient.shared.get("/profile/username-available?u=\(encoded)")
+        return resp?.available
     }
 
     var heightCm: Double {
@@ -110,6 +162,7 @@ final class OnboardingViewModel: ObservableObject {
         let body = ProfileUpdateBody(
             first_name:          firstName,
             last_name:           lastName,
+            username:            username.isEmpty ? nil : username,
             height_cm:           heightCm,
             weight_kg:           weightKg,
             age_years:           ageYears,
@@ -147,6 +200,7 @@ final class OnboardingViewModel: ObservableObject {
             }()
         record.firstName          = firstName
         record.lastName           = lastName
+        record.username           = username
         record.heightCm           = heightCm
         record.weightKg           = weightKg
         record.ageYears           = ageYears

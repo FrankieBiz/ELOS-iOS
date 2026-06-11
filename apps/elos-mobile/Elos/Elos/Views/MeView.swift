@@ -4,6 +4,7 @@ struct MeView: View {
     @EnvironmentObject var vm: AppViewModel
     @EnvironmentObject var authStore: AuthStore
     @EnvironmentObject var socialVM: SocialViewModel
+    @EnvironmentObject var feedVM: FeedViewModel
     @State private var showingSettings   = false
     @State private var showingCanvasSync = false
     @State private var showCrew          = false
@@ -37,6 +38,7 @@ struct MeView: View {
                 CrewView()
                     .environmentObject(socialVM)
                     .environmentObject(vm)
+                    .environmentObject(feedVM)
             }
         }
         .task {
@@ -75,6 +77,11 @@ struct MeView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(fullName)
                             .font(.system(size: 22, weight: .bold))
+                        if let uname = vm.userProfile?.username, !uname.isEmpty {
+                            Text("@\(uname)")
+                                .font(.subheadline).fontWeight(.medium)
+                                .foregroundStyle(Color.tint)
+                        }
                         if !subtitle.isEmpty {
                             Text(subtitle)
                                 .font(.subheadline)

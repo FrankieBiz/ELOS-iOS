@@ -7,7 +7,7 @@ struct ActiveSessionView: View {
     @EnvironmentObject var authStore: AuthStore
     @EnvironmentObject var context: TrainingContext
 
-    @State private var elapsed           = 0
+    @State private var now               = Date()
     @State private var restSeconds       = 0
     @State private var restActive        = false
     @State private var restPaused        = false
@@ -62,7 +62,7 @@ struct ActiveSessionView: View {
         }
         .background(Color(.systemGroupedBackground))
         .onReceive(sessionTimer) { _ in
-            elapsed += 1
+            now = Date()   // drives the wall-clock elapsed display (survives backgrounding)
             if restActive && !restPaused {
                 if restSeconds > 0 { restSeconds -= 1 } else { restActive = false }
             }
@@ -98,7 +98,8 @@ struct ActiveSessionView: View {
                     equipmentId: picked.equipmentId,
                     equipmentDedupeKey: picked.equipmentDedupeKey,
                     equipmentBrandName: picked.equipmentBrandName,
-                    isGenericExercise: picked.isGenericExercise
+                    isGenericExercise: picked.isGenericExercise,
+                    supportsAddedWeight: ExerciseCatalog.weightableBodyweightExercises.contains(picked.name)
                 )
                 vm.exercises.append(newEx)
                 showExercisePicker = false
@@ -211,8 +212,19 @@ struct ActiveSessionView: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// Wall-clock seconds since the session started — derived from the persisted
+    /// `startedAt`, so it's correct immediately on resume and after backgrounding.
+    private var elapsedSeconds: Int {
+        guard let started = trainVM.currentSession?.startedAt else { return 0 }
+        return max(0, Int(now.timeIntervalSince(started)))
+    }
+
     private var elapsedFormatted: String {
-        String(format: "%02d:%02d", elapsed / 60, elapsed % 60)
+        let s = elapsedSeconds
+        if s >= 3600 {
+            return String(format: "%d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60)
+        }
+        return String(format: "%02d:%02d", s / 60, s % 60)
     }
 
     private var volumeFormatted: String {
@@ -516,10 +528,23 @@ private struct SessionExerciseCard: View {
                         .padding(.horizontal, 14)
                     }
 
+                    if exercise.supportsAddedWeight {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.caption2)
+                                .foregroundStyle(Color.tint)
+                            Text("Added weight only (belt / vest / plate)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 14)
+                    }
+
                     Divider()
                     HStack {
                         Text("#").frame(width: 24)
-                        Text("Weight (\(unit.label))").frame(maxWidth: .infinity)
+                        Text(exercise.supportsAddedWeight ? "+Wt (\(unit.label))" : "Weight (\(unit.label))")
+                            .frame(maxWidth: .infinity)
                         Text("Reps").frame(width: 50)
                         Text("RPE").frame(width: 40)
                         Image(systemName: "checkmark").frame(width: 36)
@@ -536,7 +561,11 @@ private struct SessionExerciseCard: View {
                                 .font(.caption.monospaced()).foregroundStyle(.secondary)
                                 .frame(width: 24)
 
-                            TextField(prevWeight.isEmpty ? unit.label : prevWeight,
+                            let weightPlaceholder: String = {
+                                if !prevWeight.isEmpty { return prevWeight }
+                                return exercise.supportsAddedWeight ? "+0" : unit.label
+                            }()
+                            TextField(weightPlaceholder,
                                       text: $exercise.sets[i].weight)
                                 .font(.system(size: 14, design: .monospaced))
                                 .multilineTextAlignment(.center)

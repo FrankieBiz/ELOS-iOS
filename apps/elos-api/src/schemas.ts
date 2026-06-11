@@ -92,9 +92,22 @@ export const createReadinessSchema = z.object({
   motivation: z.number().int().min(1).max(5),
 });
 
+// Username (the @handle friends search for): 3–20 chars, must start with a
+// letter, lowercase letters/numbers/underscore only. Normalized (trim+lowercase)
+// before validation so the stored value is canonical.
+export const usernameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(
+    /^[a-z][a-z0-9_]{2,19}$/,
+    "3–20 characters, letters/numbers/underscore, must start with a letter"
+  );
+
 export const upsertProfileSchema = z.object({
   first_name: z.string().max(100).nullable().optional(),
   last_name: z.string().max(100).nullable().optional(),
+  username: usernameSchema.nullable().optional(),
   height_cm: z.number().min(50).max(300).nullable().optional(),
   weight_kg: z.number().min(20).max(500).nullable().optional(),
   age_years: z.number().int().min(13).max(120).nullable().optional(),

@@ -6,6 +6,7 @@ import SwiftData
 struct UserProfileSnapshot {
     var firstName: String
     var lastName:  String
+    var username:  String
     var email:     String
     var schoolName: String
     var schoolYear: String
@@ -20,6 +21,10 @@ class AppViewModel: ObservableObject {
     @Published var showingSession    = false
     @Published var showingLogSleep   = false
     @Published var showingAddHabit   = false
+
+    /// An unfinished workout session detected on launch/foreground, awaiting a
+    /// Resume/Discard choice. Non-nil drives the "Workout in progress" prompt.
+    @Published var recoverableSession: WorkoutSessionRecord?
 
     // MARK: - Theme
     @Published var forceDark: Bool? = nil
@@ -47,6 +52,9 @@ class AppViewModel: ObservableObject {
     @Published var displayName: String = "there"
     @Published var currentUserID: String = ""
     @Published var userProfile: UserProfileSnapshot?
+
+    // MARK: - Deep link / invite
+    @Published var pendingFriendInviteUserId: String?
 
     // MARK: - Habits
     @Published var habits: [Habit] = []
@@ -144,6 +152,7 @@ class AppViewModel: ObservableObject {
             userProfile  = UserProfileSnapshot(
                 firstName:  profile.firstName,
                 lastName:   profile.lastName,
+                username:   profile.username,
                 email:      profile.email,
                 schoolName: profile.schoolName,
                 schoolYear: profile.schoolYear
@@ -210,6 +219,7 @@ class AppViewModel: ObservableObject {
 
         loadTodayReadiness()
         loadActiveSplit()
+        recoverActiveSession()
         Task { await syncCanvasIfConfigured() }
         Task { await syncSplitsFromServer() }
         Task { await syncProfileFromServer() }
@@ -246,6 +256,7 @@ class AppViewModel: ObservableObject {
         assignmentRecordIDs = [:]
         activeSplit      = nil
         activeSplitDays  = []
+        recoverableSession = nil
         wipeSwiftData()
     }
 
@@ -540,6 +551,23 @@ class AppViewModel: ObservableObject {
         return activeSplitDays[currentSplitDayIndex]
     }
 
+    /// Builds the next `count` days of split info for dynamic notification scheduling.
+    func upcomingNotificationDays(count: Int = 60) -> [NotificationManager.DayInfo] {
+        let cal      = Calendar.current
+        let hasSplit = activeSplit != nil
+        return (0..<count).compactMap { offset in
+            guard let date = cal.date(byAdding: .day, value: offset, to: Date()) else { return nil }
+            let record = gymDay(for: date)
+            let name: String
+            if let r = record, !r.isRest {
+                name = r.dayName.isEmpty ? r.dayLabel : r.dayName
+            } else {
+                name = ""   // rest day or off day for this split
+            }
+            return NotificationManager.DayInfo(date: date, dayName: name, hasSplit: hasSplit)
+        }
+    }
+
     // Loads exercises from a split day (direct exercises or template) into vm.exercises.
     // Call this before presenting the workout session.
     func prepareExercises(for day: UserSplitDayRecord) {
@@ -561,7 +589,8 @@ class AppViewModel: ObservableObject {
                                 equipmentId: info.equipmentId,
                                 equipmentDedupeKey: info.equipmentDedupeKey,
                                 equipmentBrandName: info.equipmentBrandName,
-                                isGenericExercise: (info.equipmentDedupeKey ?? "").isEmpty)
+                                isGenericExercise: (info.equipmentDedupeKey ?? "").isEmpty,
+                                supportsAddedWeight: ExerciseCatalog.weightableBodyweightExercises.contains(info.name))
             }
             return
         }
@@ -586,6 +615,7 @@ class AppViewModel: ObservableObject {
                      equipmentDedupeKey: ex.equipmentDedupeKey,
                      equipmentBrandName: ex.equipmentBrandName,
                      isGenericExercise: (ex.equipmentDedupeKey ?? "").isEmpty,
+                     supportsAddedWeight: ExerciseCatalog.weightableBodyweightExercises.contains(ex.exerciseName),
                      restSeconds: ex.restSeconds > 0 ? ex.restSeconds : 90)
         }
     }
@@ -593,6 +623,159 @@ class AppViewModel: ObservableObject {
     func prepareExercisesForToday() {
         guard let day = currentSplitDay else { return }
         prepareExercises(for: day)
+    }
+
+    // MARK: - Active Session Recovery
+
+    /// Sessions older than this are not offered for resume (auto-finalized if they
+    /// hold logged data, otherwise discarded).
+    static let resumeCutoff: TimeInterval = 12 * 60 * 60
+
+    /// Count of logged (done) sets persisted for a session.
+    func loggedSetCount(for session: WorkoutSessionRecord) -> Int {
+        let sid = session.id
+        let desc = FetchDescriptor<ExerciseSetRecord>(
+            predicate: #Predicate { $0.sessionID == sid && $0.isDone == true }
+        )
+        return (try? context.fetchCount(desc)) ?? 0
+    }
+
+    /// Detect an unfinished session on launch/foreground and decide whether to
+    /// surface a Resume prompt. Reads local SwiftData only; safe to call eagerly.
+    func recoverActiveSession() {
+        guard !currentUserID.isEmpty else { return }
+        // A session already live in the UI needs no recovery (e.g. mere suspend).
+        guard !showingSession, recoverableSession == nil else { return }
+        let uid = currentUserID
+
+        var desc = FetchDescriptor<WorkoutSessionRecord>(
+            predicate: #Predicate { $0.ownerID == uid && $0.finishedAt == nil }
+        )
+        desc.sortBy = [SortDescriptor(\.startedAt, order: .reverse)]
+        let unfinished = (try? context.fetch(desc)) ?? []
+        guard let candidate = unfinished.first else { return }
+
+        // Clean up any older duplicate unfinished sessions (shouldn't normally exist).
+        for stale in unfinished.dropFirst() { finalizeOrDiscard(stale) }
+
+        let sets = loggedSetCount(for: candidate)
+        let hasDraft = !candidate.draftJSON.isEmpty
+
+        // Empty start (no sets, no draft) → drop silently, no prompt.
+        if sets == 0 && !hasDraft {
+            context.delete(candidate)
+            try? context.save()
+            return
+        }
+
+        // Too old to reasonably resume → preserve data as a completed workout, or discard.
+        if Date().timeIntervalSince(candidate.startedAt) > Self.resumeCutoff {
+            finalizeOrDiscard(candidate)
+            return
+        }
+
+        recoverableSession = candidate
+    }
+
+    /// Finalize a session as completed if it has logged data; otherwise delete it.
+    private func finalizeOrDiscard(_ session: WorkoutSessionRecord) {
+        if loggedSetCount(for: session) > 0 {
+            session.finishedAt = Date()
+            session.syncPending = true
+            try? context.save()
+            Task { await WorkoutSyncService.shared.pushFinish(session, context: context) }
+        } else {
+            context.delete(session)
+            try? context.save()
+        }
+    }
+
+    /// Resume the recovered session: re-attach it to TrainViewModel, rebuild the
+    /// in-progress exercise list, and reopen the session UI.
+    func resumeRecoveredSession(trainVM: TrainViewModel, context trainingContext: TrainingContext) {
+        guard let session = recoverableSession else { return }
+        // Re-attach BEFORE showing UI so ActiveSessionView.onAppear's startSession() no-ops.
+        trainVM.adoptRecoveredSession(session)
+
+        if let draft = decodeDraft(session.draftJSON), !draft.isEmpty {
+            exercises = draft
+        } else {
+            exercises = rebuildExercises(from: session)
+        }
+
+        trainingContext.phase = .active
+        recoverableSession = nil
+        showingSession = true
+    }
+
+    /// Discard the recovered session from the prompt. Preserves logged data by
+    /// finalizing it as a (short) completed workout; deletes it if empty.
+    func discardRecoveredSession(trainVM: TrainViewModel) {
+        guard let session = recoverableSession else { return }
+        finalizeOrDiscard(session)
+        trainVM.currentSession = nil
+        recoverableSession = nil
+    }
+
+    /// Snapshot the in-progress draft to the session record. Called when the app
+    /// backgrounds so a hard kill loses nothing (incl. typed-but-uncommitted values).
+    func captureSessionDraft(trainVM: TrainViewModel) {
+        guard let session = trainVM.currentSession, session.finishedAt == nil else { return }
+        session.draftJSON = encodeDraft(exercises)
+        try? context.save()
+    }
+
+    private func encodeDraft(_ list: [Exercise]) -> String {
+        guard let data = try? JSONEncoder().encode(list),
+              let s = String(data: data, encoding: .utf8) else { return "" }
+        return s
+    }
+
+    private func decodeDraft(_ json: String) -> [Exercise]? {
+        guard !json.isEmpty, let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode([Exercise].self, from: data)
+    }
+
+    /// Fallback when no draft is present: reconstruct exercises from persisted sets
+    /// so all logged work is visible and resumable.
+    private func rebuildExercises(from session: WorkoutSessionRecord) -> [Exercise] {
+        let sid = session.id
+        var desc = FetchDescriptor<ExerciseSetRecord>(
+            predicate: #Predicate { $0.sessionID == sid }
+        )
+        desc.sortBy = [SortDescriptor(\.setIndex)]
+        let records = (try? context.fetch(desc)) ?? []
+        guard !records.isEmpty else { return [] }
+
+        // Group by exercise, preserving first-seen order.
+        var order: [String] = []
+        var byName: [String: [ExerciseSetRecord]] = [:]
+        for r in records {
+            if byName[r.exerciseName] == nil { order.append(r.exerciseName) }
+            byName[r.exerciseName, default: []].append(r)
+        }
+
+        return order.map { name in
+            let sets = (byName[name] ?? []).sorted { $0.setIndex < $1.setIndex }
+            let workSets = sets.map { rec in
+                WorkSet(
+                    weight: rec.weightKg > 0 ? weightUnit.formatValue(kg: rec.weightKg) : "",
+                    reps:   rec.reps > 0 ? "\(rec.reps)" : "",
+                    rpe:    rec.rpe > 0 ? String(Int(rec.rpe)) : "",
+                    done:   rec.isDone
+                )
+            }
+            let first = sets.first
+            return Exercise(
+                name: name, primaryMuscle: "", secondaryMuscles: [],
+                setsLabel: "\(workSets.count)×", lastBest: "",
+                sets: workSets,
+                equipmentId: first?.equipmentId,
+                equipmentDedupeKey: first?.equipmentDedupeKey,
+                equipmentBrandName: first?.equipmentBrandName,
+                isGenericExercise: (first?.equipmentDedupeKey ?? "").isEmpty
+            )
+        }
     }
 
     // Returns whether today is already marked as skipped
@@ -981,6 +1164,7 @@ class AppViewModel: ObservableObject {
                 if let existing = try? context.fetch(desc).first {
                     existing.firstName          = remote.first_name ?? existing.firstName
                     existing.lastName           = remote.last_name ?? existing.lastName
+                    existing.username           = remote.username ?? existing.username
                     existing.heightCm           = remote.height_cm ?? existing.heightCm
                     existing.weightKg           = remote.weight_kg ?? existing.weightKg
                     existing.ageYears           = remote.age_years ?? existing.ageYears
@@ -999,6 +1183,7 @@ class AppViewModel: ObservableObject {
                         id: uid, ownerID: uid, email: "",
                         firstName:          remote.first_name ?? "",
                         lastName:           remote.last_name ?? "",
+                        username:           remote.username ?? "",
                         heightCm:           remote.height_cm ?? 0,
                         weightKg:           remote.weight_kg ?? 0,
                         ageYears:           remote.age_years ?? 0,
@@ -1026,6 +1211,7 @@ class AppViewModel: ObservableObject {
                     userProfile = UserProfileSnapshot(
                         firstName:  profile.firstName,
                         lastName:   profile.lastName,
+                        username:   profile.username,
                         email:      profile.email,
                         schoolName: profile.schoolName,
                         schoolYear: profile.schoolYear
@@ -1041,6 +1227,7 @@ class AppViewModel: ObservableObject {
         let body = ProfileUpdateBody(
             first_name:          record.firstName.isEmpty ? nil : record.firstName,
             last_name:           record.lastName.isEmpty ? nil : record.lastName,
+            username:            record.username.isEmpty ? nil : record.username,
             height_cm:           record.heightCm > 0 ? record.heightCm : nil,
             weight_kg:           record.weightKg > 0 ? record.weightKg : nil,
             age_years:           record.ageYears > 0 ? record.ageYears : nil,

@@ -8,6 +8,8 @@ struct FriendSearchView: View {
     @State private var results: [UserSearchResultResponse] = []
     @State private var isSearching = false
     @State private var sentRequestIDs = Set<String>()
+    @State private var acceptedIDs    = Set<String>()
+    @State private var searchTask: Task<Void, Never>?
 
     var body: some View {
         NavigationView {
@@ -17,8 +19,10 @@ struct FriendSearchView: View {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 36))
                             .foregroundStyle(.secondary)
-                        Text("Search by name or username")
+                        Text("Find friends by their @username or full name")
                             .font(.subheadline).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if results.isEmpty && !query.isEmpty && !isSearching {
@@ -33,12 +37,19 @@ struct FriendSearchView: View {
                     List(results) { user in
                         UserSearchResultRow(
                             user: user,
-                            hasSentRequest: sentRequestIDs.contains(user.user_id)
+                            hasSentRequest: sentRequestIDs.contains(user.user_id),
+                            hasAccepted:    acceptedIDs.contains(user.user_id)
                         ) {
                             HapticManager.success()
                             Task {
-                                await socialVM.sendRequest(to: user.user_id)
-                                sentRequestIDs.insert(user.user_id)
+                                if user.friendship_status == "pending_received",
+                                   let fid = user.friendship_id {
+                                    await socialVM.accept(friendshipId: fid)
+                                    acceptedIDs.insert(user.user_id)
+                                } else {
+                                    await socialVM.sendRequest(to: user.user_id)
+                                    sentRequestIDs.insert(user.user_id)
+                                }
                             }
                         }
                         .listRowBackground(Color(.secondarySystemGroupedBackground))
@@ -46,11 +57,16 @@ struct FriendSearchView: View {
                     .listStyle(.insetGrouped)
                 }
             }
-            .searchable(text: $query, prompt: "Name or username")
+            .searchable(text: $query, prompt: "Search @username or name")
             .onChange(of: query) { _, newValue in
-                Task {
+                searchTask?.cancel()
+                guard !newValue.trimmingCharacters(in: .whitespaces).isEmpty else {
+                    results = []
+                    return
+                }
+                searchTask = Task {
                     try? await Task.sleep(for: .milliseconds(300))
-                    guard query == newValue else { return }
+                    guard !Task.isCancelled else { return }
                     isSearching = true
                     results = await socialVM.search(query: newValue)
                     isSearching = false
@@ -75,10 +91,13 @@ struct FriendSearchView: View {
 private struct UserSearchResultRow: View {
     let user: UserSearchResultResponse
     let hasSentRequest: Bool
+    let hasAccepted: Bool
     let onAdd: () -> Void
 
     private var effectiveStatus: String {
-        hasSentRequest ? "pending_sent" : user.friendship_status
+        if hasAccepted { return "accepted" }
+        if hasSentRequest { return "pending_sent" }
+        return user.friendship_status
     }
 
     var body: some View {

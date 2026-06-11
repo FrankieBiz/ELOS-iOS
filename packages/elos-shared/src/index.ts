@@ -344,6 +344,7 @@ export interface UserSearchResult {
   last_name: string;
   avatar_color: string;
   friendship_status: "none" | "pending_sent" | "pending_received" | "accepted";
+  friendship_id?: string;
 }
 
 export interface UserSplitDay {

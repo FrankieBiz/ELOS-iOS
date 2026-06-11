@@ -52,3 +52,8 @@ extension UserSearchResultResponse: NamedUser {
     var usernameOrNil: String? { username }
     var avatarColorOrNil: String? { avatar_color }
 }
+
+extension PublicProfileResponse: NamedUser {
+    var usernameOrNil: String? { username }
+    var avatarColorOrNil: String? { avatar_color }
+}
