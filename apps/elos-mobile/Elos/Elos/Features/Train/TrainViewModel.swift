@@ -135,6 +135,56 @@ class TrainViewModel: ObservableObject {
         }
     }
 
+    /// Non-destructive edit of an already-logged set: mutate the record in place and adjust
+    /// session volume by the delta. There's no set-PATCH endpoint, so if the record was already
+    /// synced we delete the stale server copy and repost it as new — the lifter never re-types.
+    func updateLoggedSet(
+        exerciseName: String,
+        setIndex: Int,
+        newWeightKg: Double,
+        newReps: Int,
+        newRPE: Double,
+        ownerID: String
+    ) {
+        guard let session = currentSession else { return }
+        let sid = session.id
+        let desc = FetchDescriptor<ExerciseSetRecord>(
+            predicate: #Predicate {
+                $0.ownerID == ownerID
+                && $0.sessionID == sid
+                && $0.exerciseName == exerciseName
+                && $0.setIndex == setIndex
+                && $0.isDone == true
+            }
+        )
+        guard let record = (try? context.fetch(desc))?.first else { return }
+
+        let oldContribution = record.weightKg * Double(max(record.reps, 0))
+        let newContribution = newWeightKg * Double(max(newReps, 0))
+        session.totalVolume += (newContribution - oldContribution)
+
+        let oldServerID = record.serverID
+        record.weightKg = newWeightKg
+        record.reps = newReps
+        record.rpe = newRPE
+
+        let serverSessionID = session.serverID
+        if !oldServerID.isEmpty && !serverSessionID.isEmpty {
+            // No PATCH for a single set: drop the stale server record, repost the edited one.
+            record.serverID = ""
+            record.syncPending = true
+            try? context.save()
+            Task {
+                await WorkoutSyncService.shared.deleteSet(serverSessionID: serverSessionID, setServerID: oldServerID)
+                await WorkoutSyncService.shared.pushSet(record, session: session, context: context)
+            }
+        } else {
+            record.syncPending = true
+            try? context.save()
+            Task { await WorkoutSyncService.shared.pushSet(record, session: session, context: context) }
+        }
+    }
+
     func finishSession(sessionRPE: Int, ownerID: String) {
         guard let session = currentSession else { return }
         let now = Date()
@@ -292,6 +342,25 @@ class TrainViewModel: ObservableObject {
         if lastRPE >= 9.5 { return down() }
         if lastRPE <= 8.0 { return up() }
         return "Solid effort — add a rep before adding load"
+    }
+
+    /// Structured form of `overloadSuggestion` for tap-to-fill: the load (kg) and reps to put in
+    /// the active set. Progresses the load only when the last session's effort justifies it
+    /// (RPE ≤ 8 and logged); otherwise holds. Returns nil when there's no history.
+    func overloadTarget(for exerciseName: String, ownerID: String, unit: WeightUnit, equipmentDedupeKey: String? = nil) -> (weightKg: Double, reps: Int)? {
+        let sessions = recentSessionStats(for: exerciseName, ownerID: ownerID, equipmentDedupeKey: equipmentDedupeKey)
+        guard let last = sessions.first, last.topWeightKg > 0 else { return nil }
+
+        let lastDisplay = unit.fromKg(last.topWeightKg)
+        let shouldProgress: Bool = {
+            guard let rpe = last.avgRPE else { return false }   // no RPE → don't auto-bump load
+            return rpe <= 8.0
+        }()
+        let targetDisplay = unit.round(shouldProgress ? lastDisplay + unit.increment : lastDisplay)
+
+        let prev = previousSets(for: exerciseName, ownerID: ownerID, equipmentDedupeKey: equipmentDedupeKey)
+        let topReps = prev.max(by: { $0.weightKg < $1.weightKg })?.reps ?? 8
+        return (unit.toKg(targetDisplay), max(1, topReps))
     }
 
     // MARK: - Weekly volume (computed locally from SwiftData)

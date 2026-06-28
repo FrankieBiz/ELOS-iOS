@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import AudioToolbox
 
 struct ActiveSessionView: View {
     @EnvironmentObject var vm: AppViewModel
@@ -9,6 +10,7 @@ struct ActiveSessionView: View {
 
     @State private var now               = Date()
     @State private var restSeconds       = 0
+    @State private var restTotalSeconds  = 0
     @State private var restActive        = false
     @State private var restPaused        = false
     @State private var activeExerciseId: UUID?
@@ -16,6 +18,15 @@ struct ActiveSessionView: View {
     @State private var showRPEPrompt     = false
     @State private var pendingSessionRPE = 8
     @State private var showExercisePicker = false
+    @State private var undoInfo: UndoInfo?
+    @State private var undoCounter       = 0
+
+    private struct UndoInfo: Equatable {
+        let id: Int
+        let eIdx: Int
+        let sIdx: Int
+        let exerciseName: String
+    }
 
     private let sessionTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -47,7 +58,6 @@ struct ActiveSessionView: View {
                         .background(Color.warn.opacity(0.1))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
-                    if restActive { restTimerBanner }
                     if let prName = trainVM.newPRExerciseName {
                         prRibbon(exerciseName: prName)
                     }
@@ -61,10 +71,12 @@ struct ActiveSessionView: View {
             .scrollIndicators(.hidden)
         }
         .background(Color(.systemGroupedBackground))
+        .safeAreaInset(edge: .bottom) { bottomBar }
         .onReceive(sessionTimer) { _ in
             now = Date()   // drives the wall-clock elapsed display (survives backgrounding)
-            if restActive && !restPaused {
-                if restSeconds > 0 { restSeconds -= 1 } else { restActive = false }
+            if restActive && !restPaused && restSeconds > 0 {
+                restSeconds -= 1
+                if restSeconds == 0 { restDidComplete() }
             }
         }
         .alert("Finish Workout?", isPresented: $showFinishAlert) {
@@ -231,39 +243,71 @@ struct ActiveSessionView: View {
         vm.weightUnit.formatVolume(kg: trainVM.currentSession?.totalVolume ?? vm.sessionVolumeKg)
     }
 
-    // MARK: Rest Timer
-    private var restTimerBanner: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "clock")
-                .foregroundStyle(restTimerColor)
-                .font(.title3)
+    // MARK: Sticky bottom bar (rest timer + undo)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Rest timer").font(.caption).foregroundStyle(.secondary)
-                Text(restFormatted).font(.system(size: 22, weight: .bold, design: .monospaced))
+    @ViewBuilder private var bottomBar: some View {
+        VStack(spacing: 8) {
+            if undoInfo != nil {
+                UndoSnackbar(message: "Set logged") { undoLastSet() }
             }
-
-            Spacer()
-
-            Button(restPaused ? "Resume" : "Pause") { restPaused.toggle() }
-                .font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
-
-            Button("Skip") {
-                restActive = false
-                restSeconds = 0
-                restPaused = false
-                NotificationManager.cancelRestTimer()
+            if restActive {
+                RestTimerBar(
+                    seconds: restSeconds,
+                    totalSeconds: restTotalSeconds,
+                    paused: restPaused,
+                    nextLabel: nextSetLabel,
+                    onMinus: { adjustRest(-RestMath.step) },
+                    onPlus:  { adjustRest(RestMath.step) },
+                    onPauseToggle: { restPaused.toggle() },
+                    onSkip: { skipRest() }
+                )
             }
-                .font(.caption).fontWeight(.semibold).foregroundStyle(Color.tint)
         }
-        .padding(14)
-        .background(Color.mGym.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.tint.opacity(0.25), lineWidth: 1))
     }
 
-    private var restFormatted: String { String(format: "%02d:%02d", restSeconds / 60, restSeconds % 60) }
-    private var restTimerColor: Color { restSeconds > 45 ? .good : restSeconds > 15 ? .warn : .bad }
+    private var nextSetLabel: String? {
+        guard let exId = activeExerciseId,
+              let ex = vm.exercises.first(where: { $0.id == exId }),
+              let nextIdx = ex.sets.firstIndex(where: { !$0.done }) else { return nil }
+        return "Set \(nextIdx + 1) · \(ex.name)"
+    }
+
+    private func adjustRest(_ delta: Int) {
+        restSeconds = RestMath.adjust(restSeconds, by: delta)
+        restTotalSeconds = max(restTotalSeconds, restSeconds)
+        if restSeconds == 0 {
+            skipRest()
+        } else {
+            NotificationManager.scheduleRestTimer(seconds: restSeconds)
+        }
+    }
+
+    private func skipRest() {
+        restActive = false
+        restSeconds = 0
+        restPaused = false
+        NotificationManager.cancelRestTimer()
+    }
+
+    /// Fired the instant the countdown reaches zero — the old banner just vanished silently.
+    private func restDidComplete() {
+        restActive = false
+        HapticManager.success()
+        AudioServicesPlaySystemSound(1057)   // "Tink" — a gentle in-app rest-done cue
+    }
+
+    private func undoLastSet() {
+        guard let u = undoInfo else { return }
+        if u.eIdx < vm.exercises.count, u.sIdx < vm.exercises[u.eIdx].sets.count,
+           vm.exercises[u.eIdx].sets[u.sIdx].done {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+                vm.toggleSet(exerciseIndex: u.eIdx, setIndex: u.sIdx)
+            }
+            trainVM.unlogCompletedSet(exerciseName: u.exerciseName, setIndex: u.sIdx, ownerID: vm.currentUserID)
+        }
+        skipRest()
+        withAnimation { undoInfo = nil }
+    }
 
     // MARK: PR Ribbon
     private func prRibbon(exerciseName: String) -> some View {
@@ -298,6 +342,7 @@ struct ActiveSessionView: View {
                         isActive: isActive,
                         doneCount: doneSets,
                         overloadSuggestion: suggestion,
+                        overloadTarget: trainVM.overloadTarget(for: ex.name, ownerID: vm.currentUserID, unit: vm.weightUnit, equipmentDedupeKey: ex.equipmentDedupeKey),
                         previousSets: trainVM.previousSets(for: ex.name, ownerID: vm.currentUserID, equipmentDedupeKey: ex.equipmentDedupeKey),
                         unit: vm.weightUnit,
                         onSelect: {
@@ -336,9 +381,19 @@ struct ActiveSessionView: View {
                                     equipmentBrandName: ex.equipmentBrandName
                                 )
                                 restSeconds = rest
+                                restTotalSeconds = rest
                                 restActive  = true
                                 restPaused  = false
                                 activeExerciseId = ex.id
+
+                                // Brief undo window for an accidental tap.
+                                undoCounter += 1
+                                let info = UndoInfo(id: undoCounter, eIdx: eIdx, sIdx: sIdx, exerciseName: ex.name)
+                                withAnimation { undoInfo = info }
+                                Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 4_000_000_000)
+                                    if undoInfo?.id == info.id { withAnimation { undoInfo = nil } }
+                                }
                             } else {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
                                     vm.toggleSet(exerciseIndex: eIdx, setIndex: sIdx)
@@ -357,6 +412,17 @@ struct ActiveSessionView: View {
                             guard sIdx < vm.exercises[eIdx].sets.count,
                                   !vm.exercises[eIdx].sets[sIdx].done else { return }
                             withAnimation { vm.exercises[eIdx].sets.remove(at: sIdx) }
+                        },
+                        onSetEdit: { sIdx, weightKg, reps, rpe in
+                            // Non-destructive in-place edit of an already-logged set.
+                            trainVM.updateLoggedSet(
+                                exerciseName: ex.name,
+                                setIndex: sIdx,
+                                newWeightKg: weightKg,
+                                newReps: reps,
+                                newRPE: rpe,
+                                ownerID: vm.currentUserID
+                            )
                         }
                     )
                 }
@@ -465,183 +531,3 @@ private struct SessionRPESheet: View {
         .presentationDetents([.fraction(0.45)])
     }
 }
-
-// MARK: - Session Exercise Card
-
-private struct SessionExerciseCard: View {
-    @Binding var exercise: Exercise
-    let isDone: Bool
-    let isActive: Bool
-    let doneCount: Int
-    let overloadSuggestion: String?
-    let previousSets: [ExerciseSetRecord]
-    let unit: WeightUnit
-    let onSelect: () -> Void
-    let onSetToggle: (Int) -> Void
-    let onSetDelete: (Int) -> Void
-
-    @State private var expanded = true
-    @State private var showingSwap = false
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Button {
-                onSelect()
-                withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
-            } label: {
-                HStack(spacing: 10) {
-                    Circle()
-                        .fill(isDone ? Color.good : isActive ? Color.tint : Color.secondary.opacity(0.3))
-                        .frame(width: 10, height: 10)
-                    Text(exercise.name)
-                        .font(.subheadline).fontWeight(.semibold)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text("\(doneCount)/\(exercise.sets.count) sets")
-                        .font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Color.secondary.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
-                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 12)
-            }
-            .buttonStyle(.plain)
-
-            if expanded {
-                Divider()
-                VStack(alignment: .leading, spacing: 6) {
-                    // Muscle info + overload suggestion
-                    HStack {
-                        Text("Primary: \(exercise.primaryMuscle)" +
-                             (exercise.secondaryMuscles.isEmpty ? "" : " · secondary: \(exercise.secondaryMuscles.prefix(2).joined(separator: ", "))"))
-                            .font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 14)
-
-                    if let suggestion = overloadSuggestion {
-                        HStack(spacing: 6) {
-                            Image(systemName: "arrow.up.circle.fill").font(.caption).foregroundStyle(Color.good)
-                            Text(suggestion).font(.caption).fontWeight(.semibold).foregroundStyle(Color.good)
-                        }
-                        .padding(.horizontal, 14)
-                    }
-
-                    if exercise.supportsAddedWeight {
-                        HStack(spacing: 6) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.caption2)
-                                .foregroundStyle(Color.tint)
-                            Text("Added weight only (belt / vest / plate)")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 14)
-                    }
-
-                    Divider()
-                    HStack {
-                        Text("#").frame(width: 24)
-                        Text(exercise.supportsAddedWeight ? "+Wt (\(unit.label))" : "Weight (\(unit.label))")
-                            .frame(maxWidth: .infinity)
-                        Text("Reps").frame(width: 50)
-                        Text("RPE").frame(width: 40)
-                        Image(systemName: "checkmark").frame(width: 36)
-                    }
-                    .font(.caption).foregroundStyle(.secondary)
-                    .padding(.horizontal, 14)
-
-                    ForEach(exercise.sets.indices, id: \.self) { i in
-                        let s = exercise.sets[i]
-                        let prevWeight: String = i < previousSets.count
-                            ? unit.formatValue(kg: previousSets[i].weightKg) : ""
-                        HStack(spacing: 8) {
-                            Text("\(i + 1)")
-                                .font(.caption.monospaced()).foregroundStyle(.secondary)
-                                .frame(width: 24)
-
-                            let weightPlaceholder: String = {
-                                if !prevWeight.isEmpty { return prevWeight }
-                                return exercise.supportsAddedWeight ? "+0" : unit.label
-                            }()
-                            TextField(weightPlaceholder,
-                                      text: $exercise.sets[i].weight)
-                                .font(.system(size: 14, design: .monospaced))
-                                .multilineTextAlignment(.center)
-                                .keyboardType(.decimalPad)
-                                .disabled(s.done)
-                                .padding(.horizontal, 8).padding(.vertical, 6)
-                                .background(Color(.tertiarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .frame(maxWidth: .infinity)
-
-                            let prevReps: String = i < previousSets.count ? "\(previousSets[i].reps)" : ""
-                            TextField(prevReps.isEmpty ? "reps" : prevReps,
-                                      text: $exercise.sets[i].reps)
-                                .font(.system(size: 14, design: .monospaced))
-                                .multilineTextAlignment(.center)
-                                .keyboardType(.numberPad)
-                                .disabled(s.done)
-                                .padding(.horizontal, 8).padding(.vertical, 6)
-                                .background(Color(.tertiarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .frame(width: 50)
-
-                            TextField("—", text: $exercise.sets[i].rpe)
-                                .font(.system(size: 13, design: .monospaced))
-                                .multilineTextAlignment(.center)
-                                .keyboardType(.decimalPad)
-                                .disabled(s.done)
-                                .padding(.horizontal, 6).padding(.vertical, 6)
-                                .background(Color(.tertiarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                .frame(width: 40)
-
-                            Button { onSetToggle(i) } label: {
-                                Image(systemName: s.done ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 22))
-                                    .foregroundStyle(s.done ? Color.good : Color.secondary.opacity(0.5))
-                                    .animation(.spring(response: 0.3, dampingFraction: 0.5), value: s.done)
-                            }
-                            .buttonStyle(.plain).frame(width: 36)
-                        }
-                        .padding(.horizontal, 14)
-                        .opacity(s.done ? 0.55 : 1)
-                        .contextMenu {
-                            if s.done {
-                                // Logged sets are edited by un-marking (which deletes the
-                                // record locally + server), then re-entering values.
-                                Button {
-                                    onSetToggle(i)
-                                } label: { Label("Edit set", systemImage: "pencil") }
-                            } else {
-                                Button(role: .destructive) {
-                                    onSetDelete(i)
-                                } label: { Label("Delete set", systemImage: "trash") }
-                            }
-                        }
-                    }
-
-                    Divider()
-                    HStack(spacing: 16) {
-                        Button("+ Add set") {
-                            exercise.sets.append(WorkSet(weight: "", reps: "", rpe: "", done: false))
-                        }
-                        .font(.caption).foregroundStyle(Color.tint)
-                        Button("Swap") { showingSwap = true }
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 14).padding(.bottom, 10)
-                }
-            }
-        }
-        .elosCard()
-        .sheet(isPresented: $showingSwap) {
-            ExerciseSwapSheet(exerciseName: $exercise.name)
-        }
-    }
-}
-
-// MARK: - Exercise Swap Sheet
-
