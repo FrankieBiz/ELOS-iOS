@@ -38,7 +38,6 @@ struct CreateSplitView: View {
     @State private var dayExercises: [[DayExercise]] = Array(repeating: [], count: 7)
     @State private var activePicker: ActivePicker? = nil
     @State private var showDiscardConfirm = false
-    @State private var balanceExpanded = false
 
     private var hasUnsavedContent: Bool {
         !splitName.trimmingCharacters(in: .whitespaces).isEmpty
@@ -80,7 +79,7 @@ struct CreateSplitView: View {
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                         .listRowBackground(Color.clear)
 
-                        balanceBanner
+                        qualityPanel
                     }
                 }
 
@@ -165,70 +164,25 @@ struct CreateSplitView: View {
         }
     }
 
-    // MARK: - Balance banner
+    // MARK: - Quality panel
 
-    private var balanceWarnings: [BalanceWarning] {
-        WeeklyBalanceAnalyzer.analyze(days: dayExercises, catalog: exerciseCatalog)
+    private var qualityReport: QualityReport {
+        TemplateQualityEngine.score(days: dayExercises.map { $0.map(ScoredExercise.init(day:)) },
+                                    dayNames: dayNames,
+                                    scope: .weeklySplit,
+                                    profile: TrainingProfile(record: profiles.first),
+                                    catalog: exerciseCatalog)
     }
 
-    @ViewBuilder private var balanceBanner: some View {
-        let warnings = balanceWarnings
+    @ViewBuilder private var qualityPanel: some View {
         let populatedDays = dayExercises.filter { !$0.isEmpty }.count
-        // Hold balance feedback until the split is meaningfully built — a half-finished week
-        // would flag "low volume" on everything, which reads as nagging rather than guidance.
-        if !warnings.isEmpty && populatedDays >= 2 {
-            switch guidanceLevel {
-            case .full:
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(warnings) { warning in
-                        balanceWarningRow(warning)
-                    }
-                }
+        let report = qualityReport
+        // Hold scoring until the split is meaningfully built — a half-finished week would flag
+        // "low volume" on everything, which reads as nagging rather than coaching.
+        if populatedDays >= 2 && report.isScored {
+            TemplateQualityPanel(report: report, guidance: guidanceLevel, title: "Split Quality")
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
                 .listRowBackground(Color.clear)
-            case .minimal:
-                VStack(alignment: .leading, spacing: 6) {
-                    Button {
-                        withAnimation { balanceExpanded.toggle() }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "exclamationmark.triangle")
-                                .font(.caption2)
-                            Text("\(warnings.count) balance \(warnings.count == 1 ? "note" : "notes")")
-                                .font(.caption)
-                            Image(systemName: balanceExpanded ? "chevron.up" : "chevron.down")
-                                .font(.caption2)
-                        }
-                        .foregroundStyle(Color.warn)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color.warn.opacity(0.1))
-                        .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-
-                    if balanceExpanded {
-                        ForEach(warnings) { warning in
-                            balanceWarningRow(warning)
-                        }
-                    }
-                }
-                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
-                .listRowBackground(Color.clear)
-            }
-        }
-    }
-
-    private func balanceWarningRow(_ warning: BalanceWarning) -> some View {
-        let icon = warning.severity == .warn ? "exclamationmark.triangle" : "info.circle"
-        let color: Color = warning.severity == .warn ? Color.warn : Color.secondary
-        return HStack(alignment: .top, spacing: 6) {
-            Image(systemName: icon)
-                .font(.caption2)
-                .foregroundStyle(color)
-            Text(warning.message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

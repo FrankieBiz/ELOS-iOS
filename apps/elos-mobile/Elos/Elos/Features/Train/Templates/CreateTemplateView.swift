@@ -223,6 +223,8 @@ struct TemplateBuilderView: View {
     }
 
     @Environment(\.dismiss) private var dismiss
+    @Query(sort: \ExerciseDefinitionRecord.name) private var exerciseDefs: [ExerciseDefinitionRecord]
+    @Query private var profiles: [UserProfileRecord]
     @State private var name = ""
     @State private var exercises: [TemplateExerciseEntry] = []
     @State private var showAddExercise = false
@@ -237,6 +239,24 @@ struct TemplateBuilderView: View {
 
     private var estimatedMinutes: Int {
         exercises.reduce(0) { $0 + ($1.targetSets * ($1.restSeconds + 45)) } / 60
+    }
+
+    // MARK: - Quality coach
+
+    private var exerciseCatalog: [ExerciseCandidate] { exerciseDefs.map(ExerciseCandidate.init(record:)) }
+    private var trainingProfile: TrainingProfile { TrainingProfile(record: profiles.first) }
+    private var guidanceLevel: GuidanceLevel {
+        GuidanceLevel(trainingExperience: profiles.first?.trainingExperience ?? "")
+    }
+
+    private var qualityReport: QualityReport {
+        let scored = exercises.map {
+            ScoredExercise(id: $0.exerciseID ?? "", name: $0.exerciseName,
+                           sets: $0.targetSets, repsText: $0.targetReps, restSeconds: $0.restSeconds)
+        }
+        return TemplateQualityEngine.score(days: [scored], dayNames: [name],
+                                           scope: .singleSession,
+                                           profile: trainingProfile, catalog: exerciseCatalog)
     }
 
     var body: some View {
@@ -276,6 +296,22 @@ struct TemplateBuilderView: View {
                                 .listRowBackground(Color.clear)
                                 .listRowSeparator(.hidden)
                                 .listRowInsets(.init(top: 4, leading: 20, bottom: 8, trailing: 20))
+                        }
+                    }
+
+                    // Quality coach — live, science-based rating + tips
+                    if exercises.count >= 2 {
+                        let report = qualityReport
+                        if report.isScored {
+                            Section {
+                                TemplateQualityPanel(report: report, guidance: guidanceLevel,
+                                                     title: "Template Quality") { _ in
+                                    showAddExercise = true
+                                }
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(.init(top: 4, leading: 16, bottom: 8, trailing: 16))
+                            }
                         }
                     }
 
