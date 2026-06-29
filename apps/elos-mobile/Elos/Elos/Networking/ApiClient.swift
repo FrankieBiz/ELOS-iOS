@@ -87,13 +87,19 @@ final class ApiClient {
     }
 
     func deleteNoContent(_ path: String) async throws {
-        let request = try await makeRequest(method: "DELETE", path: path)
-        let (_, response) = try await session.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 204 else {
-            throw ApiError.httpError(
-                (response as? HTTPURLResponse)?.statusCode ?? 0,
-                "Expected 204 No Content"
-            )
+        func attempt() async throws -> Int {
+            let request = try await makeRequest(method: "DELETE", path: path)
+            let (_, response) = try await session.data(for: request)
+            return (response as? HTTPURLResponse)?.statusCode ?? 0
+        }
+        // Mirror send()'s 401 refresh-and-retry-once so a just-expired token doesn't fail the delete.
+        var status = try await attempt()
+        if status == 401 {
+            _ = try? await SupabaseManager.shared.client.auth.refreshSession()
+            status = try await attempt()
+        }
+        guard status == 204 else {
+            throw ApiError.httpError(status, "Expected 204 No Content")
         }
     }
 

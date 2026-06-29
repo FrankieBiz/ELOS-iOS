@@ -20,6 +20,7 @@ final class AuthStore: ObservableObject {
             switch event {
             case .initialSession:
                 if let session {
+                    userExplicitlySignedOut = false
                     currentUserID   = session.user.id.uuidString
                     isAuthenticated = true
                     // Existing session on app launch — always skip onboarding
@@ -29,6 +30,7 @@ final class AuthStore: ObservableObject {
 
             case .signedIn:
                 if let session {
+                    userExplicitlySignedOut = false
                     currentUserID   = session.user.id.uuidString
                     isAuthenticated = true
                     // Accounts created within the last 60 seconds are new signups
@@ -44,7 +46,9 @@ final class AuthStore: ObservableObject {
                 }
 
             case .signedOut:
-                userExplicitlySignedOut = false
+                // Keep `userExplicitlySignedOut` as-is — it's reset on the next successful
+                // sign-in. Resetting it here defeated its purpose (suppressing auto-refresh
+                // after an explicit logout).
                 currentUserID        = ""
                 isAuthenticated      = false
                 isOnboardingComplete = false
@@ -104,6 +108,9 @@ final class AuthStore: ObservableObject {
         do {
             try await SupabaseManager.shared.client.auth.signOut()
         } catch {
+            // The network sign-out failed — force-clear the local session so the persisted
+            // tokens don't survive on disk and silently re-authenticate on next launch.
+            try? await SupabaseManager.shared.client.auth.signOut(scope: .local)
             currentUserID        = ""
             isAuthenticated      = false
             isOnboardingComplete = false

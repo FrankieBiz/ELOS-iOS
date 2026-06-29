@@ -116,7 +116,8 @@ final class OnboardingViewModel: ObservableObject {
         if useImperial {
             return Double(heightFeet * 12 + heightInches) * 2.54
         }
-        return Double(heightFeet * 100 + heightInches) // treated as cm when metric
+        // Metric: the cm picker (100…250) binds its value directly to `heightFeet`.
+        return Double(heightFeet)
     }
 
     var weightKg: Double {

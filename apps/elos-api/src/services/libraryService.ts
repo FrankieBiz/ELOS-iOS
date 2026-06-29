@@ -136,14 +136,18 @@ export class LibraryService {
   }
 
   async searchLibrary(query: string, type?: string) {
+    // Strip tsquery operator characters from each token before adding the prefix wildcard, so
+    // arbitrary user input (e.g. "bench:" or "a & b") can't throw a to_tsquery syntax error (500).
     const tsquery = query
       .trim()
       .split(/\s+/)
+      .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ""))
       .filter(Boolean)
       .map((w) => w + ":*")
       .join(" & ");
 
     const results: Record<string, unknown[]> = {};
+    if (!tsquery) return results;
 
     if (!type || type === "creators") {
       const { rows } = await this.db.query(

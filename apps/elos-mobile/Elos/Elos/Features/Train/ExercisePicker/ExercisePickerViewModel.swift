@@ -90,7 +90,8 @@ final class ExercisePickerViewModel: ObservableObject {
         guard !incoming.isEmpty else { return }
 
         let existing = (try? context.fetch(FetchDescriptor<ExerciseDefinitionRecord>())) ?? []
-        let existingByID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
+        // Tolerate duplicate ids in the local store — `uniqueKeysWithValues` would trap.
+        let existingByID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
         for ex in incoming {
             let secondaryJSON = (try? String(data: JSONEncoder().encode(ex.secondary_muscles), encoding: .utf8)) ?? "[]"

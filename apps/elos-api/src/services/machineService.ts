@@ -141,12 +141,15 @@ export class MachineService {
   }
 
   async searchMachines(query: string) {
+    // Strip tsquery operators per token so arbitrary input can't throw a syntax error (500).
     const tsquery = query
       .trim()
       .split(/\s+/)
+      .map((w) => w.replace(/[^\p{L}\p{N}]/gu, ""))
       .filter(Boolean)
       .map((w) => w + ":*")
       .join(" & ");
+    if (!tsquery) return [];
 
     const { rows } = await this.db.query(
       `SELECT id, name, slug, category, equipment_type, primary_muscles, image_url
