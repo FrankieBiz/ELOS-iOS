@@ -23,8 +23,9 @@ struct ActiveSessionView: View {
 
     private struct UndoInfo: Equatable {
         let id: Int
-        let eIdx: Int
-        let sIdx: Int
+        let exerciseID: UUID       // resolve the live row by identity, not position
+        let setID: UUID
+        let loggedSetIndex: Int    // the record's setIndex at log time (for the DB un-log)
         let exerciseName: String
     }
 
@@ -121,6 +122,10 @@ struct ActiveSessionView: View {
         .onAppear {
             activeExerciseId = vm.exercises.first?.id
             trainVM.startSession(ownerID: vm.currentUserID)
+        }
+        .onDisappear {
+            // Leaving the session (finish or back) must clear any pending rest alert.
+            NotificationManager.cancelRestTimer()
         }
     }
 
@@ -258,7 +263,7 @@ struct ActiveSessionView: View {
                     nextLabel: nextSetLabel,
                     onMinus: { adjustRest(-RestMath.step) },
                     onPlus:  { adjustRest(RestMath.step) },
-                    onPauseToggle: { restPaused.toggle() },
+                    onPauseToggle: { togglePause() },
                     onSkip: { skipRest() }
                 )
             }
@@ -289,6 +294,16 @@ struct ActiveSessionView: View {
         NotificationManager.cancelRestTimer()
     }
 
+    /// Pause must also halt the real OS alert, not just the on-screen bar.
+    private func togglePause() {
+        restPaused.toggle()
+        if restPaused {
+            NotificationManager.cancelRestTimer()
+        } else if restSeconds > 0 {
+            NotificationManager.scheduleRestTimer(seconds: restSeconds)
+        }
+    }
+
     /// Fired the instant the countdown reaches zero — the old banner just vanished silently.
     private func restDidComplete() {
         restActive = false
@@ -298,12 +313,15 @@ struct ActiveSessionView: View {
 
     private func undoLastSet() {
         guard let u = undoInfo else { return }
-        if u.eIdx < vm.exercises.count, u.sIdx < vm.exercises[u.eIdx].sets.count,
-           vm.exercises[u.eIdx].sets[u.sIdx].done {
+        // Resolve the live position by identity (indices may have shifted during the window);
+        // un-mark the exact WorkSet, but un-log against the record's original setIndex.
+        if let eIdx = vm.exercises.firstIndex(where: { $0.id == u.exerciseID }),
+           let sIdx = vm.exercises[eIdx].sets.firstIndex(where: { $0.id == u.setID }),
+           vm.exercises[eIdx].sets[sIdx].done {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
-                vm.toggleSet(exerciseIndex: u.eIdx, setIndex: u.sIdx)
+                vm.toggleSet(exerciseIndex: eIdx, setIndex: sIdx)
             }
-            trainVM.unlogCompletedSet(exerciseName: u.exerciseName, setIndex: u.sIdx, ownerID: vm.currentUserID)
+            trainVM.unlogCompletedSet(exerciseName: u.exerciseName, setIndex: u.loggedSetIndex, ownerID: vm.currentUserID)
         }
         skipRest()
         withAnimation { undoInfo = nil }
@@ -386,9 +404,16 @@ struct ActiveSessionView: View {
                                 restPaused  = false
                                 activeExerciseId = ex.id
 
-                                // Brief undo window for an accidental tap.
+                                // Brief undo window for an accidental tap. Capture identities,
+                                // not positions, so a mid-window edit can't misdirect the undo.
                                 undoCounter += 1
-                                let info = UndoInfo(id: undoCounter, eIdx: eIdx, sIdx: sIdx, exerciseName: ex.name)
+                                let info = UndoInfo(
+                                    id: undoCounter,
+                                    exerciseID: ex.id,
+                                    setID: ex.sets[sIdx].id,
+                                    loggedSetIndex: sIdx,
+                                    exerciseName: ex.name
+                                )
                                 withAnimation { undoInfo = info }
                                 Task { @MainActor in
                                     try? await Task.sleep(nanoseconds: 4_000_000_000)

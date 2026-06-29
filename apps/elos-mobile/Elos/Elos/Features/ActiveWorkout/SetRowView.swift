@@ -23,6 +23,7 @@ struct SessionExerciseCard: View {
     @State private var showInfo = false
     @State private var editingIndex: Int?
     @State private var editSnapshot: (weight: String, reps: String, rpe: String)?
+    @State private var editError = false
     @FocusState private var focusedField: FocusableField?
 
     private enum FocusableField: Hashable { case weight, reps }
@@ -114,7 +115,7 @@ struct SessionExerciseCard: View {
             entryBlock(i, mode: .edit)
         } else if exercise.sets[i].done {
             loggedRow(i)
-        } else if i == activeIndex {
+        } else if i == activeIndex && editingIndex == nil {
             entryBlock(i, mode: .active)
         } else {
             upcomingRow(i)
@@ -144,6 +145,10 @@ struct SessionExerciseCard: View {
         .padding(.horizontal, 10).padding(.vertical, 8)
         .background(Color.good.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .contextMenu {
+            Button { beginEditing(i) } label: { Label("Edit set", systemImage: "pencil") }
+            Button(role: .destructive) { onSetToggle(i) } label: { Label("Uncomplete", systemImage: "arrow.uturn.backward") }
+        }
     }
 
     // MARK: Upcoming (dim) row
@@ -214,6 +219,9 @@ struct SessionExerciseCard: View {
                 }
                 .buttonStyle(.plain)
             } else {
+                if editError {
+                    Text("Enter reps before saving.").font(.caption2).foregroundStyle(Color.bad)
+                }
                 HStack(spacing: 10) {
                     Button { cancelEditing(i) } label: {
                         Text("Cancel").font(.subheadline).fontWeight(.semibold).foregroundStyle(.secondary)
@@ -361,6 +369,7 @@ struct SessionExerciseCard: View {
 
     private func beginEditing(_ i: Int) {
         editSnapshot = (exercise.sets[i].weight, exercise.sets[i].reps, exercise.sets[i].rpe)
+        editError = false
         withAnimation { editingIndex = i }
     }
     private func cancelEditing(_ i: Int) {
@@ -370,6 +379,7 @@ struct SessionExerciseCard: View {
             exercise.sets[i].rpe = snap.rpe
         }
         editSnapshot = nil
+        editError = false
         focusedField = nil
         withAnimation { editingIndex = nil }
     }
@@ -377,8 +387,15 @@ struct SessionExerciseCard: View {
         let weightVal = max(0, Double(exercise.sets[i].weight) ?? 0)
         let weightKg = unit.toKg(weightVal)
         let reps = Int(exercise.sets[i].reps) ?? 0
+        // Mirror the completion guard — never save a zeroed-out set.
+        guard reps > 0 else { editError = true; return }
         let rpe = min(10, max(0, Double(exercise.sets[i].rpe) ?? 0))
+        // Normalize the WorkSet strings so the locked row matches the persisted/synced record.
+        exercise.sets[i].weight = unit.formatValue(kg: weightKg)
+        exercise.sets[i].reps = String(reps)
+        exercise.sets[i].rpe = rpe > 0 ? RPEScale.label(rpe) : ""
         editSnapshot = nil
+        editError = false
         focusedField = nil
         withAnimation { editingIndex = nil }
         onSetEdit(i, weightKg, reps, rpe)

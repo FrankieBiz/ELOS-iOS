@@ -5,6 +5,8 @@ import Combine
 @MainActor
 class TrainViewModel: ObservableObject {
     private let context: ModelContext
+    /// Set records whose edit-resync (delete + repost) is in flight, to coalesce rapid re-edits.
+    private var setSyncInFlight: Set<String> = []
 
     @Published var currentSession: WorkoutSessionRecord?
     @Published var sessionSets: [ExerciseSetRecord] = []
@@ -169,19 +171,29 @@ class TrainViewModel: ObservableObject {
         record.rpe = newRPE
 
         let serverSessionID = session.serverID
-        if !oldServerID.isEmpty && !serverSessionID.isEmpty {
-            // No PATCH for a single set: drop the stale server record, repost the edited one.
-            record.serverID = ""
-            record.syncPending = true
-            try? context.save()
-            Task {
+        // No PATCH for a single set: if it was already synced, drop the stale server row and repost.
+        let needsServerDelete = !oldServerID.isEmpty && !serverSessionID.isEmpty
+        if needsServerDelete { record.serverID = "" }
+        record.syncPending = true
+        try? context.save()
+
+        // An edit can turn a conservative set into a PR — re-evaluate (history excludes this session).
+        checkAndUpdatePR(exerciseName: exerciseName, weightKg: newWeightKg, reps: newReps,
+                         sessionID: sid, ownerID: ownerID,
+                         equipmentDedupeKey: record.equipmentDedupeKey,
+                         equipmentBrandName: record.equipmentBrandName)
+
+        // Coalesce rapid re-edits of the same set: one in-flight task reposts the record's latest
+        // values, so concurrent saves can't double-POST or drop the delete.
+        guard !setSyncInFlight.contains(record.id) else { return }
+        setSyncInFlight.insert(record.id)
+        let rid = record.id
+        Task { @MainActor in
+            if needsServerDelete {
                 await WorkoutSyncService.shared.deleteSet(serverSessionID: serverSessionID, setServerID: oldServerID)
-                await WorkoutSyncService.shared.pushSet(record, session: session, context: context)
             }
-        } else {
-            record.syncPending = true
-            try? context.save()
-            Task { await WorkoutSyncService.shared.pushSet(record, session: session, context: context) }
+            await WorkoutSyncService.shared.pushSet(record, session: session, context: context)
+            setSyncInFlight.remove(rid)
         }
     }
 
