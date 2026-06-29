@@ -8,6 +8,13 @@ import { createTemplateSchema, updateTemplateNameSchema } from "../schemas";
 const router = Router();
 const service = new TemplateService(pool);
 
+// GET /shared/:code must be registered before /:id to avoid Express matching "shared" as an id
+router.get("/shared/:code", async (req: Request, res: Response) => {
+  const template = await service.getSharedTemplate(req.params.code as string);
+  if (!template) { res.status(404).json({ error: "Template not found" }); return; }
+  res.json(template);
+});
+
 router.get("/", requireAuth, async (req: Request, res: Response) => {
   const templates = await service.getTemplatesForUser(req.user!.id);
   res.json({ templates });
@@ -16,6 +23,16 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
 router.post("/", requireAuth, validateBody(createTemplateSchema), async (req: Request, res: Response) => {
   const template = await service.createTemplate(req.user!.id, req.body);
   res.status(201).json(template);
+});
+
+router.post("/:id/share", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const result = await service.shareTemplate(req.params.id as string, req.user!.id);
+    res.json(result);
+  } catch (err: any) {
+    if (err?.message === "NOT_FOUND") { res.status(404).json({ error: "Template not found" }); return; }
+    throw err;
+  }
 });
 
 router.patch("/:id", requireAuth, validateBody(updateTemplateNameSchema), async (req: Request, res: Response) => {

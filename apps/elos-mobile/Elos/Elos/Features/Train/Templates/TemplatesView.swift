@@ -270,6 +270,9 @@ struct TemplatesView: View {
     @State private var builderInitialName = ""
     @State private var builderInitialEntries: [TemplateExerciseEntry] = []
     @State private var editingTemplateID: String? = nil
+    @State private var sharingTemplateID: String? = nil
+    @State private var shareURL: URL? = nil
+    @State private var shareError: String? = nil
 
     init(modelContext: ModelContext) {
         _templVM = StateObject(wrappedValue: TemplatesViewModel(context: modelContext))
@@ -286,6 +289,7 @@ struct TemplatesView: View {
                             TemplateRow(
                                 template: tmpl,
                                 exercises: templVM.templateExercises[tmpl.id] ?? [],
+                                isSharing: sharingTemplateID == tmpl.id,
                                 onStart: { startSession(from: tmpl) },
                                 onEdit: {
                                     builderIsEditMode = true
@@ -301,6 +305,7 @@ struct TemplatesView: View {
                                     editingTemplateID = nil
                                     showBuilder = true
                                 },
+                                onShare: { shareTemplate(tmpl) },
                                 onDelete: { templVM.deleteTemplate(id: tmpl.id) }
                             )
                             .listRowBackground(Color.clear)
@@ -332,6 +337,23 @@ struct TemplatesView: View {
                             .foregroundStyle(Color.tint)
                     }
                 }
+            }
+            .sheet(isPresented: Binding(
+                get: { shareURL != nil },
+                set: { if !$0 { shareURL = nil } }
+            )) {
+                if let url = shareURL {
+                    ShareSheet(items: [url as Any, "Check out my workout on Elos" as Any])
+                        .presentationDetents([.medium, .large])
+                }
+            }
+            .alert("Couldn't Share Template", isPresented: Binding(
+                get: { shareError != nil },
+                set: { if !$0 { shareError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(shareError ?? "")
             }
             .sheet(isPresented: $showBuilder) {
                 let editID = editingTemplateID
@@ -403,6 +425,27 @@ struct TemplatesView: View {
             }
     }
 
+    private func shareTemplate(_ template: WorkoutTemplateRecord) {
+        guard sharingTemplateID == nil else { return }
+        sharingTemplateID = template.id
+        Task {
+            defer { sharingTemplateID = nil }
+            do {
+                struct _Empty: Encodable {}
+                struct _ShareResponse: Decodable { let shareCode: String }
+                let response: _ShareResponse = try await ApiClient.shared.post(
+                    "/templates/\(template.id)/share",
+                    body: _Empty()
+                )
+                if let url = URL(string: "elos://template?code=\(response.shareCode)") {
+                    shareURL = url
+                }
+            } catch {
+                shareError = "Could not generate share link. Please try again."
+            }
+        }
+    }
+
     private func startSession(from template: WorkoutTemplateRecord) {
         let exercises = templVM.templateExercises[template.id] ?? []
         vm.exercises = exercises.sorted { $0.orderIndex < $1.orderIndex }.map { ex in
@@ -427,9 +470,11 @@ struct TemplatesView: View {
 private struct TemplateRow: View {
     let template: WorkoutTemplateRecord
     let exercises: [TemplateExerciseRecord]
+    var isSharing: Bool = false
     let onStart: () -> Void
     let onEdit: () -> Void
     let onDuplicate: () -> Void
+    let onShare: () -> Void
     let onDelete: () -> Void
 
     private var estimatedMinutes: Int {
@@ -511,8 +556,25 @@ private struct TemplateRow: View {
         .contextMenu {
             Button { onEdit() } label: { Label("Edit", systemImage: "pencil") }
             Button { onDuplicate() } label: { Label("Duplicate", systemImage: "doc.on.doc") }
+            Button { onShare() } label: { Label("Share", systemImage: "square.and.arrow.up") }
             Divider()
             Button(role: .destructive) { onDelete() } label: { Label("Delete", systemImage: "trash") }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
+                onShare()
+            } label: {
+                if isSharing {
+                    ProgressView()
+                } else {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+            }
+            .tint(.blue)
+
+            Button(role: .destructive) { onDelete() } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 }

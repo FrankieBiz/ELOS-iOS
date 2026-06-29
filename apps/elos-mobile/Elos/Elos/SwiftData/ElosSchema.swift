@@ -217,6 +217,27 @@ final class ExerciseSetRecord {
     }
 }
 
+/// Durable record that a previously-synced set owes a server-side DELETE. Persisted (unlike a
+/// fire-and-forget request) so an offline/failed deletion is retried by `reconcile` instead of
+/// being lost — which would otherwise let the server row resurrect on the next down-sync.
+@Model
+final class PendingSetDeletion {
+    var id: String
+    var ownerID: String
+    var serverSessionID: String
+    var setServerID: String
+    var createdAt: Date
+
+    init(id: String = UUID().uuidString, ownerID: String,
+         serverSessionID: String, setServerID: String, createdAt: Date = Date()) {
+        self.id = id
+        self.ownerID = ownerID
+        self.serverSessionID = serverSessionID
+        self.setServerID = setServerID
+        self.createdAt = createdAt
+    }
+}
+
 @Model
 final class ExerciseDefinitionRecord {
     var id: String

@@ -314,6 +314,22 @@ describe("zod schemas", () => {
       expect(result.success).toBe(false);
     });
 
+    it("accepts a workout post with null optional fields (Swift JSONEncoder sends null for nil)", () => {
+      const result = createFeedPostSchema.safeParse({
+        kind: "workout",
+        payload: {
+          date: "2026-06-06",
+          duration_min: 62,
+          volume_kg: 4200,
+          total_sets: 18,
+          unique_exercises: 6,
+          top_lift: null,
+          pr: null,
+        },
+      });
+      expect(result.success).toBe(true);
+    });
+
     it("rejects a workout payload missing required fields", () => {
       const result = createFeedPostSchema.safeParse({
         kind: "workout",

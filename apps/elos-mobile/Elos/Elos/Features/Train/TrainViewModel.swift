@@ -5,8 +5,11 @@ import Combine
 @MainActor
 class TrainViewModel: ObservableObject {
     private let context: ModelContext
-    /// Set records whose edit-resync (delete + repost) is in flight, to coalesce rapid re-edits.
+    /// Per-record sync coalescing: `inFlight` holds records whose push is running; an edit that
+    /// arrives mid-push marks the record `dirty` so the in-flight task re-pushes the latest state
+    /// (instead of dropping it or double-posting).
     private var setSyncInFlight: Set<String> = []
+    private var setSyncDirty: Set<String> = []
 
     @Published var currentSession: WorkoutSessionRecord?
     @Published var sessionSets: [ExerciseSetRecord] = []
@@ -101,7 +104,7 @@ class TrainViewModel: ObservableObject {
                          equipmentDedupeKey: equipmentDedupeKey,
                          equipmentBrandName: equipmentBrandName)
 
-        Task { await WorkoutSyncService.shared.pushSet(record, session: session, context: context) }
+        syncSet(record, session: session, ownerID: ownerID)
     }
 
     func unlogCompletedSet(
@@ -129,17 +132,48 @@ class TrainViewModel: ObservableObject {
         sessionSets.removeAll { $0.exerciseName == exerciseName && $0.setIndex == setIndex && $0.sessionID == sid }
         try? context.save()
 
-        // Propagate the deletion to the server so it doesn't resurrect on re-sync.
-        if !serverSessionID.isEmpty {
+        // Record each deletion durably, then drain it — a fire-and-forget DELETE is lost on
+        // failure/offline, which would let the set resurrect on the next down-sync.
+        if !serverSessionID.isEmpty, !deletedServerIDs.isEmpty {
             for setServerID in deletedServerIDs {
-                Task { await WorkoutSyncService.shared.deleteSet(serverSessionID: serverSessionID, setServerID: setServerID) }
+                context.insert(PendingSetDeletion(ownerID: ownerID, serverSessionID: serverSessionID, setServerID: setServerID))
             }
+            try? context.save()
+            Task { await WorkoutSyncService.shared.drainDeletions(ownerID: ownerID, context: context) }
+        }
+    }
+
+    /// Coalesced, per-record set sync. Runs one push at a time per record; if another edit lands
+    /// while a push is in flight, the in-flight task re-pushes the latest state. After a successful
+    /// post, a pending newer edit tombstones the just-created (now-stale) row and re-posts, so the
+    /// set converges to a single server row carrying the latest values. Used by both logging and
+    /// editing so a log-then-edit (or rapid re-edit) can't double-post or drop the newest values.
+    private func syncSet(_ record: ExerciseSetRecord, session: WorkoutSessionRecord, ownerID: String) {
+        let rid = record.id
+        if setSyncInFlight.contains(rid) { setSyncDirty.insert(rid); return }
+        setSyncInFlight.insert(rid)
+        Task { @MainActor in
+            while true {
+                setSyncDirty.remove(rid)
+                await WorkoutSyncService.shared.pushSet(record, session: session, context: context)
+                await WorkoutSyncService.shared.drainDeletions(ownerID: ownerID, context: context)
+                if !setSyncDirty.contains(rid) { break }
+                // A newer edit arrived during the push — the row we just created is stale, so
+                // tombstone it and loop to repost the latest values.
+                if !record.serverID.isEmpty && !session.serverID.isEmpty {
+                    context.insert(PendingSetDeletion(ownerID: ownerID, serverSessionID: session.serverID, setServerID: record.serverID))
+                    record.serverID = ""
+                    record.syncPending = true
+                    try? context.save()
+                }
+            }
+            setSyncInFlight.remove(rid)
         }
     }
 
     /// Non-destructive edit of an already-logged set: mutate the record in place and adjust
     /// session volume by the delta. There's no set-PATCH endpoint, so if the record was already
-    /// synced we delete the stale server copy and repost it as new — the lifter never re-types.
+    /// synced we tombstone the stale server copy and repost it as new — the lifter never re-types.
     func updateLoggedSet(
         exerciseName: String,
         setIndex: Int,
@@ -171,10 +205,15 @@ class TrainViewModel: ObservableObject {
         record.rpe = newRPE
 
         let serverSessionID = session.serverID
-        // No PATCH for a single set: if it was already synced, drop the stale server row and repost.
-        let needsServerDelete = !oldServerID.isEmpty && !serverSessionID.isEmpty
-        if needsServerDelete { record.serverID = "" }
+        // No single-set PATCH endpoint: if the set was already synced, durably tombstone the stale
+        // server row (so the delete survives failure/offline) and repost the edit as a new row.
+        if !oldServerID.isEmpty && !serverSessionID.isEmpty {
+            context.insert(PendingSetDeletion(ownerID: ownerID, serverSessionID: serverSessionID, setServerID: oldServerID))
+            record.serverID = ""
+        }
         record.syncPending = true
+        // Mark the session pending too so reconcile retries this repost if it can't complete now.
+        session.syncPending = true
         try? context.save()
 
         // An edit can turn a conservative set into a PR — re-evaluate (history excludes this session).
@@ -183,18 +222,8 @@ class TrainViewModel: ObservableObject {
                          equipmentDedupeKey: record.equipmentDedupeKey,
                          equipmentBrandName: record.equipmentBrandName)
 
-        // Coalesce rapid re-edits of the same set: one in-flight task reposts the record's latest
-        // values, so concurrent saves can't double-POST or drop the delete.
-        guard !setSyncInFlight.contains(record.id) else { return }
-        setSyncInFlight.insert(record.id)
-        let rid = record.id
-        Task { @MainActor in
-            if needsServerDelete {
-                await WorkoutSyncService.shared.deleteSet(serverSessionID: serverSessionID, setServerID: oldServerID)
-            }
-            await WorkoutSyncService.shared.pushSet(record, session: session, context: context)
-            setSyncInFlight.remove(rid)
-        }
+        // Repost via the coalesced per-record path; the durable tombstone retires the stale row.
+        syncSet(record, session: session, ownerID: ownerID)
     }
 
     func finishSession(sessionRPE: Int, ownerID: String) {
@@ -202,6 +231,15 @@ class TrainViewModel: ObservableObject {
         let now = Date()
         session.finishedAt = now
         session.sessionRPE = sessionRPE
+
+        // Recompute the total from the actual logged sets so a dropped set-sync (or an edit that
+        // raced) can't ship a wrong volume — the incremental running total is for live display only.
+        let sid = session.id
+        let doneSets = (try? context.fetch(FetchDescriptor<ExerciseSetRecord>(
+            predicate: #Predicate { $0.sessionID == sid && $0.isDone == true }
+        ))) ?? []
+        session.totalVolume = SyncMath.totalVolume(doneSets.map { ($0.weightKg, $0.reps) })
+
         session.syncPending = true
         try? context.save()
 

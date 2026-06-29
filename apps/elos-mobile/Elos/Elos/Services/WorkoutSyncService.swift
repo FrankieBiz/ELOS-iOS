@@ -88,9 +88,51 @@ final class WorkoutSyncService {
     }
 
     /// DELETE a previously-synced set server-side (when the user un-checks/removes it).
-    func deleteSet(serverSessionID: String, setServerID: String) async {
-        guard !serverSessionID.isEmpty, !setServerID.isEmpty else { return }
-        try? await ApiClient.shared.deleteNoContent("/sessions/\(serverSessionID)/sets/\(setServerID)")
+    /// Returns true when the server row is gone — including a 404 (already deleted) — so the
+    /// caller can drop the durable tombstone; false (e.g. offline) means "retry later".
+    @discardableResult
+    func deleteSet(serverSessionID: String, setServerID: String) async -> Bool {
+        guard !serverSessionID.isEmpty, !setServerID.isEmpty else { return true }
+        do {
+            try await ApiClient.shared.deleteNoContent("/sessions/\(serverSessionID)/sets/\(setServerID)")
+            return true
+        } catch ApiError.httpError(404, _) {
+            return true   // already gone server-side
+        } catch {
+            return false
+        }
+    }
+
+    // MARK: - Durable deletions (tombstone queue)
+
+    private var drainingDeletions = false
+    private var drainDeletionsAgain = false
+
+    /// Retry every owed set-deletion (the durable `PendingSetDeletion` queue), dropping each
+    /// tombstone once its server row is confirmed gone. Serialized so concurrent callers don't
+    /// double-issue; a tombstone enqueued while a drain is in flight schedules one more pass so
+    /// it isn't left waiting until the next reconcile.
+    func drainDeletions(ownerID: String, context: ModelContext) async {
+        guard !ownerID.isEmpty else { return }
+        if drainingDeletions { drainDeletionsAgain = true; return }
+        drainingDeletions = true
+        defer { drainingDeletions = false }
+
+        repeat {
+            drainDeletionsAgain = false
+            let desc = FetchDescriptor<PendingSetDeletion>(
+                predicate: #Predicate { $0.ownerID == ownerID }
+            )
+            let pending = (try? context.fetch(desc)) ?? []
+            var changed = false
+            for tombstone in pending {
+                if await deleteSet(serverSessionID: tombstone.serverSessionID, setServerID: tombstone.setServerID) {
+                    context.delete(tombstone)
+                    changed = true
+                }
+            }
+            if changed { try? context.save() }
+        } while drainDeletionsAgain
     }
 
     /// PATCH the session's finish payload. Left pending if the id isn't known yet.
@@ -134,6 +176,9 @@ final class WorkoutSyncService {
             }
         }
 
+        // Replay any owed set-deletions (durable tombstones) so removed sets don't resurrect.
+        await drainDeletions(ownerID: ownerID, context: context)
+
         // After pushing anything local, pull server history to fill gaps
         // (fresh install / new device). Self-bounding: only sessions missing
         // locally trigger a per-session sets fetch.
@@ -160,6 +205,12 @@ final class WorkoutSyncService {
         ))) ?? []
         let knownServerIDs = Set(existing.map(\.serverID).filter { !$0.isEmpty })
 
+        // Don't re-insert sets that are pending deletion locally — they'd resurrect otherwise.
+        let pendingDeletions = (try? context.fetch(FetchDescriptor<PendingSetDeletion>(
+            predicate: #Predicate { $0.ownerID == ownerID }
+        ))) ?? []
+        let tombstonedSetIDs = Set(pendingDeletions.map(\.setServerID))
+
         var insertedAny = false
         for s in remote.sessions where !knownServerIDs.contains(s.id) {
             let session = WorkoutSessionRecord(
@@ -178,7 +229,7 @@ final class WorkoutSyncService {
 
             // Pull this session's sets (only runs for genuinely missing sessions).
             if let setList: SetListResponse = try? await ApiClient.shared.get("/sessions/\(s.id)/sets") {
-                for set in setList.sets {
+                for set in setList.sets where !tombstonedSetIDs.contains(set.id) {
                     context.insert(ExerciseSetRecord(
                         ownerID: ownerID,
                         sessionID: session.id,

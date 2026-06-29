@@ -55,6 +55,7 @@ class AppViewModel: ObservableObject {
 
     // MARK: - Deep link / invite
     @Published var pendingFriendInviteUserId: String?
+    @Published var pendingTemplateShareCode: String?
 
     // MARK: - Habits
     @Published var habits: [Habit] = []

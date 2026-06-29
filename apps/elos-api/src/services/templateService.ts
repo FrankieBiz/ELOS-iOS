@@ -1,5 +1,6 @@
+import crypto from "crypto";
 import { Pool } from "pg";
-import type { WorkoutTemplate, TemplateExercise, CreateTemplateBody } from "elos-shared";
+import type { WorkoutTemplate, TemplateExercise, CreateTemplateBody, SharedTemplate, SharedTemplateExercise } from "elos-shared";
 
 export class TemplateService {
   constructor(private readonly db: Pool) {}
@@ -108,5 +109,83 @@ export class TemplateService {
       [templateId, userId]
     );
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async shareTemplate(templateId: string, userId: string): Promise<{ shareCode: string }> {
+    const ownerCheck = await this.db.query(
+      `SELECT id FROM workout_templates WHERE id = $1 AND user_id = $2`,
+      [templateId, userId]
+    );
+    if (!ownerCheck.rows[0]) throw new Error("NOT_FOUND");
+
+    const exResult = await this.db.query<SharedTemplateExercise>(
+      `SELECT exercise_name, exercise_id::text, order_index,
+              target_sets, target_reps, target_rpe, rest_seconds, notes,
+              equipment_id, equipment_dedupe_key, equipment_brand_name
+       FROM template_exercises WHERE template_id = $1 ORDER BY order_index`,
+      [templateId]
+    );
+    const tmplResult = await this.db.query<{ name: string }>(
+      `SELECT name FROM workout_templates WHERE id = $1`,
+      [templateId]
+    );
+    if (!tmplResult.rows[0]) throw new Error("NOT_FOUND");
+    const payload = {
+      template_name: tmplResult.rows[0].name,
+      exercises: exResult.rows,
+    };
+
+    const tryInsert = async (code: string): Promise<string> => {
+      const result = await this.db.query<{ share_code: string }>(
+        `WITH ins AS (
+           INSERT INTO template_shares (template_id, owner_id, share_code, payload_json)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (template_id, owner_id)
+             DO UPDATE SET payload_json = EXCLUDED.payload_json
+           RETURNING share_code
+         )
+         SELECT share_code FROM ins
+         UNION ALL
+         SELECT share_code FROM template_shares WHERE template_id = $1 AND owner_id = $2
+         LIMIT 1`,
+        [templateId, userId, code, JSON.stringify(payload)]
+      );
+      return result.rows[0].share_code;
+    };
+
+    const code = crypto.randomBytes(8).toString("hex");
+    try {
+      return { shareCode: await tryInsert(code) };
+    } catch {
+      // Rare share_code unique collision — retry once with a new code
+      const retry = crypto.randomBytes(8).toString("hex");
+      return { shareCode: await tryInsert(retry) };
+    }
+  }
+
+  async getSharedTemplate(shareCode: string): Promise<SharedTemplate | null> {
+    const result = await this.db.query<{
+      share_code: string;
+      owner_name: string;
+      payload_json: { template_name: string; exercises: SharedTemplateExercise[] };
+    }>(
+      // Names live on `profiles` (keyed by the Supabase auth user_id), not the abandoned
+      // local `users` table — match the pattern used by feed/friend/leaderboard services.
+      `SELECT ts.share_code,
+              TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) AS owner_name,
+              ts.payload_json
+       FROM template_shares ts
+       LEFT JOIN profiles p ON p.user_id = ts.owner_id
+       WHERE ts.share_code = $1`,
+      [shareCode]
+    );
+    if (!result.rows[0]) return null;
+    const row = result.rows[0];
+    return {
+      share_code: row.share_code,
+      owner_name: row.owner_name,
+      template_name: row.payload_json.template_name,
+      exercises: row.payload_json.exercises,
+    };
   }
 }

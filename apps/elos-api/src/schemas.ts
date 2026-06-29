@@ -63,7 +63,7 @@ export const createTemplateSchema = z.object({
   exercises: z
     .array(
       z.object({
-        exercise_id: z.string().uuid().optional(),
+        exercise_id: z.string().uuid().nullish(),
         exercise_name: z.string().min(1).max(200),
         order_index: z.number().int().min(0).max(100),
         target_sets: z.number().int().min(1).max(50),
@@ -162,8 +162,8 @@ const workoutPayloadSchema = z
     volume_kg: z.number().min(0).max(10_000_000),
     total_sets: z.number().int().min(0).max(1000),
     unique_exercises: z.number().int().min(0).max(200),
-    top_lift: topLiftSchema.optional(),
-    pr: z.string().max(200).optional(),
+    top_lift: topLiftSchema.nullish(),
+    pr: z.string().max(200).nullish(),
   })
   .strict();
 

@@ -441,3 +441,30 @@ export interface FeedPage {
 
 export const FEED_REACTION_EMOJIS = ["🔥", "💪", "👏", "🎯", "👀"] as const;
 export type FeedReactionEmoji = (typeof FEED_REACTION_EMOJIS)[number];
+
+// --- Template sharing ---
+
+export interface SharedTemplateExercise {
+  exercise_name: string;
+  exercise_id: string | null;
+  order_index: number;
+  target_sets: number;
+  target_reps: string;
+  target_rpe: number | null;
+  rest_seconds: number;
+  notes: string | null;
+  equipment_id: string | null;
+  equipment_dedupe_key: string | null;
+  equipment_brand_name: string | null;
+}
+
+export interface SharedTemplate {
+  share_code: string;
+  owner_name: string;
+  template_name: string;
+  exercises: SharedTemplateExercise[];
+}
+
+export interface ShareTemplateResponse {
+  shareCode: string;
+}

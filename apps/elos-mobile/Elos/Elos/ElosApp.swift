@@ -6,6 +6,11 @@ private struct InviteTarget: Identifiable {
     var id: String { userId }
 }
 
+private struct TemplateShareTarget: Identifiable {
+    let shareCode: String
+    var id: String { shareCode }
+}
+
 @main
 struct ElosApp: App {
     @StateObject private var authStore = AuthStore()
@@ -28,6 +33,7 @@ struct ElosApp: App {
             UserProfileRecord.self,
             WorkoutSessionRecord.self,
             ExerciseSetRecord.self,
+            PendingSetDeletion.self,
             ExerciseDefinitionRecord.self,
             WorkoutTemplateRecord.self,
             TemplateExerciseRecord.self,
@@ -130,12 +136,22 @@ struct ElosApp: App {
                     }
                     .onOpenURL { url in
                         guard url.scheme == "elos",
-                              url.host == "add-friend",
-                              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-                              let userId = components.queryItems?.first(where: { $0.name == "userId" })?.value,
-                              !userId.isEmpty
+                              let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
                         else { return }
-                        viewModel.pendingFriendInviteUserId = userId
+                        switch url.host {
+                        case "add-friend":
+                            if let userId = components.queryItems?.first(where: { $0.name == "userId" })?.value,
+                               !userId.isEmpty {
+                                viewModel.pendingFriendInviteUserId = userId
+                            }
+                        case "template":
+                            if let code = components.queryItems?.first(where: { $0.name == "code" })?.value,
+                               !code.isEmpty {
+                                viewModel.pendingTemplateShareCode = code
+                            }
+                        default:
+                            break
+                        }
                     }
                     .sheet(item: Binding(
                         get: { viewModel.pendingFriendInviteUserId.map { InviteTarget(userId: $0) } },
@@ -143,6 +159,13 @@ struct ElosApp: App {
                     )) { target in
                         FriendInviteSheet(inviterUserId: target.userId)
                             .environmentObject(socialViewModel)
+                    }
+                    .sheet(item: Binding(
+                        get: { viewModel.pendingTemplateShareCode.map { TemplateShareTarget(shareCode: $0) } },
+                        set: { if $0 == nil { viewModel.pendingTemplateShareCode = nil } }
+                    )) { target in
+                        TemplateImportSheet(shareCode: target.shareCode)
+                            .environmentObject(viewModel)
                     }
             }
         }
