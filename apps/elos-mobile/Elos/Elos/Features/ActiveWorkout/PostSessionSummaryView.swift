@@ -166,6 +166,7 @@ struct PostSessionSummaryView: View {
                     pr: summary.prsHit.first
                 )
                 if ok { workoutShared = true }
+                else { vm.showError("Couldn't share your workout. Please try again.") }
             }
         } label: {
             Label(workoutShared ? "Shared to Friends" : "Share to Friends",
@@ -191,6 +192,7 @@ struct PostSessionSummaryView: View {
             e1rm: e1rm(best)
         )
         if ok { sharedPRs.insert(exercise) }
+        else { vm.showError("Couldn't share your PR. Please try again.") }
     }
 
     // MARK: Muscle breakdown
@@ -258,7 +260,8 @@ struct PostSessionSummaryView: View {
                     }
                 }
                 Spacer()
-                Image(systemName: "dumbbell.fill").foregroundStyle(Color.tint)
+                // Muted + non-tinted so the card reads as informational, not a tappable row.
+                Image(systemName: "dumbbell.fill").foregroundStyle(.tertiary)
             }
         }
         .padding(14)

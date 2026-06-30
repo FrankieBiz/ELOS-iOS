@@ -506,6 +506,15 @@ struct TrainView: View {
         }
     }
 
+    // On a rest day or with no active split there's nothing planned, so the session starts empty —
+    // label it honestly rather than promising "today's workout".
+    private var startButtonTitle: String {
+        switch trainState {
+        case .restDay, .noSplit: return "Start Free Workout"
+        default:                 return "Start Today's Workout"
+        }
+    }
+
     // MARK: Start Button
     private var startButton: some View {
         VStack(spacing: 10) {
@@ -518,7 +527,7 @@ struct TrainView: View {
                     startSessionWithWarmup()
                 }
             } label: {
-                Label("Start Today's Workout", systemImage: "play.fill")
+                Label(startButtonTitle, systemImage: "play.fill")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)

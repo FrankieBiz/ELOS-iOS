@@ -86,18 +86,16 @@ struct ActiveSessionView: View {
         } message: {
             Text("Volume: \(vm.weightUnit.formatVolume(kg: trainVM.currentSession?.totalVolume ?? vm.sessionVolumeKg))")
         }
-        .sheet(isPresented: $showRPEPrompt) {
-            SessionRPESheet(rpe: $pendingSessionRPE) {
-                let splitDay = vm.currentSplitDay
-                let summary = trainVM.buildSessionSummary(
-                    splitDayTemplateID: splitDay?.templateID ?? "",
-                    splitDayName: splitDay?.dayName ?? ""
-                )
-                trainVM.finishSession(sessionRPE: pendingSessionRPE, ownerID: vm.currentUserID)
-                context.sessionDidEnd(summary: summary)
-                showRPEPrompt = false
-                Task { @MainActor in vm.showingSession = false }
-            }
+        .sheet(isPresented: $showRPEPrompt, onDismiss: {
+            // Swiping the sheet away should still finalize the workout, not silently abandon it
+            // and dump the user back into the (already-finished) session.
+            finishWorkout(rpe: 0)
+        }) {
+            SessionRPESheet(
+                rpe: $pendingSessionRPE,
+                onConfirm: { showRPEPrompt = false; finishWorkout(rpe: pendingSessionRPE) },
+                onSkip:    { showRPEPrompt = false; finishWorkout(rpe: 0) }
+            )
         }
         .sheet(isPresented: $showExercisePicker) {
             ExercisePickerView(onPickSingle: { picked in
@@ -127,6 +125,28 @@ struct ActiveSessionView: View {
             // Leaving the session (finish or back) must clear any pending rest alert.
             NotificationManager.cancelRestTimer()
         }
+    }
+
+    /// Leave the warmup phase with a bit of feedback so the transition isn't silent.
+    private func completeWarmup() {
+        HapticManager.impact(.light)
+        withAnimation {
+            context.warmupPhaseComplete = true
+            context.phase = .active
+        }
+    }
+
+    /// Finalize the session exactly once (guards against the button + onDismiss both firing).
+    private func finishWorkout(rpe: Int) {
+        guard trainVM.currentSession != nil else { return }
+        let splitDay = vm.currentSplitDay
+        let summary = trainVM.buildSessionSummary(
+            splitDayTemplateID: splitDay?.templateID ?? "",
+            splitDayName: splitDay?.dayName ?? ""
+        )
+        trainVM.finishSession(sessionRPE: rpe, ownerID: vm.currentUserID)
+        context.sessionDidEnd(summary: summary)
+        Task { @MainActor in vm.showingSession = false }
     }
 
     // MARK: Nav Bar
@@ -170,12 +190,12 @@ struct ActiveSessionView: View {
                 Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
                 Text("Workout").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Skip") {
-                    context.warmupPhaseComplete = true
-                    context.phase = .active
-                }
+                Button("Skip") { completeWarmup() }
                 .font(.caption).foregroundStyle(.secondary)
             }
+
+            Text("A checklist to get you ready — warmups aren't logged.")
+                .font(.caption2).foregroundStyle(.secondary)
 
             ForEach(context.warmupExercises) { ex in
                 HStack {
@@ -191,8 +211,7 @@ struct ActiveSessionView: View {
             }
 
             Button {
-                context.warmupPhaseComplete = true
-                context.phase = .active
+                completeWarmup()
             } label: {
                 Text("Done with Warmup")
                     .font(.subheadline).fontWeight(.semibold)
@@ -511,6 +530,7 @@ struct ActiveSessionView: View {
 private struct SessionRPESheet: View {
     @Binding var rpe: Int
     let onConfirm: () -> Void
+    let onSkip: () -> Void
 
     var body: some View {
         VStack(spacing: 24) {
@@ -550,6 +570,10 @@ private struct SessionRPESheet: View {
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 20)
+
+            Button("Skip", action: onSkip)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
 
             Spacer()
         }
