@@ -44,6 +44,9 @@ struct PostSessionSummaryView: View {
                     if summary.comparisonLabel != nil { comparisonCard }
                     if summary.nextWorkoutDay != nil { nextWorkoutCard }
                     shareToFriendsButton
+                    if !vm.healthKitEnabled && HealthKitService.shared.isAvailable {
+                        connectHealthButton
+                    }
                     analyticsButton
                     doneButton
                 }
@@ -151,6 +154,21 @@ struct PostSessionSummaryView: View {
             return nil
         }
         return FeedTopLift(name: best.exerciseName, weight_kg: best.weightKg, reps: best.reps)
+    }
+
+    private var connectHealthButton: some View {
+        Button {
+            Task { await vm.connectHealth() }
+        } label: {
+            Label("Connect Apple Health", systemImage: "heart.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.tint)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color.tintSoft)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
     }
 
     private var shareToFriendsButton: some View {

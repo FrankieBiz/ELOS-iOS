@@ -126,6 +126,7 @@ struct ElosApp: App {
                             viewModel.upcomingNotificationDays(), hour: 20, minute: 0
                         )
                         Task { await ApiClient.shared.warmup() }
+                        Task { await viewModel.refreshHealthMetrics() }
                         let ctx = container.mainContext
                         Task { ExerciseCatalog.seedIfNeeded(context: ctx) }
                     }

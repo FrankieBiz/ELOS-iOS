@@ -51,5 +51,9 @@
             <string>com.frankabisignano.elos</string>
         </dict>
     </array>
+    <key>NSHealthShareUsageDescription</key>
+    <string>Elos reads your body weight, resting heart rate, and steps to keep your profile current and tailor recovery guidance.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>Elos saves your completed workouts to Apple Health so they appear in Apple Fitness and contribute to your Activity rings.</string>
 </dict>
 </plist>

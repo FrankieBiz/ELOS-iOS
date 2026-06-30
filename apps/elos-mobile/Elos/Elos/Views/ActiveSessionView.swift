@@ -138,7 +138,7 @@ struct ActiveSessionView: View {
 
     /// Finalize the session exactly once (guards against the button + onDismiss both firing).
     private func finishWorkout(rpe: Int) {
-        guard trainVM.currentSession != nil else { return }
+        guard let session = trainVM.currentSession else { return }
         let splitDay = vm.currentSplitDay
         let summary = trainVM.buildSessionSummary(
             splitDayTemplateID: splitDay?.templateID ?? "",
@@ -146,6 +146,8 @@ struct ActiveSessionView: View {
         )
         trainVM.finishSession(sessionRPE: rpe, ownerID: vm.currentUserID)
         context.sessionDidEnd(summary: summary)
+        // Push to Apple Health if connected (no-op otherwise); the session is finished by now.
+        Task { @MainActor in await vm.exportSessionToHealth(session) }
         Task { @MainActor in vm.showingSession = false }
     }
 

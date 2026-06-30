@@ -89,6 +89,12 @@ class AppViewModel: ObservableObject {
     @Published var canvasLastSynced: Date? = nil
     @Published var canvasError: String? = nil
 
+    // MARK: - Apple Health
+    @Published var healthKitEnabled: Bool = UserDefaults.standard.bool(forKey: "healthKitEnabled") {
+        didSet { UserDefaults.standard.set(healthKitEnabled, forKey: "healthKitEnabled") }
+    }
+    @Published var healthSnapshot: HealthSnapshot = .empty
+
     // MARK: - Favorites
     @Published var favoriteSplitKeys: Set<String> = []
 
@@ -1298,5 +1304,83 @@ class AppViewModel: ObservableObject {
                 canvasError = "Sync failed. Check your Canvas URL and access token, then try again."
             }
         }
+    }
+
+    // MARK: - Apple Health
+
+    /// Connect (Settings toggle): request authorization, then persist the toggle and do an initial
+    /// backfill + metric refresh. On failure, leave it off and surface why.
+    func connectHealth() async {
+        guard HealthKitService.shared.isAvailable else {
+            showError("Apple Health isn't available on this device.")
+            return
+        }
+        let granted = await HealthKitService.shared.requestAuthorization()
+        guard granted else {
+            healthKitEnabled = false
+            showError("Couldn't connect to Apple Health. You can enable access in Settings → Privacy → Health.")
+            return
+        }
+        healthKitEnabled = true
+        await backfillHealth()
+        await refreshHealthMetrics()
+    }
+
+    func disconnectHealth() {
+        healthKitEnabled = false
+        healthSnapshot = .empty
+    }
+
+    /// Read body weight / resting HR / steps; update the profile weight and the snapshot.
+    func refreshHealthMetrics() async {
+        guard healthKitEnabled, HealthKitService.shared.isAvailable else { return }
+        let weight   = await HealthKitService.shared.latestBodyWeightKg()
+        let rhr      = await HealthKitService.shared.restingHeartRate()
+        let baseline = await HealthKitService.shared.restingHRBaseline()
+        let steps    = await HealthKitService.shared.todaySteps()
+
+        healthSnapshot = HealthSnapshot(bodyWeightKg: weight, restingHeartRate: rhr,
+                                        restingHRBaseline: baseline, steps: steps)
+
+        if let weight, weight > 0 { applyBodyWeightFromHealth(weight) }
+    }
+
+    private func applyBodyWeightFromHealth(_ kg: Double) {
+        let uid = currentUserID
+        guard !uid.isEmpty else { return }
+        let desc = FetchDescriptor<UserProfileRecord>(predicate: #Predicate { $0.ownerID == uid })
+        guard let profile = try? context.fetch(desc).first else { return }
+        if abs(profile.weightKg - kg) > 0.05 {   // only write when meaningfully different
+            profile.weightKg = kg
+            try? context.save()
+        }
+    }
+
+    /// Export finished sessions from the last 90 days that haven't been written to Health yet.
+    func backfillHealth() async {
+        guard healthKitEnabled, HealthKitService.shared.isAvailable, !currentUserID.isEmpty else { return }
+        let uid = currentUserID
+        let cutoff = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? .distantPast
+        let desc = FetchDescriptor<WorkoutSessionRecord>(
+            predicate: #Predicate { $0.ownerID == uid && $0.finishedAt != nil && $0.exportedToHealth == false }
+        )
+        let sessions = ((try? context.fetch(desc)) ?? []).filter { ($0.finishedAt ?? .distantPast) >= cutoff }
+        for session in sessions { await exportSessionToHealth(session) }
+    }
+
+    /// Write one finished session to Health (once), marking it so it isn't duplicated.
+    func exportSessionToHealth(_ session: WorkoutSessionRecord) async {
+        guard healthKitEnabled, HealthKitService.shared.isAvailable,
+              session.finishedAt != nil, !session.exportedToHealth else { return }
+        if await HealthKitService.shared.export(session: session, bodyWeightKg: currentBodyWeightKg()) {
+            session.exportedToHealth = true
+            try? context.save()
+        }
+    }
+
+    private func currentBodyWeightKg() -> Double {
+        let uid = currentUserID
+        let desc = FetchDescriptor<UserProfileRecord>(predicate: #Predicate { $0.ownerID == uid })
+        return (try? context.fetch(desc).first)?.weightKg ?? 0
     }
 }

@@ -135,6 +135,37 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
                 }
 
+                Section {
+                    Toggle(isOn: Binding(
+                        get: { vm.healthKitEnabled },
+                        set: { on in
+                            if on { Task { await vm.connectHealth() } }
+                            else { vm.disconnectHealth() }
+                        }
+                    )) {
+                        Label("Apple Health", systemImage: "heart.fill")
+                    }
+                    .tint(Color.tint)
+
+                    if vm.healthKitEnabled {
+                        if let w = vm.healthSnapshot.bodyWeightKg {
+                            healthRow("Body weight", value: vm.weightUnit.formatWeight(kg: w))
+                        }
+                        if let rhr = vm.healthSnapshot.restingHeartRate {
+                            healthRow("Resting heart rate", value: "\(Int(rhr)) bpm")
+                        }
+                        if let steps = vm.healthSnapshot.steps {
+                            healthRow("Steps today", value: "\(steps)")
+                        }
+                    }
+                } header: {
+                    Text("Apple Health")
+                } footer: {
+                    Text(vm.healthKitEnabled
+                         ? "Workouts are saved to Apple Health; your weight, resting heart rate, and steps are read to tailor recovery."
+                         : "Save your workouts to Apple Health and read body weight, resting heart rate, and steps.")
+                }
+
                 Section("About") {
                     HStack {
                         Text("Version")
@@ -219,6 +250,15 @@ struct SettingsView: View {
         if mins < 60 { return "\(mins)m ago" }
         let hrs = mins / 60
         return "\(hrs)h ago"
+    }
+
+    private func healthRow(_ title: String, value: String) -> some View {
+        HStack {
+            Text(title).foregroundStyle(.secondary)
+            Spacer()
+            Text(value).fontWeight(.medium)
+        }
+        .font(.subheadline)
     }
 }
 

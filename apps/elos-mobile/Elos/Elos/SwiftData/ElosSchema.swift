@@ -150,13 +150,15 @@ final class WorkoutSessionRecord {
     // values + mid-session-added exercises). "" = no draft captured yet. Local-only:
     // never sent to the server; used to rehydrate a session after backgrounding/termination.
     var draftJSON: String = ""
+    /// True once this finished session has been written to Apple Health (dedup for backfill/export).
+    var exportedToHealth: Bool = false
 
     init(id: String = UUID().uuidString, ownerID: String,
          startedAt: Date = Date(), finishedAt: Date? = nil,
          sessionRPE: Int = 0, notes: String = "",
          templateID: String = "", totalVolume: Double = 0,
          serverID: String = "", syncPending: Bool = false,
-         draftJSON: String = "") {
+         draftJSON: String = "", exportedToHealth: Bool = false) {
         self.id          = id
         self.ownerID     = ownerID
         self.startedAt   = startedAt
@@ -168,6 +170,7 @@ final class WorkoutSessionRecord {
         self.serverID    = serverID
         self.syncPending = syncPending
         self.draftJSON   = draftJSON
+        self.exportedToHealth = exportedToHealth
     }
 }
 

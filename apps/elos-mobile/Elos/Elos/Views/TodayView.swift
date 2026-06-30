@@ -21,6 +21,9 @@ struct TodayView: View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 24) {
                 headerSection
+                if let hint = vm.healthSnapshot.recoveryHint {
+                    recoveryHintCard(hint)
+                }
                 DailyBriefCard()
                 habitsSection
                 scheduleSection
@@ -32,6 +35,18 @@ struct TodayView: View {
             .padding(.bottom, 120)
         }
         .scrollIndicators(.hidden)
+    }
+
+    // MARK: Recovery hint (from Apple Health resting HR vs baseline)
+    private func recoveryHintCard(_ hint: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "heart.text.square.fill").foregroundStyle(Color.warn)
+            Text(hint).font(.subheadline).foregroundStyle(Color.primary.opacity(0.85))
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(Color.warn.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: Header
