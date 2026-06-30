@@ -43,6 +43,11 @@ struct ReadinessCheckInView: View {
                 .font(.system(size: 32, weight: .bold, design: .monospaced))
                 .foregroundStyle(scoreColor)
 
+            // Apple Health recovery context (resting HR / steps / weight + hint)
+            if vm.healthKitEnabled, vm.healthSnapshot.hasAnyMetric {
+                healthMetricsCard
+            }
+
             // Sliders
             VStack(spacing: 16) {
                 ReadinessSlider(label: "Sleep Quality", emoji: "😴",
@@ -83,6 +88,35 @@ struct ReadinessCheckInView: View {
             Spacer()
         }
         .presentationDetents([.fraction(0.65)])
+    }
+
+    @ViewBuilder private var healthMetricsCard: some View {
+        let snap = vm.healthSnapshot
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                if let rhr = snap.restingHeartRate { metricStat("Resting HR", "\(Int(rhr)) bpm") }
+                if let steps = snap.steps { metricStat("Steps", "\(steps)") }
+                if let w = snap.bodyWeightKg { metricStat("Weight", vm.weightUnit.formatWeight(kg: w)) }
+            }
+            if let hint = snap.recoveryHint {
+                Text(hint)
+                    .font(.caption2).foregroundStyle(Color.warn)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 20)
+    }
+
+    private func metricStat(_ label: String, _ value: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.system(size: 16, weight: .bold, design: .rounded))
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func save() {

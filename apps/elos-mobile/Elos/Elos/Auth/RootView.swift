@@ -41,6 +41,7 @@ struct RootView: View {
         .task(id: scenePhase) {
             if scenePhase == .active {
                 await authStore.refreshSessionIfNeeded()
+                await vm.refreshHealthMetrics()   // no-op unless Health is connected
             }
         }
         .onChange(of: scenePhase) { _, phase in
