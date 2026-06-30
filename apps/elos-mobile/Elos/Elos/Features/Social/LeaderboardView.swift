@@ -19,7 +19,7 @@ struct LeaderboardView: View {
                 ProgressView()
                 Spacer()
             } else if socialVM.weeklyBoard.isEmpty {
-                emptyState
+                if socialVM.boardLoadFailed { failedState } else { emptyState }
             } else {
                 leaderboardList
             }
@@ -144,6 +144,24 @@ struct LeaderboardView: View {
             Text("Add friends to see the weekly leaderboard")
                 .font(.subheadline).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(40)
+    }
+
+    private var failedState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 40))
+                .foregroundStyle(.secondary)
+            Text("Couldn't load the leaderboard")
+                .font(.headline)
+            Text("Check your connection and try again.")
+                .font(.subheadline).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Retry") { Task { await socialVM.loadBoard() } }
+                .font(.subheadline).fontWeight(.semibold).foregroundStyle(Color.tint)
+                .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(40)

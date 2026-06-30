@@ -273,6 +273,7 @@ struct TemplatesView: View {
     @State private var sharingTemplateID: String? = nil
     @State private var shareURL: URL? = nil
     @State private var shareError: String? = nil
+    @State private var templatePendingDelete: WorkoutTemplateRecord? = nil
 
     init(modelContext: ModelContext) {
         _templVM = StateObject(wrappedValue: TemplatesViewModel(context: modelContext))
@@ -306,14 +307,14 @@ struct TemplatesView: View {
                                     showBuilder = true
                                 },
                                 onShare: { shareTemplate(tmpl) },
-                                onDelete: { templVM.deleteTemplate(id: tmpl.id) }
+                                onDelete: { templatePendingDelete = tmpl }
                             )
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                             .listRowInsets(.init(top: 5, leading: 16, bottom: 5, trailing: 16))
                         }
                         .onDelete { offsets in
-                            for idx in offsets { templVM.deleteTemplate(id: templVM.templates[idx].id) }
+                            if let idx = offsets.first { templatePendingDelete = templVM.templates[idx] }
                         }
                     }
                     .listStyle(.plain)
@@ -354,6 +355,19 @@ struct TemplatesView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(shareError ?? "")
+            }
+            .confirmationDialog(
+                "Delete Template?",
+                isPresented: Binding(
+                    get: { templatePendingDelete != nil },
+                    set: { if !$0 { templatePendingDelete = nil } }
+                ),
+                presenting: templatePendingDelete
+            ) { tmpl in
+                Button("Delete", role: .destructive) { templVM.deleteTemplate(id: tmpl.id) }
+                Button("Cancel", role: .cancel) {}
+            } message: { tmpl in
+                Text("Delete \"\(tmpl.name)\"? This can't be undone.")
             }
             .sheet(isPresented: $showBuilder) {
                 let editID = editingTemplateID

@@ -89,7 +89,7 @@ struct LoginView: View {
                         }
                     }
                     .buttonStyle(ElosFilledButtonStyle())
-                    .disabled(authVM.isLoading)
+                    .disabled(authVM.isLoading || authVM.email.isEmpty || authVM.password.isEmpty)
                     .padding(.top, 4)
                 }
                 .padding(.horizontal, 24)
@@ -98,11 +98,17 @@ struct LoginView: View {
                 Button {
                     Task { await authVM.sendPasswordReset() }
                 } label: {
-                    Text("Forgot password?")
-                        .font(.caption)
-                        .foregroundStyle(Color.tint)
+                    HStack(spacing: 6) {
+                        if authVM.isLoading {
+                            ProgressView().scaleEffect(0.7)
+                        }
+                        Text(authVM.isLoading ? "Sending…" : "Forgot password?")
+                            .font(.caption)
+                            .foregroundStyle(Color.tint)
+                    }
                 }
                 .buttonStyle(.plain)
+                .disabled(authVM.isLoading)
                 .padding(.top, 12)
 
                 if let info = authVM.infoMessage {

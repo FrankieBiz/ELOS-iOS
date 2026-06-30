@@ -94,22 +94,32 @@ final class FeedViewModel: ObservableObject {
 
     // MARK: - Moderation (Guideline 1.2)
 
-    func reportPost(_ post: FeedPostResponse, category: String) async {
+    func reportPost(_ post: FeedPostResponse, category: String) async -> Bool {
         struct Body: Encodable { let reportedId: String; let category: String; let note: String? }
         struct Ok: Decodable { let ok: Bool }
-        _ = try? await ApiClient.shared.post(
-            "/social/report",
-            body: Body(reportedId: post.author.user_id, category: category, note: nil)
-        ) as Ok
+        do {
+            _ = try await ApiClient.shared.post(
+                "/social/report",
+                body: Body(reportedId: post.author.user_id, category: category, note: nil)
+            ) as Ok
+            return true
+        } catch {
+            return false
+        }
     }
 
-    /// Block the author and immediately remove all of their posts from the feed.
-    func blockAuthor(_ post: FeedPostResponse) async {
+    /// Block the author and, on success, immediately remove all of their posts from the feed.
+    func blockAuthor(_ post: FeedPostResponse) async -> Bool {
         struct Body: Encodable { let blockedId: String }
         struct Ok: Decodable { let ok: Bool }
         let authorID = post.author.user_id
-        _ = try? await ApiClient.shared.post("/social/block", body: Body(blockedId: authorID)) as Ok
-        posts.removeAll { $0.author.user_id == authorID }
+        do {
+            _ = try await ApiClient.shared.post("/social/block", body: Body(blockedId: authorID)) as Ok
+            posts.removeAll { $0.author.user_id == authorID }
+            return true
+        } catch {
+            return false
+        }
     }
 
     // MARK: - Sharing (returns true on success)

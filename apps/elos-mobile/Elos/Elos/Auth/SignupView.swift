@@ -93,6 +93,13 @@ struct SignupView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
+                    if let info = authVM.infoMessage {
+                        Text(info)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
                     Button {
                         Task { await authVM.register(authStore: authStore) }
                     } label: {

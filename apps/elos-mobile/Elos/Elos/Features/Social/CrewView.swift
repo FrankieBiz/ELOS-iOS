@@ -132,6 +132,7 @@ struct CrewView: View {
             .padding(.bottom, 40)
         }
         .scrollIndicators(.hidden)
+        .refreshable { await socialVM.load(ownerID: vm.currentUserID) }
     }
 
     private var pendingSection: some View {

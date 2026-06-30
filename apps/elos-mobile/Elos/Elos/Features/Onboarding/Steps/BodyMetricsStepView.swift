@@ -7,6 +7,30 @@ struct BodyMetricsStepView: View {
         Binding(get: { Int(vm.weightLbs) }, set: { vm.weightLbs = Double($0) })
     }
 
+    /// Convert the stored values once on a units toggle so the wheels never land on
+    /// an empty/invalid selection. Note: in metric mode the cm picker binds directly to
+    /// `vm.heightFeet`, and `vm.weightLbs` holds kg. By the time this fires `vm.useImperial`
+    /// has already flipped, so we convert from the raw fields rather than the computed props.
+    private func convertUnits(toImperial: Bool) {
+        if toImperial {
+            // metric -> imperial: heightFeet held cm, weightLbs held kg
+            let cm = Double(vm.heightFeet)
+            let totalInches = cm / 2.54
+            let feet = Int((totalInches / 12).rounded(.down))
+            let inches = Int((totalInches - Double(feet) * 12).rounded())
+            vm.heightFeet = min(max(feet, 4), 8)
+            vm.heightInches = min(max(inches, 0), 11)
+            let lbs = vm.weightLbs / WeightUnit.kgPerLb
+            vm.weightLbs = min(max(lbs, 80), 400)
+        } else {
+            // imperial -> metric: heightFeet held feet, weightLbs held lbs
+            let cm = (Double(vm.heightFeet) * 12 + Double(vm.heightInches)) * 2.54
+            vm.heightFeet = min(max(Int(cm.rounded()), 100), 250)
+            let kg = vm.weightLbs * WeightUnit.kgPerLb
+            vm.weightLbs = min(max(kg, 35), 200)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 8) {
@@ -28,6 +52,9 @@ struct BodyMetricsStepView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 180)
+                .onChange(of: vm.useImperial) { _, nowImperial in
+                    convertUnits(toImperial: nowImperial)
+                }
             }
 
             // Height

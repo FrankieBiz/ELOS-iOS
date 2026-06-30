@@ -177,7 +177,11 @@ struct SettingsView: View {
                 Button("Delete", role: .destructive) {
                     Task {
                         let ok = await authVM.deleteAccount(authStore: authStore)
-                        if ok { dismiss() }
+                        if ok {
+                            dismiss()
+                        } else {
+                            vm.showError(authVM.errorMessage ?? "Could not delete account. Please try again.")
+                        }
                     }
                 }
                 Button("Cancel", role: .cancel) {}

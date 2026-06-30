@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FriendSearchView: View {
     @EnvironmentObject private var socialVM: SocialViewModel
+    @EnvironmentObject private var vm: AppViewModel
     @Environment(\.dismiss) private var dismiss
 
     @State private var query = ""
@@ -40,15 +41,23 @@ struct FriendSearchView: View {
                             hasSentRequest: sentRequestIDs.contains(user.user_id),
                             hasAccepted:    acceptedIDs.contains(user.user_id)
                         ) {
-                            HapticManager.success()
                             Task {
+                                // Only reflect success (insert + haptic) once the request actually lands.
                                 if user.friendship_status == "pending_received",
                                    let fid = user.friendship_id {
-                                    await socialVM.accept(friendshipId: fid)
-                                    acceptedIDs.insert(user.user_id)
+                                    if await socialVM.accept(friendshipId: fid) {
+                                        acceptedIDs.insert(user.user_id)
+                                        HapticManager.success()
+                                    } else {
+                                        vm.showError("Couldn't accept the request. Please try again.")
+                                    }
                                 } else {
-                                    await socialVM.sendRequest(to: user.user_id)
-                                    sentRequestIDs.insert(user.user_id)
+                                    if await socialVM.sendRequest(to: user.user_id) {
+                                        sentRequestIDs.insert(user.user_id)
+                                        HapticManager.success()
+                                    } else {
+                                        vm.showError("Couldn't send the request. Please try again.")
+                                    }
                                 }
                             }
                         }

@@ -68,7 +68,12 @@ struct FriendProfileView: View {
                         prsCard(s.top_prs)
                     }
                 } else {
-                    Text("Could not load profile.").foregroundStyle(.secondary).padding(.top, 40)
+                    VStack(spacing: 12) {
+                        Text("Could not load profile.").foregroundStyle(.secondary)
+                        Button("Retry") { Task { await profileVM.loadStats(userId: userId) } }
+                            .font(.subheadline).fontWeight(.semibold).foregroundStyle(Color.tint)
+                    }
+                    .padding(.top, 40)
                 }
             }
             .padding(16)

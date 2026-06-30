@@ -76,7 +76,16 @@ struct OnboardingView: View {
                 .disabled(!vm.canAdvance || vm.isLoading)
             }
             .padding(.horizontal, 24)
-            .padding(.bottom, 40)
+            .padding(.bottom, vm.step == 1 && !vm.canAdvance ? 8 : 40)
+
+            if vm.step == 1 && !vm.canAdvance {
+                Text("Pick an available username to continue")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
+            }
 
             if let err = vm.errorMessage {
                 Text(err)

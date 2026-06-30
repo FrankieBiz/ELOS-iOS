@@ -92,6 +92,7 @@ class SocialViewModel: ObservableObject {
     @Published var boardWeekStart = ""
     @Published var boardMyRank = 0
     @Published var boardMyValue: Double = 0
+    @Published var boardLoadFailed = false
 
     init(context: ModelContext) {
         self.context = context
@@ -127,6 +128,7 @@ class SocialViewModel: ObservableObject {
 
     func loadBoard() async {
         isLoading = true
+        boardLoadFailed = false
         defer { isLoading = false }
         do {
             let resp: WeeklyLeaderboardResponse = try await ApiClient.shared.get("/leaderboard/weekly?metric=\(selectedMetric)")
@@ -134,7 +136,10 @@ class SocialViewModel: ObservableObject {
             boardWeekStart = resp.week_start
             boardMyRank = resp.my_rank
             boardMyValue = resp.my_value
-        } catch {}
+        } catch {
+            // Distinguish a network failure from a genuinely empty board so the view can offer Retry.
+            boardLoadFailed = true
+        }
     }
 
     func loadStandings() async {
@@ -144,10 +149,16 @@ class SocialViewModel: ObservableObject {
         } catch {}
     }
 
-    func sendRequest(to addresseeId: String) async {
+    @discardableResult
+    func sendRequest(to addresseeId: String) async -> Bool {
         struct Body: Encodable { let addresseeId: String }
-        _ = try? await ApiClient.shared.post("/social/friends/request", body: Body(addresseeId: addresseeId)) as OkResponse
-        await syncSentRequests()
+        do {
+            _ = try await ApiClient.shared.post("/social/friends/request", body: Body(addresseeId: addresseeId)) as OkResponse
+            await syncSentRequests()
+            return true
+        } catch {
+            return false
+        }
     }
 
     func cancelSentRequest(friendshipId: String) async {
@@ -155,11 +166,17 @@ class SocialViewModel: ObservableObject {
         sentRequests.removeAll { $0.friendship_id == friendshipId }
     }
 
-    func accept(friendshipId: String) async {
+    @discardableResult
+    func accept(friendshipId: String) async -> Bool {
         struct Empty: Codable {}
-        _ = try? await ApiClient.shared.patch("/social/friends/\(friendshipId)/accept", body: Empty()) as OkResponse
-        await syncFriends()
-        await syncRequests()
+        do {
+            _ = try await ApiClient.shared.patch("/social/friends/\(friendshipId)/accept", body: Empty()) as OkResponse
+            await syncFriends()
+            await syncRequests()
+            return true
+        } catch {
+            return false
+        }
     }
 
     func decline(friendshipId: String) async {

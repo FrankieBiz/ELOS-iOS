@@ -12,6 +12,7 @@ struct ProgramsView: View {
     @State private var showSplitFinder = false
     @State private var selectedSplit: UserSplitRecord?
     @State private var splitPendingDelete: UserSplitRecord?
+    @State private var splitPendingActivate: UserSplitRecord?
     @State private var splitShared = false
 
     private let categoryOrder: [SplitCategory] = [
@@ -91,7 +92,34 @@ struct ProgramsView: View {
             } message: {
                 Text("Friends can now import this split.")
             }
+            .confirmationDialog(
+                "Switch active program?",
+                isPresented: Binding(
+                    get: { splitPendingActivate != nil },
+                    set: { if !$0 { splitPendingActivate = nil } }
+                ),
+                presenting: splitPendingActivate
+            ) { split in
+                Button("Switch to \"\(split.name)\"") { activate(split) }
+                Button("Cancel", role: .cancel) {}
+            } message: { split in
+                Text("\(vm.activeSplit?.name ?? "Your current program") will be replaced and its progress reset.")
+            }
         }
+    }
+
+    /// Activate a split, confirming first when one is already active so a tap
+    /// can't silently replace an in-progress program.
+    private func requestActivate(_ split: UserSplitRecord) {
+        if vm.activeSplit != nil {
+            splitPendingActivate = split
+        } else {
+            activate(split)
+        }
+    }
+
+    private func activate(_ split: UserSplitRecord) {
+        vm.setActiveSplit(split)
     }
 
     private func deleteSplit(_ split: UserSplitRecord) {
@@ -222,7 +250,7 @@ struct ProgramsView: View {
                     ForEach(userSplits) { split in
                         Button {
                             if split.isActive { selectedSplit = split }
-                            else { vm.setActiveSplit(split) }
+                            else { requestActivate(split) }
                         } label: {
                             mySplitRow(split)
                         }
@@ -232,21 +260,27 @@ struct ProgramsView: View {
                                 Label("View Details", systemImage: "list.bullet")
                             }
                             if !split.isActive {
-                                Button { vm.setActiveSplit(split) } label: {
+                                Button { requestActivate(split) } label: {
                                     Label("Set as Active", systemImage: "checkmark.circle")
                                 }
                             }
-                            if !split.serverID.isEmpty {
-                                Button {
-                                    Task {
-                                        if await feedVM.shareSplit(serverID: split.serverID) {
-                                            splitShared = true
-                                        }
+                            Button {
+                                guard !split.serverID.isEmpty else { return }
+                                let serverID = split.serverID
+                                Task {
+                                    if await feedVM.shareSplit(serverID: serverID) {
+                                        splitShared = true
+                                    } else {
+                                        vm.showError("Could not share this split. Please try again.")
                                     }
-                                } label: {
-                                    Label("Share to Friends", systemImage: "person.2.fill")
                                 }
+                            } label: {
+                                Label(
+                                    split.serverID.isEmpty ? "Saving… try again in a moment" : "Share to Friends",
+                                    systemImage: "person.2.fill"
+                                )
                             }
+                            .disabled(split.serverID.isEmpty)
                             Divider()
                             Button(role: .destructive) {
                                 splitPendingDelete = split

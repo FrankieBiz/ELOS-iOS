@@ -84,6 +84,7 @@ struct FeedPostCard: View {
     @State private var imported = false
     @State private var showReportDialog = false
     @State private var showReportConfirm = false
+    @State private var showBlockConfirm = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -96,7 +97,13 @@ struct FeedPostCard: View {
         .confirmationDialog("Report this post?", isPresented: $showReportDialog, titleVisibility: .visible) {
             ForEach(["spam", "harassment", "inappropriate", "other"], id: \.self) { category in
                 Button(category.capitalized) {
-                    Task { await feedVM.reportPost(post, category: category); showReportConfirm = true }
+                    Task {
+                        if await feedVM.reportPost(post, category: category) {
+                            showReportConfirm = true
+                        } else {
+                            vm.showError("Couldn't submit report. Please try again.")
+                        }
+                    }
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -105,6 +112,18 @@ struct FeedPostCard: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Thank you. Our team will review this report.")
+        }
+        .confirmationDialog("Block \(post.author.displayName)?", isPresented: $showBlockConfirm, titleVisibility: .visible) {
+            Button("Block", role: .destructive) {
+                Task {
+                    if !(await feedVM.blockAuthor(post)) {
+                        vm.showError("Couldn't block this user. Please try again.")
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You won't see their posts and they won't be able to see yours.")
         }
     }
 

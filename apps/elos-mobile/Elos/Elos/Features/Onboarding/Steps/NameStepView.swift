@@ -59,7 +59,7 @@ struct NameStepView: View {
 
     private var usernameField: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("USERNAME")
+            Text("USERNAME (required)")
                 .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)

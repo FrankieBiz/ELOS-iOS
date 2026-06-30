@@ -41,6 +41,8 @@ final class AuthViewModel: ObservableObject {
         }
         errorMessage = nil
         infoMessage  = nil
+        isLoading    = true
+        defer { isLoading = false }
         do {
             try await SupabaseManager.shared.client.auth.resetPasswordForEmail(trimmed)
             infoMessage = "If an account exists for \(trimmed), a reset link is on its way."
@@ -73,6 +75,7 @@ final class AuthViewModel: ObservableObject {
         guard password == confirmPassword else { errorMessage = "Passwords do not match."; return }
         isLoading    = true
         errorMessage = nil
+        infoMessage  = nil
         defer { isLoading = false }
         do {
             let response = try await SupabaseManager.shared.client.auth.signUp(
@@ -83,8 +86,9 @@ final class AuthViewModel: ObservableObject {
             // even if the user needs to confirm their email and sign in manually later.
             UserDefaults.standard.set(true, forKey: "elos_signup_pending")
             if response.session == nil {
-                // Email confirmation is enabled — user must verify before signing in
-                errorMessage = "Check your email to confirm your account, then sign in."
+                // Email confirmation is enabled — user must verify before signing in.
+                // This is a success state, so surface it as neutral info, not a red error.
+                infoMessage = "Check your email to confirm your account, then sign in."
             }
             // If a session was returned, authStateChanges handles routing automatically
         } catch {
