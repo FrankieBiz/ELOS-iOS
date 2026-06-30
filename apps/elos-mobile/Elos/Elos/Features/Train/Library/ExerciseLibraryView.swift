@@ -9,6 +9,7 @@ class ExerciseLibraryViewModel: ObservableObject {
     @Published var definitions: [ExerciseDefinitionRecord] = []
     @Published var searchText = ""
     @Published var isLoading  = false
+    @Published var createError: String? = nil
 
     private let context: ModelContext
 
@@ -75,7 +76,9 @@ class ExerciseLibraryViewModel: ObservableObject {
                 try? context.save()
                 definitions.append(record)
                 definitions.sort { $0.name < $1.name }
-            } catch {}
+            } catch {
+                createError = "Couldn't create \"\(name)\". Please check your connection and try again."
+            }
         }
     }
 
@@ -170,6 +173,14 @@ struct ExerciseLibraryView: View {
                                          ownerID: vm.currentUserID)
                     showCreate = false
                 }
+            }
+            .alert("Couldn't Create Exercise", isPresented: Binding(
+                get: { libVM.createError != nil },
+                set: { if !$0 { libVM.createError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(libVM.createError ?? "")
             }
             .sheet(isPresented: $showAdvancedPicker) {
                 ExercisePickerView(onPickSingle: { picked in

@@ -74,6 +74,7 @@ class DiscoverViewModel: ObservableObject {
     @Published var featuredMachines: [MachineRecord] = []
     @Published var isLoading = false
     @Published var searchResults: SearchResults = SearchResults()
+    @Published var isSearching = false
 
     struct SearchResults {
         var creators: [CreatorResponse] = []
@@ -106,10 +107,13 @@ class DiscoverViewModel: ObservableObject {
     func search(query: String) {
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
             searchResults = SearchResults()
+            isSearching = false
             return
         }
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        isSearching = true
         Task {
+            defer { isSearching = false }
             if let response = try? await ApiClient.shared.get("/library/search?q=\(encoded)") as SearchResultsResponse {
                 searchResults = SearchResults(
                     creators: response.creators ?? [],

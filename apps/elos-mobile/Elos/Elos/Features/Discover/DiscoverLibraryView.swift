@@ -157,7 +157,11 @@ struct DiscoverLibraryView: View {
 
     private var searchResultsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if discoverVM.searchResults.isEmpty {
+            if discoverVM.isSearching {
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 40)
+            } else if discoverVM.searchResults.isEmpty {
                 Text("No results for \"\(searchText)\"")
                     .font(.subheadline).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)

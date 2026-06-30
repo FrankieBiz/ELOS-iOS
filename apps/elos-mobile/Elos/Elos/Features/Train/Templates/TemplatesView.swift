@@ -9,6 +9,8 @@ class TemplatesViewModel: ObservableObject {
     @Published var templates: [WorkoutTemplateRecord] = []
     @Published var templateExercises: [String: [TemplateExerciseRecord]] = [:]
     @Published var isLoading = false
+    /// Set when a create/edit fails to reach the server (the template is saved locally but unsynced).
+    @Published var syncError: String? = nil
 
     private let context: ModelContext
 
@@ -122,7 +124,9 @@ class TemplatesViewModel: ObservableObject {
                     templateExercises[serverID] = exRecords
                 }
                 try? context.save()
-            } catch {}
+            } catch {
+                syncError = "Couldn't save \"\(name)\" to the cloud. It's saved on this device — reopen it to retry syncing."
+            }
         }
     }
 
@@ -176,7 +180,11 @@ class TemplatesViewModel: ObservableObject {
                     )
                 }
             )
-            _ = try? await ApiClient.shared.patch("/templates/\(id)", body: body) as TemplateDetailResponse
+            do {
+                _ = try await ApiClient.shared.patch("/templates/\(id)", body: body) as TemplateDetailResponse
+            } catch {
+                syncError = "Couldn't save your changes to \"\(name)\" to the cloud. They're saved on this device."
+            }
         }
     }
 
@@ -355,6 +363,14 @@ struct TemplatesView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(shareError ?? "")
+            }
+            .alert("Template Not Synced", isPresented: Binding(
+                get: { templVM.syncError != nil },
+                set: { if !$0 { templVM.syncError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(templVM.syncError ?? "")
             }
             .confirmationDialog(
                 "Delete Template?",

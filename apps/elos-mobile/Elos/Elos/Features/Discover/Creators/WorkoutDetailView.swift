@@ -180,18 +180,34 @@ struct WorkoutDetailView: View {
             }
 
             Button { detailVM.addToMyPlan() } label: {
-                Label("Add to Plan", systemImage: "plus.rectangle.on.rectangle")
-                    .font(.subheadline).fontWeight(.semibold)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Color.tint)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                Group {
+                    if detailVM.isAddingToPlan {
+                        ProgressView().tint(.white)
+                    } else {
+                        Label(detailVM.addedToPlan ? "Added to Plan" : "Add to Plan",
+                              systemImage: detailVM.addedToPlan ? "checkmark.circle.fill" : "plus.rectangle.on.rectangle")
+                            .font(.subheadline).fontWeight(.semibold)
+                    }
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(detailVM.addedToPlan ? Color.good : Color.tint)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
+            .disabled(detailVM.isAddingToPlan || detailVM.addedToPlan)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(.ultraThinMaterial)
+        .alert("Couldn't Add to Plan", isPresented: Binding(
+            get: { detailVM.addError != nil },
+            set: { if !$0 { detailVM.addError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(detailVM.addError ?? "")
+        }
     }
 }
 
@@ -202,6 +218,9 @@ final class WorkoutDetailViewModel: ObservableObject {
     @Published var workout: WorkoutDetailAPIResponse?
     @Published var isSaved = false
     @Published var isLoading = false
+    @Published var isAddingToPlan = false
+    @Published var addedToPlan = false
+    @Published var addError: String? = nil
 
     private struct SaveWorkoutBody: Encodable { let workoutId: String }
     private struct EmptySaveResponse: Decodable { let ok: Bool? }
@@ -264,11 +283,18 @@ final class WorkoutDetailViewModel: ObservableObject {
                 rest_seconds: ex.rest_seconds ?? 90
             )
         }
+        isAddingToPlan = true
         Task {
-            _ = try? await ApiClient.shared.post(
-                "/templates",
-                body: CreateTemplateForkRequest(name: "\(w.creator_name): \(firstDay.name)", exercises: exercises)
-            ) as ForkTemplateResponse
+            defer { isAddingToPlan = false }
+            do {
+                _ = try await ApiClient.shared.post(
+                    "/templates",
+                    body: CreateTemplateForkRequest(name: "\(w.creator_name): \(firstDay.name)", exercises: exercises)
+                ) as ForkTemplateResponse
+                addedToPlan = true
+            } catch {
+                addError = "Couldn't add this to your plan. Please try again."
+            }
         }
     }
 }
