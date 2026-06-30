@@ -294,9 +294,9 @@ struct CreateSplitView: View {
                                         Text("\(ex.sets)×")
                                             .font(.caption2).fontWeight(.semibold)
                                             .foregroundStyle(Color.tint.opacity(0.7))
-                                        Image(systemName: "chevron.down")
-                                            .font(.system(size: 7, weight: .semibold))
-                                            .foregroundStyle(Color.tint.opacity(0.5))
+                                        Image(systemName: "ellipsis.circle.fill")
+                                            .font(.system(size: 13))
+                                            .foregroundStyle(Color.tint.opacity(0.8))
                                     }
                                 }
                                 Button {

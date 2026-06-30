@@ -15,8 +15,14 @@ struct CreateExerciseView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section("Exercise Name") {
+                Section {
                     TextField("e.g. Paused Bench Press", text: $name)
+                } header: {
+                    Text("Exercise Name")
+                } footer: {
+                    if name.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Text("Name is required to save.")
+                    }
                 }
                 Section("Details") {
                     Picker("Primary Muscle", selection: $primaryMuscle) {

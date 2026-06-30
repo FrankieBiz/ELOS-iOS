@@ -276,7 +276,13 @@ struct SplitSubscribeSheet: View {
             modelContext.insert(dayRecord)
         }
 
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            isSaving = false
+            vm.showError("Couldn't start this program. Please try again.")
+            return
+        }
         vm.loadActiveSplit()
 
         let record = splitRecord

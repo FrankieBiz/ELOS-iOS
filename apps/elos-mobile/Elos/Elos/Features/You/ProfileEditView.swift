@@ -238,11 +238,17 @@ struct ProfileEditView: View {
     var body: some View {
         NavigationView {
             Form {
-                Section("Name") {
+                Section {
                     TextField("First Name", text: $editVM.firstName)
                         .textContentType(.givenName)
                     TextField("Last Name", text: $editVM.lastName)
                         .textContentType(.familyName)
+                } header: {
+                    Text("Name")
+                } footer: {
+                    if editVM.firstName.isEmpty {
+                        Text("First name is required to save.").foregroundStyle(Color.bad)
+                    }
                 }
 
                 Section {

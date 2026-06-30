@@ -121,13 +121,24 @@ final class ExercisePickerViewModel: ObservableObject {
 
     func toggleFavorite(exerciseID: String) async {
         if favoriteIDs.contains(exerciseID) {
+            // Optimistic remove, rolled back if the request fails so the star reflects reality.
+            let removed = favorites.first { $0.id == exerciseID }
             favoriteIDs.remove(exerciseID)
             favorites.removeAll { $0.id == exerciseID }
-            _ = try? await ApiClient.shared.delete("/exercises/\(exerciseID)/favorite") as OkResponse
+            do {
+                _ = try await ApiClient.shared.delete("/exercises/\(exerciseID)/favorite") as OkResponse
+            } catch {
+                favoriteIDs.insert(exerciseID)
+                if let removed { favorites.append(removed) }
+            }
         } else {
             favoriteIDs.insert(exerciseID)
-            _ = try? await ApiClient.shared.post("/exercises/\(exerciseID)/favorite", body: EmptyBody()) as OkResponse
-            await loadFavorites()
+            do {
+                _ = try await ApiClient.shared.post("/exercises/\(exerciseID)/favorite", body: EmptyBody()) as OkResponse
+                await loadFavorites()
+            } catch {
+                favoriteIDs.remove(exerciseID)
+            }
         }
     }
 }

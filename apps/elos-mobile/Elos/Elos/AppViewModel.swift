@@ -1261,6 +1261,9 @@ class AppViewModel: ObservableObject {
         let token = KeychainHelper.load(forKey: "canvasToken") ?? ""
         guard !url.isEmpty, !token.isEmpty, !currentUserID.isEmpty else { return }
         await syncCanvas(baseURL: url, token: token)
+        // This runs in the background at launch; surface a failure once so it isn't invisible
+        // (the Settings screen only shows canvasError if the user happens to open it).
+        if let err = canvasError { showError(err) }
     }
 
     func syncCanvas(baseURL: String, token: String) async {

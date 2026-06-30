@@ -441,7 +441,16 @@ private struct AddAssignmentSheet: View {
 
     @State private var name = ""
     @State private var subject = ""
-    @State private var due = ""
+    @State private var hasDueDate = false
+    @State private var dueDate = Date()
+
+    private static let isoDay: DateFormatter = {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 
     var body: some View {
         NavigationView {
@@ -449,7 +458,11 @@ private struct AddAssignmentSheet: View {
                 Section("Assignment") {
                     TextField("Name (e.g. Essay draft)", text: $name)
                     TextField("Subject (e.g. AP English)", text: $subject)
-                    TextField("Due (e.g. 2026-05-20)", text: $due)
+                    // A date picker can't produce a mistyped date that silently never shows on the schedule.
+                    Toggle("Set a due date", isOn: $hasDueDate)
+                    if hasDueDate {
+                        DatePicker("Due", selection: $dueDate, displayedComponents: .date)
+                    }
                 }
             }
             .navigationTitle("New Assignment")
@@ -459,7 +472,8 @@ private struct AddAssignmentSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
                         guard !name.isEmpty else { return }
-                        onAdd(name, subject.isEmpty ? "General" : subject, due.isEmpty ? "—" : due)
+                        let due = hasDueDate ? Self.isoDay.string(from: dueDate) : "—"
+                        onAdd(name, subject.isEmpty ? "General" : subject, due)
                         dismiss()
                     }
                     .fontWeight(.semibold)
