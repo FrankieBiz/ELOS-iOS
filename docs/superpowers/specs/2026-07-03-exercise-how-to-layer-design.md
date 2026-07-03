@@ -70,7 +70,7 @@ A build-time script (not shipped, not called at runtime) produces the seed conte
 1. **Normalize** names on both sides (lowercase, strip punctuation/qualifiers).
 2. **Match** each Elos exercise to a source exercise via normalized-name equality + an **alias map** that extends the app's existing `gymAliases` (this is what resolves "pec deck" → `Butterfly`/`Reverse Machine Flyes", "leg extension" ↔ "Leg Extensions", etc.). Matching is **conservative**: only high-confidence matches are applied; anything ambiguous is left blank so the ⓘ falls back to the muscle caption. A *wrong* how-to is worse than none.
 3. **Enrich (pass A):** for matched existing exercises, populate `instructions` + `image_key` (+ backfill `movement_pattern` if empty).
-4. **Fill machine gaps (pass B):** for machines in the equipment DB whose generic exercise does not exist in the catalog, insert the source's exercise as a **new global generic exercise**, mapping its muscle vocabulary through the 17-value → Elos taxonomy table and deriving `movement_pattern` from `mechanic`/`force`. Scope pass B to machine-type gaps, not the whole dataset.
+4. **Fill machine gaps (pass B):** for machines in the equipment DB whose generic exercise does not exist in the catalog, insert the source's exercise as a **new global generic exercise**, mapping its muscle vocabulary through the 17-value → Elos taxonomy table and deriving `movement_pattern` from `mechanic`/`force`. Scope pass B to machine-type gaps, not the whole dataset. The authoritative machine list for this pass is **`data/equipment_database.jsonl`** (the source JSONL that seeds both the compiled `EquipmentDatabase.swift` array and the backend `machines` tables) — readable directly by the Node build-time script, so the machine→generic mapping runs offline without depending on the compiled Swift array.
 5. **Emit a match report** (CSV: Elos exercise → matched source name → confidence / unmatched) so the "spot-check" is a list scan, not an in-app hunt.
 6. Approved content bakes into a **seed migration** (backend); iOS receives it through the normal `/exercises` sync → SwiftData upsert. No per-user work, no runtime dependency.
 
@@ -94,7 +94,7 @@ Demo photos are **bundled in the iOS app asset catalog**, resolved at render tim
 ## 5. Data flow
 
 1. Build-time script matches source → catalog, emits report, and produces a seed migration populating `instructions` / `image_key` (and backfilling `movement_pattern`). Demo photos are added to the iOS asset catalog.
-2. Backend serves the new fields via `GET /exercises`; `ExercisePickerViewModel.syncExercises` upserts them into `ExerciseDefinitionRecord` (offline cache).
+2. Backend serves the new fields via `GET /exercises`; `ExercisePickerViewModel.syncExercises` upserts them into `ExerciseDefinitionRecord` (offline cache). Note: the current upsert enumerates each field explicitly, so its update path must be extended to copy `instructions` / `image_key` into the new record fields (otherwise synced rows silently drop the how-to content).
 3. In the active session, tapping ⓘ on a row: if a matching `ExerciseDefinitionRecord` has non-empty `instructions`, present the how-to sheet (photo resolved from `imageKey` in the bundle); else show the muscle caption.
 4. In the picker, ⓘ presents the same sheet for the row's exercise.
 5. Because content is keyed on the generic exercise, any brand machine variant the user selected shows the same how-to with no extra wiring.
