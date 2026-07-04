@@ -6,7 +6,7 @@ import SwiftData
 struct ExerciseHowTo: Identifiable, Equatable {
     let name: String
     let steps: [String]
-    let imageKey: String?   // nil / "" -> no bundled photo
+    let imageKey: String?   // nil -> no bundled photo
 
     var id: String { name }
 

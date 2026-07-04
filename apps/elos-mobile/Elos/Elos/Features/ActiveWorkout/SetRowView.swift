@@ -23,7 +23,7 @@ struct SessionExerciseCard: View {
     @State private var showingSwap = false
     @State private var showInfo = false
     @State private var howTo: ExerciseHowTo?
-    @State private var showHowTo = false
+    @State private var howToToPresent: ExerciseHowTo?
     @State private var editingIndex: Int?
     @State private var editSnapshot: (weight: String, reps: String, rpe: String)?
     @State private var editError = false
@@ -61,12 +61,13 @@ struct SessionExerciseCard: View {
                 howTo = ExerciseHowToLookup.find(name: exercise.name, in: modelContext)
             }
         }
+        .onChange(of: exercise.name) { _, newName in
+            howTo = ExerciseHowToLookup.find(name: newName, in: modelContext)
+        }
         .sheet(isPresented: $showingSwap) {
             ExerciseSwapSheet(exerciseName: $exercise.name)
         }
-        .sheet(isPresented: $showHowTo) {
-            if let howTo { ExerciseHowToSheet(howTo: howTo) }
-        }
+        .sheet(item: $howToToPresent) { ExerciseHowToSheet(howTo: $0) }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
@@ -103,9 +104,9 @@ struct SessionExerciseCard: View {
             .buttonStyle(.plain)
 
             Button {
-                if howTo != nil {
+                if let howTo {
                     HapticManager.impact(.light)
-                    showHowTo = true
+                    howToToPresent = howTo
                 } else {
                     withAnimation { showInfo.toggle() }
                 }

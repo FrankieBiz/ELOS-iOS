@@ -21,4 +21,14 @@ struct ExerciseHowToTests {
         #expect(howTo?.steps == ["Sit down.", "Squeeze."])
         #expect(howTo?.imageKey == "Butterfly")
     }
+
+    @Test func emptyImageKeyBecomesNil() {
+        let r = ExerciseDefinitionRecord(
+            id: "1", ownerID: "", name: "Pec Deck", primaryMuscle: "chest",
+            secondaryMusclesJSON: "[]", equipment: "machine", movementPattern: "isolation",
+            isCustom: false, instructionsJSON: "[\"Sit down.\"]", imageKey: ""
+        )
+        let howTo = ExerciseHowTo.from(record: r)
+        #expect(howTo?.imageKey == nil)
+    }
 }
