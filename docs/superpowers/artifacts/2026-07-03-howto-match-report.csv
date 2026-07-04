@@ -1,0 +1,356 @@
+elos_name,source_name,image_key,status
+'Barbell Back Squat','Barbell Squat',Barbell_Squat,matched
+'Barbell Bench Press','Barbell Bench Press - Medium Grip',Barbell_Bench_Press_-_Medium_Grip,matched
+'Conventional Deadlift','Barbell Deadlift',Barbell_Deadlift,matched
+'Barbell Overhead Press','Barbell Shoulder Press',Barbell_Shoulder_Press,matched
+'Pull-Up','Pullups',Pullups,matched
+'Incline Push-Up','Incline Push-Up',Incline_Push-Up,matched
+'Cable Crunch','Cable Crunch',Cable_Crunch,matched
+'Sit-Up','Sit-Up',Sit-Up,matched
+'Romanian Deadlift','Romanian Deadlift',Romanian_Deadlift,matched
+'Dumbbell Lunges','Dumbbell Lunges',Dumbbell_Lunges,matched
+'Incline Dumbbell Press','Incline Dumbbell Press',Incline_Dumbbell_Press,matched
+'Leg Press','Leg Press',Leg_Press,matched
+'Face Pull','Face Pull',Face_Pull,matched
+'Sumo Deadlift','Sumo Deadlift',Sumo_Deadlift,matched
+'Leg Extension','Leg Extensions',Leg_Extensions,matched
+'Seated Cable Row','Seated Cable Rows',Seated_Cable_Rows,matched
+'Plank','Plank',Plank,matched
+'Dumbbell Bench Press','Dumbbell Bench Press',Dumbbell_Bench_Press,matched
+'Decline Barbell Bench Press','Decline Barbell Bench Press',Decline_Barbell_Bench_Press,matched
+'Reverse Hyperextension','Reverse Hyperextension',Reverse_Hyperextension,matched
+'Smith Machine Bench Press','Smith Machine Bench Press',Smith_Machine_Bench_Press,matched
+'Decline Push-Up','Decline Push-Up',Decline_Push-Up,matched
+'Svend Press','Svend Press',Svend_Press,matched
+'Chin-Up','Chin-Up',Chin-Up,matched
+'Inverted Row','Inverted Row',Inverted_Row,matched
+'One-Arm Dumbbell Row','One-Arm Dumbbell Row',One-Arm_Dumbbell_Row,matched
+'Straight-Arm Pulldown','Straight-Arm Pulldown',Straight-Arm_Pulldown,matched
+'Good Morning','Good Morning',Good_Morning,matched
+'Trap Bar Deadlift','Trap Bar Deadlift',Trap_Bar_Deadlift,matched
+'Deficit Deadlift','Deficit Deadlift',Deficit_Deadlift,matched
+'Dumbbell Shoulder Press','Dumbbell Shoulder Press',Dumbbell_Shoulder_Press,matched
+'Seated Dumbbell Press','Seated Dumbbell Press',Seated_Dumbbell_Press,matched
+'Reverse Pec Deck','Reverse Machine Flyes',Reverse_Machine_Flyes,matched
+'Dumbbell Shrug','Dumbbell Shrug',Dumbbell_Shrug,matched
+'Barbell Shrug','Barbell Shrug',Barbell_Shrug,matched
+'Barbell Curl','Barbell Curl',Barbell_Curl,matched
+'EZ-Bar Curl','EZ-Bar Curl',EZ-Bar_Curl,matched
+'Preacher Curl','Preacher Curl',Preacher_Curl,matched
+'Incline Dumbbell Curl','Incline Dumbbell Curl',Incline_Dumbbell_Curl,matched
+'Spider Curl','Spider Curl',Spider_Curl,matched
+'Zottman Curl','Zottman Curl',Zottman_Curl,matched
+'Cross-Body Hammer Curl','Cross Body Hammer Curl',Cross_Body_Hammer_Curl,matched
+'Drag Curl','Drag Curl',Drag_Curl,matched
+'Parallel Bar Dip','Parallel Bar Dip',Parallel_Bar_Dip,matched
+'JM Press','JM Press',JM_Press,matched
+'Tate Press','Tate Press',Tate_Press,matched
+'Farmer''s Walk','Farmer''s Walk',Farmers_Walk,matched
+'Plate Pinch','Plate Pinch',Plate_Pinch,matched
+'Goblet Squat','Goblet Squat',Goblet_Squat,matched
+'Smith Machine Squat','Smith Machine Squat',Smith_Machine_Squat,matched
+'Single-Leg Glute Bridge','Single Leg Glute Bridge',Single_Leg_Glute_Bridge,matched
+'Hanging Leg Raise','Hanging Leg Raise',Hanging_Leg_Raise,matched
+'Box Squat','Box Squat',Box_Squat,matched
+'Lying Leg Curl','Lying Leg Curls',Lying_Leg_Curls,matched
+'Seated Leg Curl','Seated Leg Curl',Seated_Leg_Curl,matched
+'Glute-Ham Raise','Glute Ham Raise',Glute_Ham_Raise,matched
+'Seated Calf Raise','Seated Calf Raise',Seated_Calf_Raise,matched
+'Smith Machine Calf Raise','Smith Machine Calf Raise',Smith_Machine_Calf_Raise,matched
+'Barbell Hip Thrust','Barbell Hip Thrust',Barbell_Hip_Thrust,matched
+'Russian Twist','Russian Twist',Russian_Twist,matched
+'Dead Bug','Dead Bug',Dead_Bug,matched
+'Pallof Press','Pallof Press',Pallof_Press,matched
+'Power Clean','Power Clean',Power_Clean,matched
+'Power Snatch','Power Snatch',Power_Snatch,matched
+'Cable Rear Delt Fly','Cable Rear Delt Fly',Cable_Rear_Delt_Fly,matched
+'Floor Press','Floor Press',Floor_Press,matched
+'Clean and Jerk','Clean and Jerk',Clean_and_Jerk,matched
+'Hang Clean','Hang Clean',Hang_Clean,matched
+'Cable Crossover','Cable Crossover',Cable_Crossover,matched
+'Cable Chest Press','Cable Chest Press',Cable_Chest_Press,matched
+'Single-Arm Cable Crossover','Single-Arm Cable Crossover',Single-Arm_Cable_Crossover,matched
+'Cable Shoulder Press','Cable Shoulder Press',Cable_Shoulder_Press,matched
+'Cable Internal Rotation','Cable Internal Rotation',Cable_Internal_Rotation,matched
+'Overhead Cable Curl','Overhead Cable Curl',Overhead_Cable_Curl,matched
+'Reverse Cable Curl','Reverse Cable Curl',Reverse_Cable_Curl,matched
+'Cable Hip Adduction','Cable Hip Adduction',Cable_Hip_Adduction,matched
+'Cable Seated Crunch','Cable Seated Crunch',Cable_Seated_Crunch,matched
+'Barbell Lunge','Barbell Lunge',Barbell_Lunge,matched
+'Overhead Squat','Overhead Squat',Overhead_Squat,matched
+'Barbell Glute Bridge','Barbell Glute Bridge',Barbell_Glute_Bridge,matched
+'EZ-Bar Skullcrusher','EZ-Bar Skullcrusher',EZ-Bar_Skullcrusher,matched
+'Barbell Rear Delt Row','Barbell Rear Delt Row',Barbell_Rear_Delt_Row,matched
+'Dumbbell Floor Press','Dumbbell Floor Press',Dumbbell_Floor_Press,matched
+'Dumbbell Clean','Dumbbell Clean',Dumbbell_Clean,matched
+'Dumbbell Side Bend','Dumbbell Side Bend',Dumbbell_Side_Bend,matched
+'Dumbbell Incline Row','Dumbbell Incline Row',Dumbbell_Incline_Row,matched
+'Lat Pulldown','Wide-Grip Lat Pulldown',Wide-Grip_Lat_Pulldown,matched
+'V-Bar Pulldown','V-Bar Pulldown',V-Bar_Pulldown,matched
+'Wide-Grip Lat Pulldown','Wide-Grip Lat Pulldown',Wide-Grip_Lat_Pulldown,matched
+'Pec Deck','Butterfly',Butterfly,matched
+'Hip Abduction Machine','Thigh Abductor',Thigh_Abductor,matched
+'Hip Adduction Machine','Thigh Adductor',Thigh_Adductor,matched
+'Barbell Row',,,unmatched
+'Cable Row',,,unmatched
+'Dumbbell Curl',,,unmatched
+'Tricep Pushdown',,,unmatched
+'Leg Curl',,,unmatched
+'Calf Raise',,,unmatched
+'Hip Thrust',,,unmatched
+'Chest Fly',,,unmatched
+'Lateral Raise',,,unmatched
+'Front Squat',,,unmatched
+'Close-Grip Bench Press',,,unmatched
+'Hammer Curl',,,unmatched
+'Skull Crusher',,,unmatched
+'Dumbbell Row',,,unmatched
+'Push-Up',,,unmatched
+'Incline Barbell Bench Press',,,unmatched
+'Decline Dumbbell Press',,,unmatched
+'Dumbbell Fly',,,unmatched
+'Incline Dumbbell Fly',,,unmatched
+'Low Cable Fly',,,unmatched
+'High Cable Fly',,,unmatched
+'Pec Deck Machine',,,unmatched
+'Seated Chest Press Machine',,,unmatched
+'Incline Chest Press Machine',,,unmatched
+'Smith Incline Bench Press',,,unmatched
+'Wide Push-Up',,,unmatched
+'Diamond Push-Up',,,unmatched
+'Plyometric Push-Up',,,unmatched
+'Chest Dip',,,unmatched
+'Dumbbell Pullover',,,unmatched
+'Wide-Grip Pull-Up',,,unmatched
+'Neutral-Grip Pull-Up',,,unmatched
+'Assisted Pull-Up',,,unmatched
+'T-Bar Row',,,unmatched
+'Pendlay Row',,,unmatched
+'Meadows Row',,,unmatched
+'Chest-Supported Row',,,unmatched
+'Yates Row',,,unmatched
+'Seal Row',,,unmatched
+'Single-Arm Cable Row',,,unmatched
+'Kroc Row',,,unmatched
+'Hyperextension',,,unmatched
+'Rack Pull',,,unmatched
+'Snatch-Grip Deadlift',,,unmatched
+'Arnold Press',,,unmatched
+'Seated Barbell Press',,,unmatched
+'Push Press',,,unmatched
+'Behind-the-Neck Press',,,unmatched
+'Z-Press',,,unmatched
+'Machine Shoulder Press',,,unmatched
+'Smith Shoulder Press',,,unmatched
+'Cable Lateral Raise',,,unmatched
+'Machine Lateral Raise',,,unmatched
+'Dumbbell Front Raise',,,unmatched
+'Cable Front Raise',,,unmatched
+'Plate Front Raise',,,unmatched
+'Bent-Over Lateral Raise',,,unmatched
+'Cable Reverse Fly',,,unmatched
+'Upright Row',,,unmatched
+'Cable Upright Row',,,unmatched
+'Cable Shrug',,,unmatched
+'Trap Bar Shrug',,,unmatched
+'Handstand Push-Up',,,unmatched
+'Pike Push-Up',,,unmatched
+'Cable Curl',,,unmatched
+'Rope Hammer Curl',,,unmatched
+'Concentration Curl',,,unmatched
+'Reverse Curl',,,unmatched
+'Donkey Kick',,,unmatched
+'Cable Hammer Curl',,,unmatched
+'Machine Preacher Curl',,,unmatched
+'21s Curl',,,unmatched
+'Overhead Tricep Extension',,,unmatched
+'Rope Tricep Extension',,,unmatched
+'Single-Arm Tricep Pushdown',,,unmatched
+'Overhead Cable Tricep Extension',,,unmatched
+'Bench Dip',,,unmatched
+'Tricep Kickback',,,unmatched
+'Cable Tricep Kickback',,,unmatched
+'California Press',,,unmatched
+'Machine Tricep Extension',,,unmatched
+'Wrist Curl',,,unmatched
+'Reverse Wrist Curl',,,unmatched
+'Behind-the-Back Wrist Curl',,,unmatched
+'Bulgarian Split Squat',,,unmatched
+'Walking Lunge',,,unmatched
+'Reverse Lunge',,,unmatched
+'Step-Up',,,unmatched
+'Hack Squat Machine',,,unmatched
+'Pause Squat',,,unmatched
+'Pistol Squat',,,unmatched
+'Sissy Squat',,,unmatched
+'Belt Squat',,,unmatched
+'Cyclist Squat',,,unmatched
+'Cossack Squat',,,unmatched
+'Lateral Lunge',,,unmatched
+'Wall Sit',,,unmatched
+'Jump Squat',,,unmatched
+'Stiff-Leg Deadlift',,,unmatched
+'Single-Leg Romanian Deadlift',,,unmatched
+'Dumbbell Romanian Deadlift',,,unmatched
+'Nordic Hamstring Curl',,,unmatched
+'Kettlebell Swing',,,unmatched
+'Standing Calf Raise',,,unmatched
+'Donkey Calf Raise',,,unmatched
+'Single-Leg Calf Raise',,,unmatched
+'Tibialis Raise',,,unmatched
+'Single-Leg Hip Thrust',,,unmatched
+'Machine Hip Thrust',,,unmatched
+'Cable Pull-Through',,,unmatched
+'Glute Bridge',,,unmatched
+'Cable Kickback',,,unmatched
+'Frog Pump',,,unmatched
+'Hip Abductor Machine',,,unmatched
+'Hip Adductor Machine',,,unmatched
+'Curtsy Lunge',,,unmatched
+'B-Stance Hip Thrust',,,unmatched
+'Side Plank',,,unmatched
+'Hanging Knee Raise',,,unmatched
+'Toes-to-Bar',,,unmatched
+'Captain''s Chair Leg Raise',,,unmatched
+'Crunch',,,unmatched
+'Decline Sit-Up',,,unmatched
+'Weighted Crunch',,,unmatched
+'Bicycle Crunch',,,unmatched
+'V-Up',,,unmatched
+'Bird Dog',,,unmatched
+'Cable Woodchopper',,,unmatched
+'Ab Wheel Rollout',,,unmatched
+'L-Sit',,,unmatched
+'Dragon Flag',,,unmatched
+'Hollow Body Hold',,,unmatched
+'Mountain Climber',,,unmatched
+'Box Jump',,,unmatched
+'Broad Jump',,,unmatched
+'Medicine Ball Slam',,,unmatched
+'Cable Incline Fly',,,unmatched
+'Cable Decline Fly',,,unmatched
+'Single-Arm Cable Fly',,,unmatched
+'Cable Incline Press',,,unmatched
+'Low-to-High Cable Fly',,,unmatched
+'High-to-Low Cable Fly',,,unmatched
+'Cable Squeeze Press',,,unmatched
+'High Cable Row',,,unmatched
+'Single-Arm High Cable Row',,,unmatched
+'Half-Kneeling Cable Row',,,unmatched
+'Supinated Cable Row',,,unmatched
+'Kneeling Lat Pulldown',,,unmatched
+'Close-Grip Cable Row',,,unmatched
+'Wide-Grip Cable Row',,,unmatched
+'Bayesian Cable Curl',,,unmatched
+'Cable Scapular Retraction',,,unmatched
+'Cable Prone Row',,,unmatched
+'Single-Arm Cable Lat Pulldown',,,unmatched
+'Cable Deadlift',,,unmatched
+'Half-Kneeling Cable Shoulder Press',,,unmatched
+'Cable Y-Raise',,,unmatched
+'Cable External Rotation',,,unmatched
+'Single-Arm Cable Lateral Raise',,,unmatched
+'Seated Cable Lateral Raise',,,unmatched
+'Cable Front Raise (single arm)',,,unmatched
+'Cable Prone Rear Delt Raise',,,unmatched
+'High Cable Curl',,,unmatched
+'Low Cable Curl',,,unmatched
+'Preacher Cable Curl',,,unmatched
+'Single-Arm Cable Curl',,,unmatched
+'Cable Bar Curl',,,unmatched
+'Incline Cable Curl',,,unmatched
+'Cable Spider Curl',,,unmatched
+'Cable Drag Curl',,,unmatched
+'Bar Pushdown',,,unmatched
+'V-Bar Pushdown',,,unmatched
+'Reverse Grip Tricep Pushdown',,,unmatched
+'Straight Bar Pushdown',,,unmatched
+'Single-Arm Overhead Cable Extension',,,unmatched
+'Cable Skull Crusher',,,unmatched
+'Cable Tate Press',,,unmatched
+'Kneeling Overhead Cable Extension',,,unmatched
+'Cable Romanian Deadlift',,,unmatched
+'Cable Stiff-Leg Deadlift',,,unmatched
+'Cable B-Stance Romanian Deadlift',,,unmatched
+'Cable Squat',,,unmatched
+'Cable Lunge',,,unmatched
+'Cable Reverse Lunge',,,unmatched
+'Cable Hip Abduction',,,unmatched
+'Kneeling Cable Hip Extension',,,unmatched
+'Cable Ankle Kickback',,,unmatched
+'Cable Hamstring Curl',,,unmatched
+'Cable Calf Raise',,,unmatched
+'Cable Step-Through Lunge',,,unmatched
+'Cable Donkey Kick',,,unmatched
+'Cable Hip Hinge',,,unmatched
+'Kneeling Cable Crunch',,,unmatched
+'Standing Cable Crunch',,,unmatched
+'Cable Side Bend',,,unmatched
+'Half-Kneeling Cable Chop',,,unmatched
+'Half-Kneeling Cable Lift',,,unmatched
+'Cable Russian Twist',,,unmatched
+'Cable Oblique Crunch',,,unmatched
+'Cable Anti-Rotation Press',,,unmatched
+'Cable Twist',,,unmatched
+'Barbell Reverse Lunge',,,unmatched
+'Barbell Step-Up',,,unmatched
+'Zercher Squat',,,unmatched
+'Hatfield Squat',,,unmatched
+'Jefferson Deadlift',,,unmatched
+'Suitcase Deadlift',,,unmatched
+'Spoto Press',,,unmatched
+'Close-Grip Incline Bench Press',,,unmatched
+'Barbell Calf Raise',,,unmatched
+'EZ-Bar Overhead Extension',,,unmatched
+'EZ-Bar Upright Row',,,unmatched
+'Barbell Bulgarian Split Squat',,,unmatched
+'Barbell Split Squat',,,unmatched
+'Hang Power Clean',,,unmatched
+'High Pull',,,unmatched
+'Barbell Hip Hinge',,,unmatched
+'Jefferson Curl',,,unmatched
+'Barbell Incline Row',,,unmatched
+'Barbell Wrist Extension',,,unmatched
+'Barbell Rollout',,,unmatched
+'Barbell Hip Thrust (single-leg)',,,unmatched
+'Staggered Stance Deadlift',,,unmatched
+'Dumbbell Skullcrusher',,,unmatched
+'Dumbbell Hip Thrust',,,unmatched
+'Single-Leg Dumbbell Hip Thrust',,,unmatched
+'Dumbbell Sumo Deadlift',,,unmatched
+'Dumbbell Deadlift',,,unmatched
+'Dumbbell Snatch',,,unmatched
+'Dumbbell Power Clean',,,unmatched
+'Dumbbell Upright Row',,,unmatched
+'Dumbbell Y-Raise',,,unmatched
+'Dumbbell W-Raise',,,unmatched
+'Dumbbell External Rotation',,,unmatched
+'Dumbbell Internal Rotation',,,unmatched
+'Side-Lying Dumbbell External Rotation',,,unmatched
+'Renegade Row',,,unmatched
+'Dumbbell Close-Grip Press',,,unmatched
+'Neutral Grip Dumbbell Press',,,unmatched
+'Single-Arm Dumbbell Press',,,unmatched
+'Dumbbell Chest-Supported Rear Delt Row',,,unmatched
+'Dumbbell Turkish Get-Up',,,unmatched
+'Dumbbell Thruster',,,unmatched
+'Hex Press',,,unmatched
+'Dumbbell Rear Delt Row',,,unmatched
+'Dumbbell Front Squat',,,unmatched
+'Dumbbell Staggered Stance RDL',,,unmatched
+'Dumbbell Calf Raise',,,unmatched
+'Single-Leg Dumbbell Calf Raise',,,unmatched
+'Dumbbell Bulgarian Split Squat',,,unmatched
+'Dumbbell Step-Up',,,unmatched
+'Dumbbell Reverse Lunge',,,unmatched
+'Dumbbell Lateral Lunge',,,unmatched
+'Dumbbell Stiff-Leg Deadlift',,,unmatched
+'Suitcase Carry',,,unmatched
+'Bottoms-Up Press',,,unmatched
+'Dumbbell Face Pull',,,unmatched
+'Dumbbell Around the World',,,unmatched
+'Double Dumbbell Row',,,unmatched
+'Dumbbell Box Squat',,,unmatched
+'Reverse-Grip Lat Pulldown',,,unmatched
+'Close-Grip Lat Pulldown',,,unmatched
+'Behind-the-Neck Pulldown',,,unmatched

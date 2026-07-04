@@ -12,6 +12,12 @@ export const NAME_ALIASES: Record<string, string> = {
   "seated cable row": "seated cable rows",
   "hip abduction machine": "thigh abductor",
   "hip adduction machine": "thigh adductor",
+  // Elos catalog name variants vs source dataset name variants
+  "barbell back squat": "barbell squat",
+  "conventional deadlift": "barbell deadlift",
+  "barbell bench press": "barbell bench press medium grip",
+  "barbell overhead press": "barbell shoulder press",
+  "pull up": "pullups",
 };
 
 export interface GapFill {
