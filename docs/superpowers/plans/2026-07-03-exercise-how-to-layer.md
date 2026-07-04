@@ -530,8 +530,8 @@ In `apps/elos-api/package.json` `scripts`, add:
 - [ ] **Step 2: Implement `generate.ts`** (image download stubbed until Group 5)
 
 ```ts
-import { readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { join, dirname } from "path";
 import { pool } from "../../db";
 import { matchCatalog, type SourceExercise, type CatalogExercise } from "./matcher";
 import { NAME_ALIASES, MUSCLE_MAP, MACHINE_GAP_FILLS } from "./aliases";
@@ -544,7 +544,7 @@ const REPORT_OUT = join(REPO_ROOT, "docs", "superpowers", "artifacts", "2026-07-
 // Postgres literal helpers.
 const sq = (s: string) => `'${s.replace(/'/g, "''")}'`;
 const pgTextArray = (arr: string[]) =>
-  `ARRAY[${arr.map((s) => sq(s)).join(", ")}]::text[]` + (arr.length ? "" : "");
+  `ARRAY[${arr.map((s) => sq(s)).join(", ")}]::text[]`;
 
 async function main() {
   const source: SourceExercise[] = JSON.parse(readFileSync(SOURCE, "utf8"));
@@ -592,7 +592,8 @@ async function main() {
 
   writeFileSync(MIGRATION_OUT, lines.join("\n") + "\n");
 
-  // Spot-check report.
+  // Spot-check report. (writeFileSync does not create parent dirs.)
+  mkdirSync(dirname(REPORT_OUT), { recursive: true });
   const csv = ["elos_name,source_name,image_key,status"];
   for (const e of enriched) csv.push(`${sq(e.elosName)},${sq(e.sourceName)},${e.imageKey},matched`);
   for (const u of unmatched) csv.push(`${sq(u)},,,unmatched`);
@@ -992,14 +993,18 @@ Context: the picker has full catalog data in its `@Query`, so it can carry how-t
 
 - [ ] **Step 1: Extend the `Row` struct** (lines 395-402)
 
-Add:
+Add the fields **with defaults** so the synthesized memberwise initializer stays valid at every `Row(...)` call site:
 
 ```swift
-        let instructions: [String]
-        let imageKey: String
+        let instructions: [String] = []
+        let imageKey: String = ""
 ```
 
-- [ ] **Step 2: Populate in `allRows`** (lines 405-409)
+- [ ] **Step 2: Populate at ALL THREE `Row(...)` construction sites**
+
+`Row` is built in three places — do not miss any, or the build fails with "missing arguments":
+
+1. `allRows` (line ~406), from `dbExercises` (`ExerciseDefinitionRecord`):
 
 ```swift
         dbExercises.map {
@@ -1009,6 +1014,14 @@ Add:
                 instructions: $0.instructions, imageKey: $0.imageKey)
         }
 ```
+
+2. The `.recent` case in `rowsForCurrentTab` (line ~418) and 3. the `.favorites` case (line ~424), both built from `[ExerciseResponse]`. `ExerciseResponse` gained `instructions`/`image_key` in Task 3.2, so append to each `Row(...)`:
+
+```swift
+                instructions: $0.instructions ?? [], imageKey: $0.image_key ?? ""
+```
+
+(The defaults from Step 1 make this a safety net, but wire the real values so ⓘ works on the Recent and Favorites tabs too.)
 
 - [ ] **Step 3: Add sheet state + the ⓘ button**
 
@@ -1100,7 +1113,7 @@ git commit -m "feat(ios): exercise how-to asset catalog + first demo photo"
 ### Task 5.2: Extend the generator to emit imagesets
 
 **Files:**
-- Modify: `apps/elos-mobile/Elos/Elos/Features/Train/HowTo/... ` (no) — Modify: `apps/elos-api/src/scripts/howto/generate.ts`
+- Modify: `apps/elos-api/src/scripts/howto/generate.ts`
 
 - [ ] **Step 1: Add image download + imageset emission**
 
