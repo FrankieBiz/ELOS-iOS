@@ -18,6 +18,20 @@ export const NAME_ALIASES: Record<string, string> = {
   "barbell bench press": "barbell bench press medium grip",
   "barbell overhead press": "barbell shoulder press",
   "pull up": "pullups",
+  // Enrich existing catalog machine rows in place (avoids gap-fill duplicates).
+  "pec deck machine": "butterfly",
+  "hip abductor machine": "thigh abductor",
+  "hip adductor machine": "thigh adductor",
+  "hack squat machine": "hack squat",
+  "machine preacher curl": "machine preacher curls",
+  "machine tricep extension": "machine triceps extension",
+  "machine shoulder press": "machine shoulder military press",
+  "standing calf raise": "standing calf raises",
+  "donkey calf raise": "donkey calf raises",
+  "leg curl": "lying leg curls",
+  "tricep pushdown": "triceps pushdown",
+  "incline chest press machine": "leverage incline chest press",
+  "seated chest press machine": "leverage chest press",
 };
 
 export interface GapFill {
@@ -28,12 +42,13 @@ export interface GapFill {
   equipment: string;
   movementPattern: string;
 }
-export const MACHINE_GAP_FILLS: GapFill[] = [
-  { sourceName: "Butterfly", elosName: "Pec Deck", primaryMuscle: "chest", secondaryMuscles: ["front_delts"], equipment: "machine", movementPattern: "isolation" },
-  { sourceName: "Reverse Machine Flyes", elosName: "Reverse Pec Deck", primaryMuscle: "rear_delts", secondaryMuscles: ["traps"], equipment: "machine", movementPattern: "isolation" },
-  { sourceName: "Thigh Abductor", elosName: "Hip Abduction Machine", primaryMuscle: "glutes", secondaryMuscles: [], equipment: "machine", movementPattern: "isolation" },
-  { sourceName: "Thigh Adductor", elosName: "Hip Adduction Machine", primaryMuscle: "adductors", secondaryMuscles: [], equipment: "machine", movementPattern: "isolation" },
-];
+// Curated INSERTs for machines the source dataset covers but the Elos catalog
+// lacks entirely. Empty because every previously-considered gap-fill concept
+// already exists as an Elos catalog row and is now enriched in place via
+// NAME_ALIASES (Pec Deck / Reverse Pec Deck were seeded in migration 016;
+// Hip Abductor/Adductor Machine are the real catalog rows). Inserting them here
+// would create near-duplicate concepts.
+export const MACHINE_GAP_FILLS: GapFill[] = [];
 
 export const MUSCLE_MAP: Record<string, string> = {
   abdominals: "core", abductors: "glutes", adductors: "adductors", biceps: "biceps",
