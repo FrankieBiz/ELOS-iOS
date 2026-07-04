@@ -106,6 +106,8 @@ struct ExerciseDefinitionResponse: Decodable {
     let equipment: String
     let movement_pattern: String
     let is_custom: Bool
+    let instructions: [String]?
+    let image_key: String?
 }
 
 private struct CreateExerciseRequest: Encodable {
