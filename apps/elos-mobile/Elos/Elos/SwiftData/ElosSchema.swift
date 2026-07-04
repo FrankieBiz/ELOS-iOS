@@ -251,12 +251,15 @@ final class ExerciseDefinitionRecord {
     var equipment: String
     var movementPattern: String
     var isCustom: Bool
+    var instructionsJSON: String = ""
+    var imageKey: String = ""
 
     init(id: String = UUID().uuidString, ownerID: String = "",
          name: String, primaryMuscle: String,
          secondaryMusclesJSON: String = "[]",
          equipment: String = "", movementPattern: String = "",
-         isCustom: Bool = false) {
+         isCustom: Bool = false,
+         instructionsJSON: String = "", imageKey: String = "") {
         self.id                   = id
         self.ownerID              = ownerID
         self.name                 = name
@@ -265,10 +268,16 @@ final class ExerciseDefinitionRecord {
         self.equipment            = equipment
         self.movementPattern      = movementPattern
         self.isCustom             = isCustom
+        self.instructionsJSON     = instructionsJSON
+        self.imageKey             = imageKey
     }
 
     var secondaryMuscles: [String] {
         (try? JSONDecoder().decode([String].self, from: Data(secondaryMusclesJSON.utf8))) ?? []
+    }
+
+    var instructions: [String] {
+        (try? JSONDecoder().decode([String].self, from: Data(instructionsJSON.utf8))) ?? []
     }
 }
 
