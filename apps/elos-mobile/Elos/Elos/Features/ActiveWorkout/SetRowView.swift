@@ -18,9 +18,12 @@ struct SessionExerciseCard: View {
     let onSetDelete: (Int) -> Void
     let onSetEdit: (Int, Double, Int, Double) -> Void
 
+    @Environment(\.modelContext) private var modelContext
     @State private var expanded = true
     @State private var showingSwap = false
     @State private var showInfo = false
+    @State private var howTo: ExerciseHowTo?
+    @State private var showHowTo = false
     @State private var editingIndex: Int?
     @State private var editSnapshot: (weight: String, reps: String, rpe: String)?
     @State private var editError = false
@@ -53,8 +56,16 @@ struct SessionExerciseCard: View {
             }
         }
         .elosCard()
+        .onAppear {
+            if howTo == nil {
+                howTo = ExerciseHowToLookup.find(name: exercise.name, in: modelContext)
+            }
+        }
         .sheet(isPresented: $showingSwap) {
             ExerciseSwapSheet(exerciseName: $exercise.name)
+        }
+        .sheet(isPresented: $showHowTo) {
+            if let howTo { ExerciseHowToSheet(howTo: howTo) }
         }
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -91,7 +102,14 @@ struct SessionExerciseCard: View {
             }
             .buttonStyle(.plain)
 
-            Button { withAnimation { showInfo.toggle() } } label: {
+            Button {
+                if howTo != nil {
+                    HapticManager.impact(.light)
+                    showHowTo = true
+                } else {
+                    withAnimation { showInfo.toggle() }
+                }
+            } label: {
                 Image(systemName: "info.circle").font(.caption).foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
