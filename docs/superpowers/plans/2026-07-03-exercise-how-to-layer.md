@@ -1120,7 +1120,7 @@ git commit -m "feat(ios): exercise how-to asset catalog + first demo photo"
 Add to `generate.ts` (after computing `enriched`, before `pool.end()`), downloading `images[0]` for each enriched + gap-fill exercise into `ExerciseHowTo.xcassets/<imageKey>.imageset/`:
 
 ```ts
-import { mkdirSync } from "fs";
+// Note: `mkdirSync` is already imported at the top of generate.ts (Task 2.4) — do not re-import.
 const ASSETS = join(REPO_ROOT, "apps", "elos-mobile", "Elos", "Elos", "Resources", "ExerciseHowTo.xcassets");
 const RAW_BASE = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/";
 
