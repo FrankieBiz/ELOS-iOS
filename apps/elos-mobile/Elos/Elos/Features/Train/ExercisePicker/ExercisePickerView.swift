@@ -40,6 +40,7 @@ struct ExercisePickerView: View {
     @State private var selectedIDs: Set<String> = []
     @State private var selectedItems: [PickedExercise] = []
     @State private var machinePick: MachinePick? = nil
+    @State private var howToRow: ExerciseHowTo? = nil
     @State private var sortMode: ExerciseSortMode = .smart
     @State private var coverageExpanded = true
     @State private var didSeedCoverage = false
@@ -186,6 +187,7 @@ struct ExercisePickerView: View {
                     }
                 }
             }
+            .sheet(item: $howToRow) { ExerciseHowToSheet(howTo: $0) }
         }
     }
 
@@ -399,13 +401,29 @@ struct ExercisePickerView: View {
         let equipment: String
         let movementPattern: String
         let isCustom: Bool
+        let instructions: [String]
+        let imageKey: String
+
+        init(id: String, name: String, primaryMuscle: String, equipment: String,
+             movementPattern: String, isCustom: Bool,
+             instructions: [String] = [], imageKey: String = "") {
+            self.id = id
+            self.name = name
+            self.primaryMuscle = primaryMuscle
+            self.equipment = equipment
+            self.movementPattern = movementPattern
+            self.isCustom = isCustom
+            self.instructions = instructions
+            self.imageKey = imageKey
+        }
     }
 
     private var allRows: [Row] {
         dbExercises.map {
             Row(id: $0.id, name: $0.name, primaryMuscle: $0.primaryMuscle,
                 equipment: $0.equipment, movementPattern: $0.movementPattern,
-                isCustom: $0.isCustom)
+                isCustom: $0.isCustom,
+                instructions: $0.instructions, imageKey: $0.imageKey)
         }
     }
 
@@ -417,13 +435,15 @@ struct ExercisePickerView: View {
             return vm.recent.map {
                 Row(id: $0.id, name: $0.name, primaryMuscle: $0.primary_muscle,
                     equipment: $0.equipment, movementPattern: $0.movement_pattern,
-                    isCustom: $0.is_custom)
+                    isCustom: $0.is_custom,
+                    instructions: $0.instructions ?? [], imageKey: $0.image_key ?? "")
             }
         case .favorites:
             return vm.favorites.map {
                 Row(id: $0.id, name: $0.name, primaryMuscle: $0.primary_muscle,
                     equipment: $0.equipment, movementPattern: $0.movement_pattern,
-                    isCustom: $0.is_custom)
+                    isCustom: $0.is_custom,
+                    instructions: $0.instructions ?? [], imageKey: $0.image_key ?? "")
             }
         }
     }
@@ -673,6 +693,19 @@ struct ExercisePickerView: View {
                     }
                 }
                 Spacer()
+                if !row.instructions.isEmpty {
+                    Button {
+                        HapticManager.impact(.light)
+                        howToRow = ExerciseHowTo(
+                            name: row.name,
+                            steps: row.instructions,
+                            imageKey: row.imageKey.isEmpty ? nil : row.imageKey
+                        )
+                    } label: {
+                        Image(systemName: "info.circle").foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
                 Button {
                     HapticManager.impact(.light)
                     Task { await vm.toggleFavorite(exerciseID: row.id) }
