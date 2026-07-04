@@ -13,6 +13,8 @@ final class ExercisePickerViewModel: ObservableObject {
         let equipment: String
         let movement_pattern: String
         let is_custom: Bool
+        let instructions: [String]?
+        let image_key: String?
     }
 
     struct BrandResponse: Decodable, Identifiable {
@@ -95,6 +97,7 @@ final class ExercisePickerViewModel: ObservableObject {
 
         for ex in incoming {
             let secondaryJSON = (try? String(data: JSONEncoder().encode(ex.secondary_muscles), encoding: .utf8)) ?? "[]"
+            let instructionsJSON = (try? String(data: JSONEncoder().encode(ex.instructions ?? []), encoding: .utf8)) ?? "[]"
             if let record = existingByID[ex.id] {
                 // Update mutable fields so backend corrections (e.g. equipment type) propagate
                 record.name = ex.name
@@ -102,6 +105,8 @@ final class ExercisePickerViewModel: ObservableObject {
                 record.primaryMuscle = ex.primary_muscle
                 record.secondaryMusclesJSON = secondaryJSON
                 record.movementPattern = ex.movement_pattern
+                record.instructionsJSON = instructionsJSON
+                record.imageKey = ex.image_key ?? ""
             } else {
                 let record = ExerciseDefinitionRecord(
                     id: ex.id,
@@ -111,7 +116,9 @@ final class ExercisePickerViewModel: ObservableObject {
                     secondaryMusclesJSON: secondaryJSON,
                     equipment: ex.equipment,
                     movementPattern: ex.movement_pattern,
-                    isCustom: ex.is_custom
+                    isCustom: ex.is_custom,
+                    instructionsJSON: instructionsJSON,
+                    imageKey: ex.image_key ?? ""
                 )
                 context.insert(record)
             }
