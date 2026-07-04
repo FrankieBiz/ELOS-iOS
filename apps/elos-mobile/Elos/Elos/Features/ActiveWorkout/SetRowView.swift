@@ -58,11 +58,11 @@ struct SessionExerciseCard: View {
         .elosCard()
         .onAppear {
             if howTo == nil {
-                howTo = ExerciseHowToLookup.find(name: exercise.name, in: modelContext)
+                howTo = ExerciseHowToLookup.find(for: exercise, in: modelContext)
             }
         }
-        .onChange(of: exercise.name) { _, newName in
-            howTo = ExerciseHowToLookup.find(name: newName, in: modelContext)
+        .onChange(of: exercise.name) { _, _ in
+            howTo = ExerciseHowToLookup.find(for: exercise, in: modelContext)
         }
         .sheet(isPresented: $showingSwap) {
             ExerciseSwapSheet(exerciseName: $exercise.name)
