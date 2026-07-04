@@ -3,9 +3,14 @@ import type { ExerciseDefinition, CreateExerciseBody } from "elos-shared";
 
 // Single source of truth for the exercise column projection. Any query that
 // returns an ExerciseDefinition must select exactly these, in this order.
-const EXERCISE_COLUMNS = `id, owner_id::text, name, primary_muscle,
-       secondary_muscles, equipment, movement_pattern,
-       instructions, image_key, is_custom, created_at::text`;
+// Optionally alias-qualified so it works in both single-table SELECTs/RETURNING
+// and joined queries where a bare column (id, created_at) would be ambiguous.
+const exerciseColumns = (alias = ""): string => {
+  const p = alias ? `${alias}.` : "";
+  return `${p}id, ${p}owner_id::text, ${p}name, ${p}primary_muscle,
+       ${p}secondary_muscles, ${p}equipment, ${p}movement_pattern,
+       ${p}instructions, ${p}image_key, ${p}is_custom, ${p}created_at::text`;
+};
 
 export interface ExerciseSearchFilters {
   q?: string;
@@ -65,7 +70,7 @@ export class ExerciseService {
     const offsetIdx = params.length;
 
     const result = await this.db.query<ExerciseDefinition>(
-      `SELECT ${EXERCISE_COLUMNS}
+      `SELECT ${exerciseColumns("ed")}
        FROM exercise_definitions ed
        WHERE ${where.join(" AND ")}
        ORDER BY ed.is_custom ASC, ed.name ASC
@@ -90,7 +95,7 @@ export class ExerciseService {
       `INSERT INTO exercise_definitions
          (owner_id, name, primary_muscle, secondary_muscles, equipment, movement_pattern, is_custom)
        VALUES ($1, $2, $3, $4, $5, $6, true)
-       RETURNING ${EXERCISE_COLUMNS}`,
+       RETURNING ${exerciseColumns()}`,
       [userId, name, primary_muscle, secondary_muscles, equipment, movement_pattern]
     );
     return result.rows[0];
@@ -110,7 +115,7 @@ export class ExerciseService {
            AND es.completed_at IS NOT NULL
          GROUP BY ed2.id
        )
-       SELECT ${EXERCISE_COLUMNS}
+       SELECT ${exerciseColumns("ed")}
        FROM exercise_definitions ed
        JOIN last_used lu ON lu.def_id = ed.id
        ORDER BY lu.last_at DESC NULLS LAST
@@ -122,7 +127,7 @@ export class ExerciseService {
 
   async getFavorites(userId: string): Promise<ExerciseDefinition[]> {
     const result = await this.db.query<ExerciseDefinition>(
-      `SELECT ${EXERCISE_COLUMNS}
+      `SELECT ${exerciseColumns("ed")}
        FROM user_favorite_exercises ufe
        JOIN exercise_definitions ed ON ed.id = ufe.exercise_id
        WHERE ufe.user_id = $1
