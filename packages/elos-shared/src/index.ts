@@ -77,6 +77,8 @@ export interface ExerciseDefinition {
   secondary_muscles: string[];
   equipment: string;
   movement_pattern: string;
+  instructions: string[];
+  image_key: string | null;
   is_custom: boolean;
   created_at: string;
 }
