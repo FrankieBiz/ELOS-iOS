@@ -8,6 +8,22 @@ const REPO_ROOT = join(__dirname, "..", "..", "..", "..", "..");
 const SOURCE = join(REPO_ROOT, "data", "free-exercise-db.exercises.json");
 const MIGRATION_OUT = join(__dirname, "..", "..", "..", "migrations", "037_seed_exercise_howto.sql");
 const REPORT_OUT = join(REPO_ROOT, "docs", "superpowers", "artifacts", "2026-07-03-howto-match-report.csv");
+const ASSETS = join(REPO_ROOT, "apps", "elos-mobile", "Elos", "Elos", "Resources", "ExerciseHowTo.xcassets");
+const RAW_BASE = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/";
+
+async function writeImageset(imageKey: string, imagePath: string) {
+  if (!imagePath) return;
+  const dir = join(ASSETS, `${imageKey}.imageset`);
+  mkdirSync(dir, { recursive: true });
+  const res = await fetch(RAW_BASE + imagePath);
+  if (!res.ok) { console.warn(`image miss: ${imagePath}`); return; }
+  const buf = Buffer.from(await res.arrayBuffer());
+  writeFileSync(join(dir, `${imageKey}.jpg`), buf);
+  writeFileSync(join(dir, "Contents.json"), JSON.stringify({
+    images: [{ filename: `${imageKey}.jpg`, idiom: "universal" }],
+    info: { author: "xcode", version: 1 },
+  }, null, 2) + "\n");
+}
 
 const sq = (s: string) => `'${s.replace(/'/g, "''")}'`;
 const pgTextArray = (arr: string[]) => `ARRAY[${arr.map((s) => sq(s)).join(", ")}]::text[]`;
@@ -64,6 +80,13 @@ async function main() {
   console.log(`Enriched: ${enriched.length}  Unmatched: ${unmatched.length}  Gap-fills: ${MACHINE_GAP_FILLS.length}`);
   console.log(`Wrote ${MIGRATION_OUT}`);
   console.log(`Wrote ${REPORT_OUT}`);
+
+  console.log(`Downloading images for ${enriched.length} enriched exercises…`);
+  for (const e of enriched) {
+    await writeImageset(e.imageKey, e.imagePath);
+  }
+  console.log(`Wrote ${enriched.length} imagesets under ${ASSETS}`);
+
   await pool.end();
 }
 main().catch((err) => { console.error(err); process.exit(1); });
