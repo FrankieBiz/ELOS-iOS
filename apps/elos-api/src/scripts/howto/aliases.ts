@@ -5,7 +5,6 @@ export const NAME_ALIASES: Record<string, string> = {
   "pec deck fly": "butterfly",
   "machine chest fly": "butterfly",
   "reverse pec deck": "reverse machine flyes",
-  "seated leg curl": "seated leg curl",
   "lying leg curl": "lying leg curls",
   "leg extension": "leg extensions",
   "lat pulldown": "wide grip lat pulldown",

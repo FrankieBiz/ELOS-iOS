@@ -25,7 +25,7 @@ export function deriveMovementPattern(ex: SourceExercise): string {
 /** Conservative: exact-normalized name OR alias-map hit only. No fuzzy matching. */
 export function matchCatalog(
   catalog: CatalogExercise[], source: SourceExercise[],
-  aliases: Record<string, string>, _muscleMap: Record<string, string>
+  aliases: Record<string, string>
 ): { enriched: Enriched[]; unmatched: string[] } {
   const byNorm = new Map<string, SourceExercise>();
   for (const s of source) {

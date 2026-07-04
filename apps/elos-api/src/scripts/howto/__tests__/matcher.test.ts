@@ -24,22 +24,31 @@ describe("matchCatalog", () => {
     { id: "Leg_Extensions", name: "Leg Extensions", instructions: ["a", "b"], images: ["Leg_Extensions/0.jpg"], primaryMuscles: ["quadriceps"], secondaryMuscles: [], equipment: "machine", force: "push", mechanic: "isolation", category: "strength" },
     { id: "Butterfly", name: "Butterfly", instructions: ["x"], images: ["Butterfly/0.jpg"], primaryMuscles: ["chest"], secondaryMuscles: ["shoulders"], equipment: "machine", force: "push", mechanic: "isolation", category: "strength" },
   ];
-  it("matches by exact normalized name", () => {
+  it("matches by exact normalized name (no alias needed)", () => {
+    const catalog: CatalogExercise[] = [{ name: "Leg Extensions", movement_pattern: "" }];
+    const { enriched, unmatched } = matchCatalog(catalog, source, {});
+    expect(unmatched).toHaveLength(0);
+    expect(enriched).toHaveLength(1);
+    expect(enriched[0].sourceName).toBe("Leg Extensions");
+    expect(enriched[0].instructions).toEqual(["a", "b"]);
+    expect(enriched[0].imageKey).toBe("Leg_Extensions");
+  });
+  it("rejects near-miss names differing only by suffix", () => {
     const catalog: CatalogExercise[] = [{ name: "Leg Extension", movement_pattern: "" }];
-    const { enriched, unmatched } = matchCatalog(catalog, source, {}, {});
+    const { enriched, unmatched } = matchCatalog(catalog, source, {});
     expect(unmatched).toContain("Leg Extension");
     expect(enriched).toHaveLength(0);
   });
   it("matches via alias map", () => {
     const catalog: CatalogExercise[] = [{ name: "Pec Deck", movement_pattern: "" }];
-    const { enriched } = matchCatalog(catalog, source, { "pec deck": "butterfly" }, {});
+    const { enriched } = matchCatalog(catalog, source, { "pec deck": "butterfly" });
     expect(enriched).toHaveLength(1);
     expect(enriched[0].instructions).toEqual(["x"]);
     expect(enriched[0].imageKey).toBe("Butterfly");
   });
   it("leaves ambiguous names unmatched (never guesses)", () => {
     const catalog: CatalogExercise[] = [{ name: "Some Novel Lift", movement_pattern: "" }];
-    const { enriched, unmatched } = matchCatalog(catalog, source, {}, {});
+    const { enriched, unmatched } = matchCatalog(catalog, source, {});
     expect(enriched).toHaveLength(0);
     expect(unmatched).toContain("Some Novel Lift");
   });
