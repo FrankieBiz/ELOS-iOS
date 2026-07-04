@@ -1,0 +1,5 @@
+Source: https://github.com/yuhonas/free-exercise-db
+License: The Unlicense (public domain). Free to use, copy, modify, and redistribute.
+Vendored 2026-07-03 for offline, reproducible generation of exercise how-to content.
+Only a matched subset of instructions and one demo image per matched exercise is
+imported into Elos; see docs/superpowers/plans/2026-07-03-exercise-how-to-layer.md.
