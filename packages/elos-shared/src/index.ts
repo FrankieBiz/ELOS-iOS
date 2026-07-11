@@ -444,6 +444,37 @@ export interface FeedPage {
 export const FEED_REACTION_EMOJIS = ["🔥", "💪", "👏", "🎯", "👀"] as const;
 export type FeedReactionEmoji = (typeof FEED_REACTION_EMOJIS)[number];
 
+// --- Community splits ---
+
+export interface CommunitySplitAuthor {
+  user_id: string;
+  username: string;
+  first_name: string;
+  last_name: string;
+  avatar_color: string;
+}
+
+export interface CommunitySplit {
+  id: string;
+  name: string;
+  description: string;
+  days: SplitPayloadDay[];
+  imports_count: number;
+  created_at: string;
+  is_mine: boolean;
+  author: CommunitySplitAuthor;
+}
+
+export interface CommunitySplitPage {
+  splits: CommunitySplit[];
+  next_cursor: string | null;
+}
+
+export interface PublishSplitBody {
+  split_id: string;
+  description?: string;
+}
+
 // --- Template sharing ---
 
 export interface SharedTemplateExercise {

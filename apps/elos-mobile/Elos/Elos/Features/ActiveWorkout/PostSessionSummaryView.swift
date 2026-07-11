@@ -14,6 +14,7 @@ struct PostSessionSummaryView: View {
     @State private var afterProgress:  GamificationEngine.UserProgress?
     @State private var workoutShared = false
     @State private var sharedPRs: Set<String> = []
+    @State private var shareImage: UIImage?
 
     private var durationMinutes: Int {
         Int(Date().timeIntervalSince(summary.startedAt)) / 60
@@ -44,6 +45,7 @@ struct PostSessionSummaryView: View {
                     if summary.comparisonLabel != nil { comparisonCard }
                     if summary.nextWorkoutDay != nil { nextWorkoutCard }
                     shareToFriendsButton
+                    shareImageButton
                     if !vm.healthKitEnabled && HealthKitService.shared.isAvailable {
                         connectHealthButton
                     }
@@ -61,6 +63,14 @@ struct PostSessionSummaryView: View {
         .presentationDetents([.large])
         .interactiveDismissDisabled(true)
         .onAppear { computeProgress() }
+        .sheet(isPresented: Binding(
+            get: { shareImage != nil },
+            set: { if !$0 { shareImage = nil } }
+        )) {
+            if let image = shareImage {
+                ShareSheet(items: [image])
+            }
+        }
     }
 
     // MARK: Header
@@ -198,6 +208,38 @@ struct PostSessionSummaryView: View {
         }
         .buttonStyle(.plain)
         .disabled(workoutShared)
+    }
+
+    private var shareImageButton: some View {
+        Button {
+            renderShareImage()
+        } label: {
+            Label("Share Image", systemImage: "photo.on.rectangle.angled")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.tint)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color.tintSoft)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @MainActor
+    private func renderShareImage() {
+        let card = WorkoutShareCard(
+            durationMinutes: durationMinutes,
+            volumeString: volumeText,
+            totalSets: doneSets.count,
+            uniqueExercises: Set(doneSets.map(\.exerciseName)).count,
+            topLift: topLiftPayload.map { (name: $0.name, weightKg: $0.weight_kg, reps: $0.reps) },
+            capturedPR: summary.prsHit.first,
+            unit: vm.weightUnit
+        )
+        let renderer = ImageRenderer(content: card)
+        renderer.scale = 3
+        // If rendering fails (e.g. off-screen layout issue), just don't present anything.
+        shareImage = renderer.uiImage
     }
 
     private func sharePR(_ exercise: String) async {

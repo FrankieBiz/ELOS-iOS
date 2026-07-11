@@ -8,12 +8,16 @@ struct ProgramsView: View {
     @EnvironmentObject var vm: AppViewModel
     @EnvironmentObject var feedVM: FeedViewModel
 
+    @StateObject private var communityVM = CommunitySplitsViewModel()
+
     @State private var showCreateSplit = false
     @State private var showSplitFinder = false
     @State private var selectedSplit: UserSplitRecord?
     @State private var splitPendingDelete: UserSplitRecord?
     @State private var splitPendingActivate: UserSplitRecord?
+    @State private var splitPendingPublish: UserSplitRecord?
     @State private var splitShared = false
+    @State private var splitPublished = false
 
     private let categoryOrder: [SplitCategory] = [
         .creatorInspired, .olympiaBodybuilding, .sportPerformance,
@@ -22,45 +26,81 @@ struct ProgramsView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    activeSplitCard
-                    if !vm.favoriteSplitKeys.isEmpty {
-                        libraryCategoryRow(
-                            title: "Favorites",
-                            icon: "heart.fill",
-                            color: .red,
-                            splits: WorkoutSplitLibrary.all.filter { vm.favoriteSplitKeys.contains($0.id) }
-                        )
-                        Divider().padding(.horizontal, 16)
-                    }
-                    ForEach(categoryOrder, id: \.self) { category in
-                        let splits = WorkoutSplitLibrary.all.filter { $0.category == category }
-                        if !splits.isEmpty {
-                            libraryCategoryRow(
-                                title: category.rawValue,
-                                icon: categoryIcon(category),
-                                color: categoryColor(category),
-                                splits: splits
-                            )
-                            Divider().padding(.horizontal, 16)
-                        }
-                    }
-                    mySplitsSection
+            libraryWithDialogs
+        }
+    }
+
+    /// Scroll content + navigation chrome. Split out of `body` (and further
+    /// into per-section builders below) to keep each expression small enough
+    /// for the type-checker.
+    private var libraryScroll: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                activeSplitCard
+                favoritesSection
+                communitySection
+                ForEach(categoryOrder, id: \.self) { category in
+                    categorySection(category)
                 }
-                .padding(.bottom, 40)
+                mySplitsSection
             }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("Programs")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showSplitFinder = true } label: {
-                        Image(systemName: "wand.and.stars")
-                            .foregroundStyle(Color.tint)
-                    }
-                    .accessibilityLabel("Find a split")
+            .padding(.bottom, 40)
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("Programs")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showSplitFinder = true } label: {
+                    Image(systemName: "wand.and.stars")
+                        .foregroundStyle(Color.tint)
                 }
+                .accessibilityLabel("Find a split")
+            }
+        }
+        .task { await communityVM.load() }
+    }
+
+    @ViewBuilder
+    private var favoritesSection: some View {
+        if !vm.favoriteSplitKeys.isEmpty {
+            let favorites: [WorkoutSplit] = WorkoutSplitLibrary.all.filter { vm.favoriteSplitKeys.contains($0.id) }
+            libraryCategoryRow(title: "Favorites", icon: "heart.fill", color: .red, splits: favorites)
+            Divider().padding(.horizontal, 16)
+        }
+    }
+
+    @ViewBuilder
+    private func categorySection(_ category: SplitCategory) -> some View {
+        let splits: [WorkoutSplit] = WorkoutSplitLibrary.all.filter { $0.category == category }
+        if !splits.isEmpty {
+            libraryCategoryRow(
+                title: category.rawValue,
+                icon: categoryIcon(category),
+                color: categoryColor(category),
+                splits: splits
+            )
+            Divider().padding(.horizontal, 16)
+        }
+    }
+
+    /// Sheets attached in a separate expression from the dialogs below —
+    /// one flat chain here is too large for the type-checker.
+    private var libraryWithSheets: some View {
+        libraryScroll
+            .sheet(item: $splitPendingPublish) { split in
+                PublishSplitSheet(
+                    split: split,
+                    days: daysFor(split: split),
+                    communityVM: communityVM,
+                    onPublished: { splitPublished = true }
+                )
+                .environmentObject(vm)
+            }
+            .alert("Published to the community", isPresented: $splitPublished) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Everyone on Elos can now see and import this split.")
             }
             .sheet(isPresented: $showCreateSplit) {
                 CreateSplitView { showCreateSplit = false }
@@ -74,6 +114,10 @@ struct ProgramsView: View {
                 UserSplitDetailView(split: split)
                     .environmentObject(vm)
             }
+    }
+
+    private var libraryWithDialogs: some View {
+        libraryWithSheets
             .confirmationDialog(
                 "Delete this split?",
                 isPresented: Binding(
@@ -105,7 +149,6 @@ struct ProgramsView: View {
             } message: { split in
                 Text("\(vm.activeSplit?.name ?? "Your current program") will be replaced and its progress reset.")
             }
-        }
     }
 
     /// Activate a split, confirming first when one is already active so a tap
@@ -176,6 +219,56 @@ struct ProgramsView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 4)
+        }
+    }
+
+    // MARK: Community Section
+
+    @ViewBuilder
+    private var communitySection: some View {
+        if !communityVM.splits.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "person.3.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.cyan)
+                    Text("Community")
+                        .font(.system(size: 17, weight: .bold))
+                    Text("\(communityVM.splits.count)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color(.tertiarySystemBackground))
+                        .clipShape(Capsule())
+                    Spacer()
+                    NavigationLink {
+                        CommunityBrowseView(communityVM: communityVM)
+                            .environmentObject(vm)
+                    } label: {
+                        Text("See All")
+                            .font(.caption).fontWeight(.semibold)
+                            .foregroundStyle(Color.tint)
+                    }
+                }
+                .padding(.horizontal, 16)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(communityVM.splits.prefix(10)) { split in
+                            NavigationLink {
+                                CommunitySplitDetailView(split: split, communityVM: communityVM)
+                                    .environmentObject(vm)
+                            } label: {
+                                CommunitySplitCard(split: split)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+            .padding(.vertical, 12)
+            Divider().padding(.horizontal, 16)
         }
     }
 
@@ -281,6 +374,15 @@ struct ProgramsView: View {
                                 )
                             }
                             .disabled(split.serverID.isEmpty)
+                            Button {
+                                splitPendingPublish = split
+                            } label: {
+                                Label(
+                                    split.serverID.isEmpty ? "Saving… try again in a moment" : "Publish to Community",
+                                    systemImage: "person.3.fill"
+                                )
+                            }
+                            .disabled(split.serverID.isEmpty)
                             Divider()
                             Button(role: .destructive) {
                                 splitPendingDelete = split
@@ -299,20 +401,15 @@ struct ProgramsView: View {
     private func mySplitRow(_ split: UserSplitRecord) -> some View {
         let days = daysFor(split: split)
         let isActive = split.isActive
+        let descriptor = SplitDescriptor.describe(dayRecords: days)
         return HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(split.name)
                     .font(.subheadline).fontWeight(.semibold).foregroundStyle(.primary)
-                HStack(spacing: 4) {
-                    ForEach(days.prefix(7), id: \.id) { day in
-                        Text(day.isRest ? "—" : String(day.dayLabel.prefix(1)))
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(day.isRest ? Color.secondary : Color.tint)
-                            .frame(width: 16, height: 16)
-                            .background((day.isRest ? Color.secondary : Color.tint).opacity(0.1))
-                            .clipShape(Circle())
-                    }
-                }
+                Text(descriptor.summaryLine)
+                    .font(.caption2).fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                SplitPatternStrip(descriptor: descriptor, compact: true)
             }
             Spacer()
             if isActive {

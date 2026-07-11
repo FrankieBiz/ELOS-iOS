@@ -185,6 +185,11 @@ export const reactSchema = z.object({
   emoji: z.string().min(1).max(8),
 });
 
+export const publishSplitSchema = z.object({
+  split_id: z.string().uuid(),
+  description: z.string().max(1000).optional(),
+});
+
 // --- Social / library writes ---
 
 export const friendRequestSchema = z.object({
