@@ -151,8 +151,8 @@ struct PlateCalculatorView: View {
             case 45, 20:    return 72
             case 35, 15:    return 62
             case 25, 10:    return 52
-            case 10, 5:     return 42
-            case 5, 2.5:    return 34
+            case 5:         return 42
+            case 2.5:       return 34
             default:        return 28
             }
         }()
@@ -161,7 +161,7 @@ struct PlateCalculatorView: View {
             case 45, 20:    return .bad
             case 35, 15:    return .mSched
             case 25, 10:    return .mGym
-            case 10, 5:     return .mHabits
+            case 5:         return .mHabits
             default:        return .mNutri
             }
         }()

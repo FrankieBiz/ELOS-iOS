@@ -23,6 +23,7 @@ import socialRouter from "./routes/social";
 import leaderboardRouter from "./routes/leaderboard";
 import splitsRouter from "./routes/splits";
 import feedRouter from "./routes/feed";
+import communitySplitsRouter from "./routes/communitySplits";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -47,9 +48,12 @@ app.use(
 );
 app.use(express.json({ limit: "32kb" }));
 
+// 300/min: login fires profile + splits + feed + community + leaderboard in
+// parallel, and background sync retries on top — 120 was tight enough to shed
+// legitimate traffic during a cold-start reconnect storm.
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 120,
+  limit: 300,
   standardHeaders: "draft-7",
   legacyHeaders: false,
 });
@@ -85,6 +89,7 @@ app.use("/social", socialRouter);
 app.use("/leaderboard", leaderboardRouter);
 app.use("/splits", splitsRouter);
 app.use("/feed", feedRouter);
+app.use("/community/splits", communitySplitsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
@@ -98,6 +103,19 @@ process.on("uncaughtException", (err) => {
   process.exit(1);
 });
 
-app.listen(port, () => {
-  logger.info({ port }, "elos-api listening");
-});
+// Migrations run before the server accepts traffic so a deploy can never serve
+// requests against a schema it doesn't expect. Fail-fast: a broken migration
+// stops the boot (Render keeps the previous healthy deploy running).
+import { runMigrations } from "./migrate";
+import { pool } from "./db";
+
+runMigrations(pool)
+  .then(() => {
+    app.listen(port, () => {
+      logger.info({ port }, "elos-api listening");
+    });
+  })
+  .catch((err) => {
+    logger.fatal({ err }, "migrations failed — refusing to start");
+    process.exit(1);
+  });

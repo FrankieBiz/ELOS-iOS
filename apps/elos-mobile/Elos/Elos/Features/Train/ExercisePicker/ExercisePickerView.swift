@@ -166,8 +166,8 @@ struct ExercisePickerView: View {
             .task {
                 async let r: Void = vm.loadRecent()
                 async let f: Void = vm.loadFavorites()
-                async let s: Void = vm.syncExercises(into: modelContext)
-                _ = await (r, f, s)
+                await vm.syncExercises(into: modelContext)
+                _ = await (r, f)
                 if let preBrand = prefilterBrandSlug {
                     localBrandFilter = preBrand
                 }
@@ -314,7 +314,7 @@ struct ExercisePickerView: View {
         let names = dayContext.addedExerciseNames   // already normalized
         return dbExercises
             .filter { ids.contains($0.id) || names.contains(MuscleTaxonomy.normalize($0.name)) }
-            .map(ExerciseCandidate.init(record:))
+            .map { ExerciseCandidate(record: $0) }
     }
 
     private var coverageChips: [CoverageChip] {

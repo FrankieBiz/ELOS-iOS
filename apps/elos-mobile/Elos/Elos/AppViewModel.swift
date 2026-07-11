@@ -806,7 +806,6 @@ class AppViewModel: ObservableObject {
     func buildScheduleRows(for date: Date) -> [ScheduleRow] {
         guard !currentUserID.isEmpty else { return [] }
         let uid = currentUserID
-        let cal = Calendar.current
         let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
         let dateStr = fmt.string(from: date)
 
@@ -1146,7 +1145,9 @@ class AppViewModel: ObservableObject {
             }
 
         } catch {
-            // Offline — local state is authoritative
+            // Local state remains authoritative, but tell the user their data
+            // may be stale when this wasn't plain airplane-mode offline.
+            reportSyncFailure(error)
         }
     }
 
@@ -1226,8 +1227,23 @@ class AppViewModel: ObservableObject {
                 }
             }
         } catch {
-            // Offline — local state stands
+            // Local state stands; surface the failure unless we're plainly offline.
+            reportSyncFailure(error)
         }
+    }
+
+    /// One banner per launch when server sync fails for a reason other than
+    /// being offline (offline is a supported mode, not an error). Without this,
+    /// auth/server failures render as silently empty screens.
+    private var reportedSyncFailure = false
+    private func reportSyncFailure(_ error: Error) {
+        if case ApiError.networkError(let underlying) = error,
+           (underlying as? URLError)?.code == .notConnectedToInternet {
+            return
+        }
+        guard !reportedSyncFailure else { return }
+        reportedSyncFailure = true
+        showError("Couldn't load your latest data. Pull to refresh to try again.", autoHideAfter: 6)
     }
 
     private func pushProfileToServer(_ record: UserProfileRecord) async {

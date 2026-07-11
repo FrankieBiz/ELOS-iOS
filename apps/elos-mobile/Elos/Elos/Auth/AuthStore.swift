@@ -87,7 +87,10 @@ final class AuthStore: ObservableObject {
                 UserDefaults.standard.set(true, forKey: cacheKey)
             }
         } catch {
-            isOnboardingComplete = false
+            // Couldn't reach the server, so we don't actually know. A brand-new
+            // signup genuinely needs onboarding; anyone else must NOT be locked
+            // into the onboarding screen by a network blip.
+            isOnboardingComplete = !isNewAccount
         }
     }
 
@@ -98,9 +101,20 @@ final class AuthStore: ObservableObject {
     }
 
     /// Called when the app returns to the foreground to ensure the token is fresh.
+    /// Proactively refreshes a token in its final minutes so the burst of data
+    /// loads that follows foregrounding never races expiry into 401s.
     func refreshSessionIfNeeded() async {
         guard !userExplicitlySignedOut, isAuthenticated else { return }
-        _ = try? await SupabaseManager.shared.client.auth.session
+        do {
+            let session = try await SupabaseManager.shared.client.auth.session
+            if session.expiresAt - Date().timeIntervalSince1970 < 300 {
+                _ = try await SupabaseManager.shared.client.auth.refreshSession()
+            }
+        } catch {
+            // Offline or refresh token dead. Stay authenticated so local-first
+            // features keep working; ApiClient's per-request 401 refresh-and-
+            // retry recovers the moment the network is back.
+        }
     }
 
     func logout() async {

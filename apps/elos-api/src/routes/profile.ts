@@ -11,10 +11,12 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
   // Lazy backfill: guarantee every user has a username (so they're findable),
   // including legacy accounts created before usernames existed. No-op if set.
   await profileService.ensureUsername(req.user!.id);
-  const profile = await profileService.getProfile(req.user!.id);
+  let profile = await profileService.getProfile(req.user!.id);
   if (!profile) {
-    res.status(404).json({ error: "Profile not found" });
-    return;
+    // A missing row means signup-time provisioning didn't run (trigger failure,
+    // pre-trigger account, race). Create it here so a new user's first fetch
+    // never 404s and onboarding can proceed.
+    profile = await profileService.upsertProfile(req.user!.id, {});
   }
   res.json(profile);
 });

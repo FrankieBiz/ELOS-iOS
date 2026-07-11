@@ -29,7 +29,7 @@ enum ExerciseHowToLookup {
         let matches = (try? context.fetch(descriptor)) ?? []
         // Prefer a global catalog row (empty ownerID) over a custom one.
         let record = matches.first(where: { $0.ownerID.isEmpty }) ?? matches.first
-        return record.flatMap(ExerciseHowTo.from(record:))
+        return record.flatMap { ExerciseHowTo.from(record: $0) }
     }
 
     /// Resolve the generic exercise a machine corresponds to, by name — conservatively.

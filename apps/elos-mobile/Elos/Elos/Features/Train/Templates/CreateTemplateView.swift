@@ -243,7 +243,7 @@ struct TemplateBuilderView: View {
 
     // MARK: - Quality coach
 
-    private var exerciseCatalog: [ExerciseCandidate] { exerciseDefs.map(ExerciseCandidate.init(record:)) }
+    private var exerciseCatalog: [ExerciseCandidate] { exerciseDefs.map { ExerciseCandidate(record: $0) } }
     private var trainingProfile: TrainingProfile { TrainingProfile(record: profiles.first) }
     private var guidanceLevel: GuidanceLevel {
         GuidanceLevel(trainingExperience: profiles.first?.trainingExperience ?? "")

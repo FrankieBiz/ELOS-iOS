@@ -457,7 +457,7 @@ struct ActiveSessionView: View {
                             let eIdx = vm.exercises.firstIndex(where: { $0.id == ex.id }) ?? 0
                             guard sIdx < vm.exercises[eIdx].sets.count,
                                   !vm.exercises[eIdx].sets[sIdx].done else { return }
-                            withAnimation { vm.exercises[eIdx].sets.remove(at: sIdx) }
+                            withAnimation { _ = vm.exercises[eIdx].sets.remove(at: sIdx) }
                         },
                         onSetEdit: { sIdx, weightKg, reps, rpe in
                             // Non-destructive in-place edit of an already-logged set.

@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 /// One exercise inside the active session, restructured around a **single active-set focus block**:
 /// the current set gets large controls, a tap RPE ladder, and tap-to-fill chips; completed sets

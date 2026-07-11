@@ -20,11 +20,24 @@ enum ApiError: Error, LocalizedError {
 final class ApiClient {
     static let shared = ApiClient()
 
-    #if DEBUG
-    private let baseURL = "http://localhost:3000"
-    #else
-    private let baseURL = "https://elos.onrender.com"
-    #endif
+    private static let productionURL = "https://elos.onrender.com"
+
+    /// Debug builds default to production too, so an install from Xcode always
+    /// has a live backend. Point at a local server explicitly with the
+    /// "-use-local-api" launch argument (Scheme → Run → Arguments) or by setting
+    /// the "api_base_url" UserDefault to any URL.
+    private var baseURL: String {
+        #if DEBUG
+        if let override = UserDefaults.standard.string(forKey: "api_base_url"),
+           !override.isEmpty {
+            return override
+        }
+        if ProcessInfo.processInfo.arguments.contains("-use-local-api") {
+            return "http://localhost:3000"
+        }
+        #endif
+        return Self.productionURL
+    }
 
     private let session: URLSession = {
         let cfg = URLSessionConfiguration.default
@@ -70,18 +83,42 @@ final class ApiClient {
     }
 
     /// Build → perform, and on a 401 force a session refresh and retry once
-    /// (covers a request that races a just-expired access token).
+    /// (covers a request that races a just-expired access token). GETs also
+    /// retry transient transport failures with backoff — the production host
+    /// cold-starts after idle, so the first request of a session can time out
+    /// while later ones succeed in milliseconds.
     private func send<R: Decodable>(method: String, path: String, body: (any Encodable)?) async throws -> R {
-        let request = try await makeRequest(method: method, path: path, body: body)
-        do {
-            return try await perform(request)
-        } catch ApiError.httpError(401, _) {
-            _ = try? await SupabaseManager.shared.client.auth.refreshSession()
-            let retry = try await makeRequest(method: method, path: path, body: body)
-            return try await perform(retry)
+        let transientRetries = method == "GET" ? 2 : 0
+        var attempt = 0
+        while true {
+            do {
+                let request = try await makeRequest(method: method, path: path, body: body)
+                return try await perform(request)
+            } catch ApiError.httpError(401, _) {
+                _ = try? await SupabaseManager.shared.client.auth.refreshSession()
+                let retry = try await makeRequest(method: method, path: path, body: body)
+                return try await perform(retry)
+            } catch let error as ApiError where attempt < transientRetries && isTransient(error) {
+                attempt += 1
+                try? await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000)
+            }
         }
     }
 
+    /// Errors worth retrying: the request likely never reached the server.
+    private func isTransient(_ error: ApiError) -> Bool {
+        guard case .networkError(let underlying) = error,
+              let urlError = underlying as? URLError else { return false }
+        switch urlError.code {
+        case .timedOut, .cannotConnectToHost, .networkConnectionLost, .cannotFindHost:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Fire-and-forget ping so the server is awake (Render cold-starts after
+    /// idle) before login-time data loads pile onto it.
     func warmup() async {
         _ = try? await get("/health") as [String: String]
     }
