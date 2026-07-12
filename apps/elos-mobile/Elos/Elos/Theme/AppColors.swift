@@ -93,7 +93,7 @@ struct ElosFilledButtonStyle: ButtonStyle {
     var color: Color = .tint
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 16, weight: .bold))
+            .font(.system(.body, weight: .bold))
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
@@ -114,7 +114,7 @@ struct ElosButtonStyle: ButtonStyle {
 struct ElosSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 16, weight: .semibold))
+            .font(.system(.body, weight: .semibold))
             .foregroundStyle(Color.primary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
@@ -128,7 +128,7 @@ struct ElosSecondaryButtonStyle: ButtonStyle {
 struct ElosDestructiveButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 16, weight: .bold))
+            .font(.system(.body, weight: .bold))
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)

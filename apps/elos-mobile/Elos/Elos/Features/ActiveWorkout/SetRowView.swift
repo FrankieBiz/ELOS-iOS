@@ -115,6 +115,7 @@ struct SessionExerciseCard: View {
                 Image(systemName: "info.circle").font(.caption).foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Exercise instructions")
 
             Image(systemName: expanded ? "chevron.up" : "chevron.down")
                 .font(.caption).foregroundStyle(.secondary)
@@ -161,6 +162,7 @@ struct SessionExerciseCard: View {
                     .frame(width: 30, height: 30)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Edit set")
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
         .background(Color.good.opacity(0.06))

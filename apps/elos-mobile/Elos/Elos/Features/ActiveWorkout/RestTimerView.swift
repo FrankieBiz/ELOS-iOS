@@ -51,6 +51,7 @@ struct RestTimerBar: View {
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(paused ? "Resume rest timer" : "Pause rest timer")
             stepButton("+15", action: onPlus)
 
             Button(action: onSkip) {
@@ -77,6 +78,7 @@ struct RestTimerBar: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title.hasPrefix("−") ? "Subtract 15 seconds from rest" : "Add 15 seconds to rest")
     }
 }
 

@@ -145,6 +145,7 @@ struct FeedPostCard: View {
                         .font(.subheadline).foregroundStyle(.secondary)
                         .frame(width: 28, height: 28)
                 }
+                .accessibilityLabel("Post options")
             } else {
                 Menu {
                     Button {
