@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import Supabase
 
 private struct InviteTarget: Identifiable {
     let userId: String
@@ -140,6 +141,22 @@ struct ElosApp: App {
                               let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
                         else { return }
                         switch url.host {
+                        case "auth-callback":
+                            // Email confirmation / password recovery link. The SDK
+                            // exchanges the URL for a live session; AuthStore's
+                            // authStateChanges then routes into the app signed in.
+                            let isRecovery = (components.queryItems?.contains { $0.name == "type" && $0.value == "recovery" } ?? false)
+                                || (url.fragment?.contains("type=recovery") ?? false)
+                            Task {
+                                do {
+                                    _ = try await SupabaseManager.shared.client.auth.session(from: url)
+                                    if isRecovery {
+                                        viewModel.pendingPasswordReset = true
+                                    }
+                                } catch {
+                                    viewModel.showError("That link has expired. Request a new one and try again.")
+                                }
+                            }
                         case "add-friend":
                             if let userId = components.queryItems?.first(where: { $0.name == "userId" })?.value,
                                !userId.isEmpty {
@@ -167,6 +184,9 @@ struct ElosApp: App {
                     )) { target in
                         TemplateImportSheet(shareCode: target.shareCode)
                             .environmentObject(viewModel)
+                    }
+                    .sheet(isPresented: $viewModel.pendingPasswordReset) {
+                        NewPasswordSheet()
                     }
             }
         }

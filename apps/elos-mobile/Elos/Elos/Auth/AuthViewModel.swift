@@ -1,6 +1,8 @@
 import Foundation
 import Combine
 import Supabase
+import AuthenticationServices
+import CryptoKit
 
 @MainActor
 final class AuthViewModel: ObservableObject {
@@ -10,6 +12,78 @@ final class AuthViewModel: ObservableObject {
     @Published var isLoading       = false
     @Published var errorMessage: String?
     @Published var infoMessage: String?
+
+    /// Raw nonce for the in-flight Sign in with Apple request. The hashed form
+    /// goes to Apple; the raw form goes to Supabase for verification.
+    private(set) var appleNonce: String = ""
+
+    // MARK: - Sign in with Apple
+
+    /// Call from SignInWithAppleButton's request closure.
+    func prepareAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
+        appleNonce = Self.randomNonce()
+        request.requestedScopes = [.fullName, .email]
+        request.nonce = Self.sha256(appleNonce)
+    }
+
+    /// Call from SignInWithAppleButton's completion closure.
+    func signInWithApple(_ result: Result<ASAuthorization, Error>) async {
+        switch result {
+        case .failure(let error):
+            // User-cancelled taps shouldn't show an error.
+            if (error as? ASAuthorizationError)?.code == .canceled { return }
+            errorMessage = "Sign in with Apple didn't complete. Please try again."
+        case .success(let authorization):
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                  let tokenData = credential.identityToken,
+                  let idToken = String(data: tokenData, encoding: .utf8) else {
+                errorMessage = "Sign in with Apple didn't complete. Please try again."
+                return
+            }
+            isLoading    = true
+            errorMessage = nil
+            infoMessage  = nil
+            defer { isLoading = false }
+            do {
+                try await SupabaseManager.shared.client.auth.signInWithIdToken(
+                    credentials: .init(provider: .apple, idToken: idToken, nonce: appleNonce)
+                )
+                // Apple only shares the name on the FIRST authorization — stash it
+                // so onboarding/profile can prefill instead of losing it forever.
+                if let given = credential.fullName?.givenName, !given.isEmpty {
+                    UserDefaults.standard.set(given, forKey: "elos_pending_first_name")
+                }
+                if let family = credential.fullName?.familyName, !family.isEmpty {
+                    UserDefaults.standard.set(family, forKey: "elos_pending_last_name")
+                }
+                // AuthStore observes authStateChanges and routes (new accounts
+                // created <60s ago automatically get onboarding).
+            } catch {
+                errorMessage = friendlyMessage(for: error)
+            }
+        }
+    }
+
+    private static func randomNonce(length: Int = 32) -> String {
+        let charset = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        var result = ""
+        var remaining = length
+        while remaining > 0 {
+            var random: UInt8 = 0
+            if SecRandomCopyBytes(kSecRandomDefault, 1, &random) == errSecSuccess,
+               random < charset.count {
+                result.append(charset[Int(random)])
+                remaining -= 1
+            }
+        }
+        return result
+    }
+
+    private static func sha256(_ input: String) -> String {
+        SHA256.hash(data: Data(input.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
 
     func login(authStore: AuthStore) async {
         guard !email.isEmpty, !password.isEmpty else {
@@ -44,7 +118,10 @@ final class AuthViewModel: ObservableObject {
         isLoading    = true
         defer { isLoading = false }
         do {
-            try await SupabaseManager.shared.client.auth.resetPasswordForEmail(trimmed)
+            try await SupabaseManager.shared.client.auth.resetPasswordForEmail(
+                trimmed,
+                redirectTo: URL(string: "elos://auth-callback")
+            )
             infoMessage = "If an account exists for \(trimmed), a reset link is on its way."
         } catch {
             // Don't reveal whether the email exists; show a neutral message.
@@ -80,7 +157,8 @@ final class AuthViewModel: ObservableObject {
         do {
             let response = try await SupabaseManager.shared.client.auth.signUp(
                 email: email,
-                password: password
+                password: password,
+                redirectTo: URL(string: "elos://auth-callback")
             )
             // Mark that this device just created an account so onboarding always runs,
             // even if the user needs to confirm their email and sign in manually later.
@@ -88,7 +166,7 @@ final class AuthViewModel: ObservableObject {
             if response.session == nil {
                 // Email confirmation is enabled — user must verify before signing in.
                 // This is a success state, so surface it as neutral info, not a red error.
-                infoMessage = "Check your email to confirm your account, then sign in."
+                infoMessage = "Check your email and tap the confirmation link — it opens the app already signed in."
             }
             // If a session was returned, authStateChanges handles routing automatically
         } catch {

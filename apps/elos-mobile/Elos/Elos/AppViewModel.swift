@@ -29,6 +29,10 @@ class AppViewModel: ObservableObject {
     // MARK: - Theme
     @Published var forceDark: Bool? = nil
 
+    // MARK: - Auth deep links
+    /// Set when the app is opened from a password-recovery email link.
+    @Published var pendingPasswordReset = false
+
     // MARK: - Global error banner
     @Published var errorBanner: String?
     private var errorBannerTask: Task<Void, Never>?

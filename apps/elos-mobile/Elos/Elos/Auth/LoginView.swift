@@ -1,10 +1,12 @@
 import SwiftUI
+import AuthenticationServices
 
 struct LoginView: View {
     @Binding var showSignup: Bool
     @EnvironmentObject var authStore: AuthStore
     @StateObject private var authVM = AuthViewModel()
     @FocusState private var focused: Field?
+    @Environment(\.colorScheme) private var colorScheme
 
     private enum Field { case email, password }
 
@@ -91,6 +93,23 @@ struct LoginView: View {
                     .buttonStyle(ElosFilledButtonStyle())
                     .disabled(authVM.isLoading || authVM.email.isEmpty || authVM.password.isEmpty)
                     .padding(.top, 4)
+
+                    HStack(spacing: 12) {
+                        Rectangle().fill(Color.secondary.opacity(0.25)).frame(height: 1)
+                        Text("or").font(.caption).foregroundStyle(.secondary)
+                        Rectangle().fill(Color.secondary.opacity(0.25)).frame(height: 1)
+                    }
+                    .padding(.vertical, 2)
+
+                    SignInWithAppleButton(.signIn) { request in
+                        authVM.prepareAppleRequest(request)
+                    } onCompletion: { result in
+                        Task { await authVM.signInWithApple(result) }
+                    }
+                    .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+                    .frame(height: 50)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .disabled(authVM.isLoading)
                 }
                 .padding(.horizontal, 24)
 
