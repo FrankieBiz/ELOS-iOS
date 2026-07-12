@@ -18,4 +18,7 @@ struct ProfileResponse: Decodable {
     let fat_goal: Int?
     let use_imperial: Bool?
     let onboarding_complete: Bool?
+    /// Auth email, injected by the API from the verified token (the profiles
+    /// table itself has no email column).
+    let email: String?
 }

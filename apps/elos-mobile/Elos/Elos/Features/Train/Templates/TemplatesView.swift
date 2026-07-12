@@ -62,8 +62,78 @@ class TemplatesViewModel: ObservableObject {
                 try? context.save()
                 templates = (try? context.fetch(tDesc)) ?? []
                 refreshExerciseMap()
+                // Now that the server's templates are merged in, re-push any
+                // local ones whose original upload never landed.
+                await reconcileUnconfirmed(ownerID: ownerID)
+                templates = (try? context.fetch(tDesc)) ?? []
+                refreshExerciseMap()
             } catch {}
         }
+    }
+
+    /// Push templates created while the server was unreachable
+    /// (serverConfirmed == false means the create-time POST never succeeded).
+    /// Runs on every load, so a template can never be stranded on-device.
+    private func reconcileUnconfirmed(ownerID: String) async {
+        let desc = FetchDescriptor<WorkoutTemplateRecord>(
+            predicate: #Predicate { $0.ownerID == ownerID && $0.serverConfirmed == false }
+        )
+        let pending = (try? context.fetch(desc)) ?? []
+        for record in pending {
+            // If a confirmed template with the same name came down in the pull,
+            // the original push actually landed and this is a stale duplicate —
+            // adopt the server copy instead of uploading a second one.
+            if templates.contains(where: { $0.serverConfirmed && $0.name == record.name && $0.id != record.id }) {
+                for ex in exerciseRecords(for: record.id) { context.delete(ex) }
+                context.delete(record)
+                continue
+            }
+
+            let exs = exerciseRecords(for: record.id)
+            let body = CreateTemplateRequest(
+                name: record.name,
+                exercises: exs.enumerated().map { idx, ex in
+                    TemplateExerciseRequest(
+                        exercise_id: ex.exerciseID,
+                        exercise_name: ex.exerciseName,
+                        order_index: idx,
+                        target_sets: ex.targetSets,
+                        target_reps: ex.targetReps,
+                        target_rpe: ex.targetRPE > 0 ? ex.targetRPE : nil,
+                        rest_seconds: ex.restSeconds,
+                        notes: ex.notes.isEmpty ? nil : ex.notes,
+                        equipment_id: ex.equipmentId,
+                        equipment_dedupe_key: ex.equipmentDedupeKey,
+                        equipment_brand_name: ex.equipmentBrandName
+                    )
+                }
+            )
+            do {
+                let response = try await ApiClient.shared.post("/templates", body: body) as TemplateDetailResponse
+                let oldID = record.id
+                record.serverConfirmed = true
+                if oldID != response.id {
+                    record.id = response.id
+                    for (idx, ex) in exs.enumerated() {
+                        ex.templateID = response.id
+                        if idx < response.exercises.count { ex.id = response.exercises[idx].id }
+                    }
+                    templateExercises.removeValue(forKey: oldID)
+                    templateExercises[response.id] = exs
+                }
+            } catch {
+                // Still safe locally; retried on the next load.
+            }
+        }
+        try? context.save()
+    }
+
+    private func exerciseRecords(for templateID: String) -> [TemplateExerciseRecord] {
+        let desc = FetchDescriptor<TemplateExerciseRecord>(
+            predicate: #Predicate { $0.templateID == templateID },
+            sortBy: [SortDescriptor(\.orderIndex)]
+        )
+        return (try? context.fetch(desc)) ?? []
     }
 
     func createTemplate(name: String, exercises: [TemplateExerciseEntry], ownerID: String) {

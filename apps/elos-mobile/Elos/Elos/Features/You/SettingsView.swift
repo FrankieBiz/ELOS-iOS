@@ -209,6 +209,7 @@ struct SettingsView: View {
                     Task {
                         let ok = await authVM.deleteAccount(authStore: authStore)
                         if ok {
+                            vm.eraseAllLocalData()
                             dismiss()
                         } else {
                             vm.showError(authVM.errorMessage ?? "Could not delete account. Please try again.")

@@ -264,6 +264,15 @@ class AppViewModel: ObservableObject {
         activeSplit      = nil
         activeSplitDays  = []
         recoverableSession = nil
+        // NOTE: deliberately does NOT touch SwiftData. Local records are the
+        // user's only copy until sync confirms — wiping them on sign-out
+        // destroyed real data. Records are keyed by ownerID, so another
+        // account signing in on this device can't see them anyway.
+    }
+
+    /// Full local erase — only for account deletion, never for sign-out.
+    func eraseAllLocalData() {
+        clearData()
         wipeSwiftData()
     }
 
@@ -1185,10 +1194,11 @@ class AppViewModel: ObservableObject {
                     existing.carbGoal           = remote.carb_goal ?? existing.carbGoal
                     existing.fatGoal            = remote.fat_goal ?? existing.fatGoal
                     existing.useImperial        = remote.use_imperial ?? existing.useImperial
+                    existing.email              = remote.email ?? existing.email
                     existing.syncPending        = false
                 } else {
                     let record = UserProfileRecord(
-                        id: uid, ownerID: uid, email: "",
+                        id: uid, ownerID: uid, email: remote.email ?? "",
                         firstName:          remote.first_name ?? "",
                         lastName:           remote.last_name ?? "",
                         username:           remote.username ?? "",

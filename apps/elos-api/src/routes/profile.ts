@@ -18,7 +18,9 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
     // never 404s and onboarding can proceed.
     profile = await profileService.upsertProfile(req.user!.id, {});
   }
-  res.json(profile);
+  // The profiles table has no email column; the client shows the account email
+  // in Settings, so inject it from the verified token.
+  res.json({ ...profile, email: req.user!.email });
 });
 
 // Live availability check for the username field (advisory; the unique-constraint
