@@ -252,6 +252,38 @@ class AppViewModel: ObservableObject {
         Task { await pushProfileToServer(profile) }
     }
 
+    /// Response shape for `GET /analytics/prs` (weights in kg, computed server-side).
+    /// Only the fields the Train tab renders are decoded; extra keys are ignored.
+    private struct PersonalRecordsAPIResponse: Decodable {
+        let prs: [Entry]
+        struct Entry: Decodable {
+            let exercise_name: String
+            let weight_kg: Double
+            let reps: Int
+        }
+    }
+
+    /// Load the user's personal records from the API into `personalRecords`.
+    /// This is the single place the Train tab's PR card and the XP/rank PR bonus
+    /// get their data. Weight is rendered through `weightUnit` so it honors the
+    /// kg/lb preference. Failures are non-blocking — the guarded card simply stays
+    /// hidden until a later refresh, consistent with the app's local-first stance.
+    func loadPersonalRecords() async {
+        guard !currentUserID.isEmpty else { return }
+        do {
+            let response: PersonalRecordsAPIResponse = try await ApiClient.shared.get("/analytics/prs")
+            personalRecords = response.prs.map { pr in
+                PersonalRecord(
+                    lift:   pr.exercise_name,
+                    weight: weightUnit.formatWeight(kg: pr.weight_kg),
+                    reps:   "×\(pr.reps)"
+                )
+            }
+        } catch {
+            // Local-first / non-blocking: keep any existing PRs on failure.
+        }
+    }
+
     func clearData() {
         habits           = []
         assignments      = []

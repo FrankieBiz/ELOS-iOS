@@ -71,9 +71,9 @@ struct TrainView: View {
                     if !trainVM.recentExercises.isEmpty { recentExercisesRow }
                     startButton
                     exercisesSection
-                    muscleVolumePanel
+                    if !vm.muscleVolume.isEmpty { muscleVolumePanel }
                     weeklyRadarCard
-                    personalRecordsCard
+                    if !vm.personalRecords.isEmpty { personalRecordsCard }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
@@ -154,9 +154,14 @@ struct TrainView: View {
             }
             await socialVM.loadStandings()
             await socialVM.loadBoard()
+            await vm.loadPersonalRecords()
+            computeUserProgress()
         }
         .onChange(of: vm.showingSession) { _, isShowing in
-            if !isShowing { computeUserProgress() }
+            if !isShowing {
+                computeUserProgress()
+                Task { await vm.loadPersonalRecords(); computeUserProgress() }
+            }
         }
         .onChange(of: vm.todayReadiness?.id) { _, _ in
             context.update(

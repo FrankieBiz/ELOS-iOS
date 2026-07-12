@@ -9,9 +9,17 @@ final class AuthViewModel: ObservableObject {
     @Published var email           = ""
     @Published var password        = ""
     @Published var confirmPassword = ""
-    @Published var isLoading       = false
+    @Published var isSigningIn     = false
+    @Published var isRegistering   = false
+    @Published var isSendingReset  = false
+    @Published var isAppleLoading  = false
+    @Published var isDeleting      = false
     @Published var errorMessage: String?
     @Published var infoMessage: String?
+
+    /// True while any auth action is in flight. Used to disable sibling buttons so
+    /// only the tapped control shows a spinner while concurrent actions can't stack.
+    var isBusy: Bool { isSigningIn || isRegistering || isSendingReset || isAppleLoading || isDeleting }
 
     /// Raw nonce for the in-flight Sign in with Apple request. The hashed form
     /// goes to Apple; the raw form goes to Supabase for verification.
@@ -40,10 +48,10 @@ final class AuthViewModel: ObservableObject {
                 errorMessage = "Sign in with Apple didn't complete. Please try again."
                 return
             }
-            isLoading    = true
-            errorMessage = nil
-            infoMessage  = nil
-            defer { isLoading = false }
+            isAppleLoading = true
+            errorMessage   = nil
+            infoMessage    = nil
+            defer { isAppleLoading = false }
             do {
                 try await SupabaseManager.shared.client.auth.signInWithIdToken(
                     credentials: .init(provider: .apple, idToken: idToken, nonce: appleNonce)
@@ -90,10 +98,10 @@ final class AuthViewModel: ObservableObject {
             errorMessage = "Please enter your email and password."
             return
         }
-        isLoading    = true
+        isSigningIn  = true
         errorMessage = nil
         infoMessage  = nil
-        defer { isLoading = false }
+        defer { isSigningIn = false }
         do {
             try await SupabaseManager.shared.client.auth.signIn(
                 email: email,
@@ -113,10 +121,10 @@ final class AuthViewModel: ObservableObject {
             errorMessage = "Enter your email above, then tap Forgot password."
             return
         }
-        errorMessage = nil
-        infoMessage  = nil
-        isLoading    = true
-        defer { isLoading = false }
+        errorMessage  = nil
+        infoMessage   = nil
+        isSendingReset = true
+        defer { isSendingReset = false }
         do {
             try await SupabaseManager.shared.client.auth.resetPasswordForEmail(
                 trimmed,
@@ -132,9 +140,9 @@ final class AuthViewModel: ObservableObject {
     // MARK: - Email / Password
 
     func deleteAccount(authStore: AuthStore) async -> Bool {
-        isLoading    = true
+        isDeleting   = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer { isDeleting = false }
         do {
             struct OkResponse: Decodable { let ok: Bool }
             _ = try await ApiClient.shared.delete("/auth/account") as OkResponse
@@ -150,10 +158,10 @@ final class AuthViewModel: ObservableObject {
         guard !email.isEmpty else { errorMessage = "Email is required."; return }
         guard password.count >= 8 else { errorMessage = "Password must be at least 8 characters."; return }
         guard password == confirmPassword else { errorMessage = "Passwords do not match."; return }
-        isLoading    = true
-        errorMessage = nil
-        infoMessage  = nil
-        defer { isLoading = false }
+        isRegistering = true
+        errorMessage  = nil
+        infoMessage   = nil
+        defer { isRegistering = false }
         do {
             let response = try await SupabaseManager.shared.client.auth.signUp(
                 email: email,
