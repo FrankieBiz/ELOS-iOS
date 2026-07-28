@@ -124,6 +124,31 @@ enum MuscleTaxonomy {
 
     static func group(forFine fine: FineMuscle) -> MuscleGroup { fine.group }
 
+    /// The catalog muscle strings that land in a given slot, normalized. Derived by running the real
+    /// vocabulary back through `fine(forMuscle:)` rather than hand-maintaining a reverse map.
+    /// Used to bias the exercise picker when a tip says "add hamstrings".
+    static func knownMuscles(forFine f: FineMuscle) -> [String] {
+        knownMuscleVocabulary.filter { fine(forMuscle: $0) == f }.map { normalize($0) }
+    }
+
+    static func knownMuscles(forGroup g: MuscleGroup) -> [String] {
+        knownMuscleVocabulary.filter { group(forMuscle: $0) == g }.map { normalize($0) }
+    }
+
+    /// Resolve a `TipAction.addMuscle` payload — which may name a `FineMuscle`, a `MuscleGroup`, or a
+    /// raw muscle string — into the normalized muscle strings the picker should favour.
+    static func targetMuscles(forPayload payload: String) -> [String] {
+        if let fine = FineMuscle(rawValue: payload) {
+            let hits = knownMuscles(forFine: fine)
+            return hits.isEmpty ? [normalize(payload)] : hits
+        }
+        if let group = MuscleGroup(rawValue: payload) {
+            let hits = knownMuscles(forGroup: group)
+            return hits.isEmpty ? [normalize(payload)] : hits
+        }
+        return [normalize(payload)]
+    }
+
     /// Map a primaryMuscle string to a broad group. Derived from `fine(forMuscle:)` so the two levels
     /// can never disagree — a single source of truth rather than two parallel keyword ladders.
     ///

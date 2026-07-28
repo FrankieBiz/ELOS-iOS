@@ -38,6 +38,11 @@ struct CreateSplitView: View {
     @State private var dayExercises: [[DayExercise]] = Array(repeating: [], count: 7)
     @State private var activePicker: ActivePicker? = nil
     @State private var showDiscardConfirm = false
+    @State private var showFullReport = false
+    /// Weekly scope carries a goal but no single focus — a week isn't one kind of day.
+    @State private var intent = TrainingIntent.default
+    /// Muscles a suggestion asked for, folded into the next picker's Smart Sort bias.
+    @State private var pendingBiasMuscles: [String] = []
 
     private var hasUnsavedContent: Bool {
         !splitName.trimmingCharacters(in: .whitespaces).isEmpty
@@ -92,6 +97,8 @@ struct CreateSplitView: View {
             .navigationTitle(editSplit != nil ? "Edit Split" : (template != nil ? "Customize Split" : "New Split"))
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
+                // Seed the goal from the saved profile so the chip starts on something sensible.
+                intent = TrainingIntent(profile: TrainingProfile(record: profiles.first))
                 if let t = template {
                     splitName = t.title
                     for (i, day) in t.workouts.prefix(7).enumerated() {
@@ -128,7 +135,7 @@ struct CreateSplitView: View {
                         .disabled(splitName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
-            .sheet(item: $activePicker) { picker in
+            .sheet(item: $activePicker, onDismiss: { pendingBiasMuscles = [] }) { picker in
                 switch picker {
                 case .template(let i):
                     TemplatePickerSheet(
@@ -151,9 +158,24 @@ struct CreateSplitView: View {
                                     equipmentBrandName: picked.equipmentBrandName))
                             }
                         },
-                        dayContext: DayContextInferrer.infer(dayName: dayNames[i], added: dayExercises[i], catalog: exerciseCatalog)
+                        dayContext: biasedContext(dayIndex: i)
                     )
                 }
+            }
+            .sheet(isPresented: $showFullReport) {
+                SplitQualityReportView(
+                    report: qualityReport,
+                    days: daySummaries,
+                    onTapTip: { tip in
+                        showFullReport = false
+                        handle(tip: tip)
+                    },
+                    onTapMuscle: { bar in
+                        showFullReport = false
+                        let payload = bar.fine?.rawValue ?? bar.group.rawValue
+                        pendingBiasMuscles = MuscleTaxonomy.targetMuscles(forPayload: payload)
+                        activePicker = .exercise(dayIndex: firstOpenDayIndex())
+                    })
             }
             .confirmationDialog("Discard this split?", isPresented: $showDiscardConfirm, titleVisibility: .visible) {
                 Button("Discard", role: .destructive) { onSave() }
@@ -170,8 +192,16 @@ struct CreateSplitView: View {
         TemplateQualityEngine.score(days: dayExercises.map { $0.map(ScoredExercise.init(day:)) },
                                     dayNames: dayNames,
                                     scope: .weeklySplit,
-                                    profile: TrainingProfile(record: profiles.first),
-                                    catalog: exerciseCatalog)
+                                    profile: scoringProfile,
+                                    catalog: exerciseCatalog,
+                                    intent: intent)
+    }
+
+    /// The selected goal overrides the saved profile's, so the goal chip actually moves the rep/rest
+    /// targets. Experience stays profile-driven — it isn't a per-split choice.
+    private var scoringProfile: TrainingProfile {
+        TrainingProfile(goal: intent.goal,
+                        experience: TrainingProfile(record: profiles.first).experience)
     }
 
     @ViewBuilder private var qualityPanel: some View {
@@ -180,10 +210,75 @@ struct CreateSplitView: View {
         // Hold scoring until the split is meaningfully built — a half-finished week would flag
         // "low volume" on everything, which reads as nagging rather than coaching.
         if populatedDays >= 2 && report.isScored {
-            TemplateQualityPanel(report: report, guidance: guidanceLevel, title: "Split Quality")
-                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
-                .listRowBackground(Color.clear)
+            VStack(alignment: .leading, spacing: 10) {
+                // A week has no single focus, so only the goal chip appears here.
+                TrainingIntentRow(intent: $intent, showsFocus: false)
+                TemplateQualityPanel(report: report, guidance: guidanceLevel, title: "Split Quality",
+                                     scope: .weeklySplit,
+                                     onTapTip: { handle(tip: $0) },
+                                     onSeeFullReport: { showFullReport = true })
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(Color.clear)
         }
+    }
+
+    /// Per-day headline numbers for the full report. Each day is scored on its own at session scope,
+    /// which is what makes "Monday 82 / Friday 41" meaningful.
+    private var daySummaries: [SplitDaySummary] {
+        (0..<min(7, dayExercises.count)).compactMap { i in
+            let day = dayExercises[i]
+            guard !dayIsRest[i], !day.isEmpty else { return nil }
+            let scored = day.map(ScoredExercise.init(day:))
+            let r = TemplateQualityEngine.score(days: [scored], dayNames: [dayNames[i]],
+                                                scope: .singleSession,
+                                                profile: scoringProfile,
+                                                catalog: exerciseCatalog)
+            return SplitDaySummary(
+                id: i,
+                name: dayNames[i].isEmpty ? dayLabels[i] : dayNames[i],
+                exerciseCount: day.count,
+                sets: day.reduce(0) { $0 + $1.sets },
+                score: r.isScored ? r.overall : nil)
+        }
+    }
+
+    // MARK: - Suggestion actions
+
+    private func handle(tip: QualityTip) {
+        switch tip.action {
+        case .addMuscle(let payload), .addPattern(let payload):
+            // Open the emptiest non-rest day, biased toward the muscle the tip names.
+            let target = firstOpenDayIndex()
+            pendingBiasMuscles = MuscleTaxonomy.targetMuscles(forPayload: payload)
+            activePicker = .exercise(dayIndex: target)
+        case .reorder(let dayIndex):
+            guard dayExercises.indices.contains(dayIndex) else { return }
+            withAnimation(.spring(response: 0.35)) {
+                dayExercises[dayIndex] = ExerciseOrderer.order(dayExercises[dayIndex],
+                                                              catalog: exerciseCatalog)
+            }
+        case .noAction:
+            break
+        }
+    }
+
+    /// The day most in need of another exercise — fewest exercises among non-rest days.
+    private func firstOpenDayIndex() -> Int {
+        let candidates = (0..<min(7, dayExercises.count)).filter { !dayIsRest[$0] }
+        return candidates.min { dayExercises[$0].count < dayExercises[$1].count } ?? 0
+    }
+
+    /// The day's inferred context, plus any muscles a suggestion just asked for.
+    private func biasedContext(dayIndex i: Int) -> DayContext {
+        let base = DayContextInferrer.infer(dayName: dayNames[i], added: dayExercises[i],
+                                            catalog: exerciseCatalog)
+        guard !pendingBiasMuscles.isEmpty else { return base }
+        return DayContext(dayName: base.dayName, archetype: base.archetype,
+                          targetMuscles: base.targetMuscles.union(pendingBiasMuscles),
+                          addedPrimaryMuscles: base.addedPrimaryMuscles,
+                          addedExerciseIDs: base.addedExerciseIDs,
+                          addedExerciseNames: base.addedExerciseNames)
     }
 
     private func dayRow(index i: Int) -> some View {

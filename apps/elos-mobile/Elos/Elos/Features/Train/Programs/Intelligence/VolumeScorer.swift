@@ -53,6 +53,11 @@ enum VolumeScorer {
 
     // MARK: Weekly
 
+    /// Most suggestions the volume dimension may contribute. A half-built week is under the weekly
+    /// minimum on nearly every muscle; emitting one warning each buries the report in ten identical
+    /// lines and reads as nagging rather than coaching. The rest are rolled into one summary line.
+    private static let maxWeeklyTips = 3
+
     private static func weekly(_ graded: [FineMuscle: MuscleCredit],
                                profile: TrainingProfile) -> DimensionScore {
         var qualities: [Double] = []
@@ -97,7 +102,21 @@ enum VolumeScorer {
             return DimensionScore(dimension: .volume, score: 70, tips: [])
         }
         let score = Int((qualities.reduce(0, +) / Double(qualities.count) * 100).rounded())
-        return DimensionScore(dimension: .volume, score: score, tips: tips)
+        // Tips are generated most-neglected-first, so the head of the list is the useful part.
+        // Capping only affects what's *surfaced* — every muscle still counts toward the score.
+        return DimensionScore(dimension: .volume, score: score, tips: capped(tips))
+    }
+
+    /// Keep the worst few, then say plainly how many others share the problem.
+    private static func capped(_ tips: [QualityTip]) -> [QualityTip] {
+        guard tips.count > maxWeeklyTips else { return tips }
+        var out = Array(tips.prefix(maxWeeklyTips))
+        let hidden = tips.count - maxWeeklyTips
+        out.append(QualityTip(
+            id: "vol-more", dimension: .volume, severity: .info,
+            message: "\(hidden) other muscle\(hidden == 1 ? " is" : "s are") also short of their weekly target. Adding a day, or more sets per session, lifts several at once.",
+            action: .noAction))
+        return out
     }
 
     // MARK: Session

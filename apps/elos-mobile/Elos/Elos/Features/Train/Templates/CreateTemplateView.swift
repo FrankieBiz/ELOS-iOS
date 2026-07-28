@@ -232,6 +232,11 @@ struct TemplateBuilderView: View {
     @State private var isDirty = false
     @State private var snapshotName = ""
     @State private var snapshotExercises: [TemplateExerciseEntry] = []
+    /// What the lifter says they're building. Seeded from their profile goal; `focus` stays nil
+    /// (= inferred from the name) until they pick one.
+    @State private var intent = TrainingIntent.default
+    /// Muscle bias handed to the picker when a suggestion says "add hamstrings".
+    @State private var pickerBias: DayContext = .empty
 
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty && !exercises.isEmpty
@@ -256,7 +261,65 @@ struct TemplateBuilderView: View {
         }
         return TemplateQualityEngine.score(days: [scored], dayNames: [name],
                                            scope: .singleSession,
-                                           profile: trainingProfile, catalog: exerciseCatalog)
+                                           profile: scoringProfile, catalog: exerciseCatalog,
+                                           intent: intent)
+    }
+
+    /// The goal chip has to actually change the targets, so the *selected* goal overrides the saved
+    /// profile's when scoring. Experience still comes from the profile — that's not a per-template
+    /// choice.
+    private var scoringProfile: TrainingProfile {
+        TrainingProfile(goal: intent.goal, experience: trainingProfile.experience)
+    }
+
+    /// What the focus chip shows as its "Automatic" reading, from the template name.
+    private var inferredFocus: SplitArchetype? { MuscleTaxonomy.archetype(forDayName: name) }
+
+    // MARK: - Suggestion actions
+    //
+    // Previously every tip tap just opened a blank picker, throwing the tip's action away.
+
+    private func handle(tip: QualityTip) {
+        switch tip.action {
+        case .addMuscle(let payload):
+            openPicker(biasedToMuscles: MuscleTaxonomy.targetMuscles(forPayload: payload))
+        case .addPattern(let pattern):
+            // No pattern filter on the picker, so bias by the muscles that pattern trains.
+            openPicker(biasedToMuscles: MuscleTaxonomy.targetMuscles(forPayload: pattern))
+        case .reorder:
+            reorderCompoundsFirst()
+        case .noAction:
+            break
+        }
+    }
+
+    private func openPicker(biasedToMuscles muscles: [String]) {
+        pickerBias = DayContext(dayName: name, archetype: inferredFocus ?? intent.focus,
+                               targetMuscles: Set(muscles),
+                               addedPrimaryMuscles: [],
+                               addedExerciseIDs: Set(exercises.compactMap { $0.exerciseID }),
+                               addedExerciseNames: Set(exercises.map { MuscleTaxonomy.normalize($0.exerciseName) }))
+        showAddExercise = true
+    }
+
+    /// Apply `ExerciseOrderer` (compound-first) to the template, preserving each entry's settings.
+    private func reorderCompoundsFirst() {
+        let asDays = exercises.map {
+            DayExercise(id: $0.exerciseID ?? "", name: $0.exerciseName,
+                        sets: $0.targetSets, reps: $0.targetReps)
+        }
+        let ordered = ExerciseOrderer.order(asDays, catalog: exerciseCatalog)
+        // Re-sort the real entries to match the ordered names, keeping any unmatched ones at the end.
+        var remaining = exercises
+        var result: [TemplateExerciseEntry] = []
+        for d in ordered {
+            let key = MuscleTaxonomy.normalize(d.name)
+            if let i = remaining.firstIndex(where: { MuscleTaxonomy.normalize($0.exerciseName) == key }) {
+                result.append(remaining.remove(at: i))
+            }
+        }
+        result.append(contentsOf: remaining)
+        withAnimation(.spring(response: 0.35)) { exercises = result }
     }
 
     var body: some View {
@@ -289,29 +352,44 @@ struct TemplateBuilderView: View {
                         .listRowInsets(.init(top: 12, leading: 20, bottom: 4, trailing: 20))
                     }
 
-                    // Muscle panel
-                    if !exercises.isEmpty {
-                        Section {
-                            MuscleGroupPanel(entries: exercises)
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                                .listRowInsets(.init(top: 4, leading: 20, bottom: 8, trailing: 20))
-                        }
+                    // Intent — what are you building? Drives every target below it.
+                    Section {
+                        TrainingIntentRow(intent: $intent, inferredFocus: inferredFocus)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(.init(top: 0, leading: 20, bottom: 8, trailing: 20))
                     }
 
-                    // Quality coach — live, science-based rating + tips
-                    if exercises.count >= 2 {
+                    // Quality coach — score + dimension bars + actionable tips, then the muscle bars.
+                    // Computed once here and passed down; the engine is pure but resolving the
+                    // catalog per row would be wasteful.
+                    if !exercises.isEmpty {
                         let report = qualityReport
-                        if report.isScored {
-                            Section {
-                                TemplateQualityPanel(report: report, guidance: guidanceLevel,
-                                                     title: "Template Quality") { _ in
-                                    showAddExercise = true
+                        Section {
+                            VStack(spacing: 12) {
+                                if report.isScored {
+                                    TemplateQualityPanel(report: report, guidance: guidanceLevel,
+                                                         title: "Template Quality",
+                                                         scope: .singleSession,
+                                                         onTapTip: { handle(tip: $0) })
                                 }
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                                .listRowInsets(.init(top: 4, leading: 16, bottom: 8, trailing: 16))
+                                MuscleCoverageBars(
+                                    report: report.volume,
+                                    title: "MUSCLE COVERAGE",
+                                    hidesUnexpected: true,
+                                    showsLegend: true,
+                                    onTapMuscle: { bar in
+                                        let payload = bar.fine?.rawValue ?? bar.group.rawValue
+                                        openPicker(biasedToMuscles: MuscleTaxonomy.targetMuscles(forPayload: payload))
+                                    })
+                                .padding(14)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(.secondarySystemGroupedBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
                             }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(.init(top: 4, leading: 16, bottom: 8, trailing: 16))
                         }
                     }
 
@@ -390,7 +468,7 @@ struct TemplateBuilderView: View {
                     .disabled(!canSave)
                 }
             }
-            .sheet(isPresented: $showAddExercise) {
+            .sheet(isPresented: $showAddExercise, onDismiss: { pickerBias = .empty }) {
                 ExercisePickerView(onConfirmMulti: { picked in
                     withAnimation(.spring(response: 0.35)) {
                         for ex in picked {
@@ -406,7 +484,7 @@ struct TemplateBuilderView: View {
                         }
                     }
                     showAddExercise = false
-                })
+                }, dayContext: pickerBias)
             }
             .alert("Discard Changes?", isPresented: $showDiscardAlert) {
                 Button("Discard", role: .destructive) { dismiss() }
@@ -420,6 +498,8 @@ struct TemplateBuilderView: View {
                 snapshotName      = initialName
                 snapshotExercises = initialEntries
                 isDirty = false
+                // Seed the goal from the saved profile so the chip is never a blank chore.
+                intent = TrainingIntent(profile: trainingProfile)
             }
             .onChange(of: name)      { _, _ in updateDirty() }
             .onChange(of: exercises) { _, _ in updateDirty() }
