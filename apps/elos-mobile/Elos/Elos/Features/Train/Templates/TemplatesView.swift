@@ -136,11 +136,13 @@ class TemplatesViewModel: ObservableObject {
         return (try? context.fetch(desc)) ?? []
     }
 
-    func createTemplate(name: String, exercises: [TemplateExerciseEntry], ownerID: String) {
+    func createTemplate(name: String, exercises: [TemplateExerciseEntry], ownerID: String,
+                        intent: TrainingIntent? = nil) {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty, !exercises.isEmpty else { return }
 
         let localID = UUID().uuidString
         let record = WorkoutTemplateRecord(id: localID, ownerID: ownerID, name: name, createdAt: Date(), serverConfirmed: false)
+        record.intent = intent
         context.insert(record)
         var exRecords: [TemplateExerciseRecord] = []
         for (idx, ex) in exercises.enumerated() {
@@ -200,13 +202,15 @@ class TemplatesViewModel: ObservableObject {
         }
     }
 
-    func editTemplate(id: String, name: String, exercises: [TemplateExerciseEntry], ownerID: String) {
+    func editTemplate(id: String, name: String, exercises: [TemplateExerciseEntry], ownerID: String,
+                      intent: TrainingIntent? = nil) {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
 
         let tDesc = FetchDescriptor<WorkoutTemplateRecord>(predicate: #Predicate { $0.id == id })
         guard let record = try? context.fetch(tDesc).first else { return }
 
         record.name = name
+        record.intent = intent
 
         let eDesc = FetchDescriptor<TemplateExerciseRecord>(predicate: #Predicate { $0.templateID == id })
         let existing = (try? context.fetch(eDesc)) ?? []
@@ -348,6 +352,8 @@ struct TemplatesView: View {
     @State private var builderInitialName = ""
     @State private var builderInitialEntries: [TemplateExerciseEntry] = []
     @State private var editingTemplateID: String? = nil
+    /// The edited template's saved focus + goal, so reopening it restores what was chosen.
+    @State private var builderInitialIntent: TrainingIntent? = nil
     @State private var sharingTemplateID: String? = nil
     @State private var shareURL: URL? = nil
     @State private var shareError: String? = nil
@@ -374,6 +380,7 @@ struct TemplatesView: View {
                                     builderIsEditMode = true
                                     builderInitialName = tmpl.name
                                     builderInitialEntries = entries(for: tmpl.id)
+                                    builderInitialIntent = tmpl.intent
                                     editingTemplateID = tmpl.id
                                     showBuilder = true
                                 },
@@ -381,6 +388,7 @@ struct TemplatesView: View {
                                     builderIsEditMode = false
                                     builderInitialName = "Copy of \(tmpl.name)"
                                     builderInitialEntries = entries(for: tmpl.id)
+                                    builderInitialIntent = tmpl.intent
                                     editingTemplateID = nil
                                     showBuilder = true
                                 },
@@ -408,6 +416,7 @@ struct TemplatesView: View {
                         builderIsEditMode = false
                         builderInitialName = ""
                         builderInitialEntries = []
+                        builderInitialIntent = nil
                         editingTemplateID = nil
                         showBuilder = true
                     } label: {
@@ -460,12 +469,13 @@ struct TemplatesView: View {
                 TemplateBuilderView(
                     initialName: builderInitialName,
                     initialEntries: builderInitialEntries,
-                    isEditMode: builderIsEditMode
-                ) { name, exs in
+                    isEditMode: builderIsEditMode,
+                    initialIntent: builderInitialIntent
+                ) { name, exs, intent in
                     if let id = editID {
-                        templVM.editTemplate(id: id, name: name, exercises: exs, ownerID: vm.currentUserID)
+                        templVM.editTemplate(id: id, name: name, exercises: exs, ownerID: vm.currentUserID, intent: intent)
                     } else {
-                        templVM.createTemplate(name: name, exercises: exs, ownerID: vm.currentUserID)
+                        templVM.createTemplate(name: name, exercises: exs, ownerID: vm.currentUserID, intent: intent)
                     }
                 }
             }
@@ -494,6 +504,7 @@ struct TemplatesView: View {
                 builderIsEditMode = false
                 builderInitialName = ""
                 builderInitialEntries = []
+                        builderInitialIntent = nil
                 editingTemplateID = nil
                 showBuilder = true
             } label: {

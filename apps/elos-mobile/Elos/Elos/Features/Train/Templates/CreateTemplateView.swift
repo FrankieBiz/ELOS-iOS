@@ -210,15 +210,19 @@ struct TemplateBuilderView: View {
     let initialName: String
     let initialEntries: [TemplateExerciseEntry]
     let isEditMode: Bool
-    let onSave: (String, [TemplateExerciseEntry]) -> Void
+    /// The template's saved focus + goal, when editing one. `nil` = seed from the profile.
+    let initialIntent: TrainingIntent?
+    let onSave: (String, [TemplateExerciseEntry], TrainingIntent) -> Void
 
     init(initialName: String = "",
          initialEntries: [TemplateExerciseEntry] = [],
          isEditMode: Bool = false,
-         onSave: @escaping (String, [TemplateExerciseEntry]) -> Void) {
+         initialIntent: TrainingIntent? = nil,
+         onSave: @escaping (String, [TemplateExerciseEntry], TrainingIntent) -> Void) {
         self.initialName    = initialName
         self.initialEntries = initialEntries
         self.isEditMode     = isEditMode
+        self.initialIntent  = initialIntent
         self.onSave         = onSave
     }
 
@@ -455,7 +459,7 @@ struct TemplateBuilderView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         guard canSave else { return }
-                        onSave(name.trimmingCharacters(in: .whitespaces), exercises)
+                        onSave(name.trimmingCharacters(in: .whitespaces), exercises, intent)
                         dismiss()
                     } label: {
                         Text("Save")
@@ -498,8 +502,9 @@ struct TemplateBuilderView: View {
                 snapshotName      = initialName
                 snapshotExercises = initialEntries
                 isDirty = false
-                // Seed the goal from the saved profile so the chip is never a blank chore.
-                intent = TrainingIntent(profile: trainingProfile)
+                // The template's own saved intent wins; otherwise seed the goal from the profile
+                // so the chip is never a blank chore.
+                intent = initialIntent ?? TrainingIntent(profile: trainingProfile)
             }
             .onChange(of: name)      { _, _ in updateDirty() }
             .onChange(of: exercises) { _, _ in updateDirty() }

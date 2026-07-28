@@ -288,6 +288,15 @@ final class WorkoutTemplateRecord {
     var name: String
     var createdAt: Date
     var serverConfirmed: Bool
+    /// The lifter's stated focus + goal for this template, as JSON. Defaulted so this is a
+    /// lightweight SwiftData migration, and local-only — the backend contract is untouched
+    /// (same approach as `UserProfileRecord.equipmentPreferenceJSON`).
+    var intentJSON: String = ""
+
+    var intent: TrainingIntent? {
+        get { TrainingIntent(jsonString: intentJSON) }
+        set { intentJSON = newValue?.jsonString ?? "" }
+    }
 
     init(id: String = UUID().uuidString, ownerID: String,
          name: String, createdAt: Date = Date(), serverConfirmed: Bool = false) {
@@ -500,6 +509,14 @@ final class UserSplitRecord {
     var scheduledStartAt: Date? = nil    // non-nil = pending; activates when Date() >= this
     var pinnedWeekdaysJSON: String? = nil // JSON [Int] of Calendar weekday numbers; nil = ordinal rotation
     var includeWarmups: Bool = false      // true = warmup exercises shown before session
+    /// The lifter's stated goal for this split, as JSON. Defaulted (lightweight migration) and
+    /// local-only — no backend contract change.
+    var intentJSON: String = ""
+
+    var intent: TrainingIntent? {
+        get { TrainingIntent(jsonString: intentJSON) }
+        set { intentJSON = newValue?.jsonString ?? "" }
+    }
 
     init(id: String = UUID().uuidString,
          ownerID: String,

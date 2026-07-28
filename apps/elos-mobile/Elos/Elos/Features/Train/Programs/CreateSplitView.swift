@@ -97,8 +97,9 @@ struct CreateSplitView: View {
             .navigationTitle(editSplit != nil ? "Edit Split" : (template != nil ? "Customize Split" : "New Split"))
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
-                // Seed the goal from the saved profile so the chip starts on something sensible.
-                intent = TrainingIntent(profile: TrainingProfile(record: profiles.first))
+                // A saved split's own goal wins; otherwise seed from the profile so the chip
+                // starts on something sensible rather than blank.
+                intent = editSplit?.intent ?? TrainingIntent(profile: TrainingProfile(record: profiles.first))
                 if let t = template {
                     splitName = t.title
                     for (i, day) in t.workouts.prefix(7).enumerated() {
@@ -459,6 +460,7 @@ struct CreateSplitView: View {
             // Edit mode — update in place then push to server
             existing.name = trimmed
             existing.pinnedWeekdays = (0..<7).filter { !dayIsRest[$0] }.map { indexToWeekday[$0] }
+            existing.intent = intent
             existing.syncPending = true
             for day in editDays { modelContext.delete(day) }
             buildDays(for: existing.id)
@@ -476,6 +478,7 @@ struct CreateSplitView: View {
             // Create mode — insert new record and push immediately
             let split = UserSplitRecord(ownerID: vm.currentUserID, name: trimmed)
             split.pinnedWeekdays = (0..<7).filter { !dayIsRest[$0] }.map { indexToWeekday[$0] }
+            split.intent = intent
             split.syncPending = true
             modelContext.insert(split)
             buildDays(for: split.id)
