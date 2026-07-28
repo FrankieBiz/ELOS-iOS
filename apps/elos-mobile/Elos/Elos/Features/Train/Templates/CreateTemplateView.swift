@@ -49,7 +49,11 @@ func resolveMuscleLabelHeuristic(for name: String) -> String? {
     else if n.contains("squat") || n.contains("leg press") || n.contains("lunge") || n.contains("extension") { key = "quads" }
     else if n.contains("deadlift") || n.contains("rdl") || (n.contains("curl") && n.contains("leg")) { key = "hamstrings" }
     else if n.contains("hip thrust") || n.contains("glute") { key = "glutes" }
-    else if n.contains("pull") || n.contains("row") || n.contains("lat") { key = "lats" }
+    // "lateral raise" contains "lat" — without this guard it resolved to the lats (Back) and a
+    // shoulder movement was counted as pulling volume, which mis-classified whole days
+    // (SplitDescriptorTests.upperDayFromExercises read an upper day as a pull day).
+    // `MuscleTaxonomy.fine(forMuscle:)` carries the same guard; this is the duplicated copy.
+    else if n.contains("pull") || n.contains("row") || (n.contains("lat") && !n.contains("lateral")) { key = "lats" }
     else if n.contains("curl") && !n.contains("leg") { key = "biceps" }
     else if n.contains("tricep") || n.contains("pushdown") || n.contains("skull") { key = "triceps" }
     else if n.contains("overhead") || (n.contains("press") && n.contains("shoulder")) { key = "front_delts" }
