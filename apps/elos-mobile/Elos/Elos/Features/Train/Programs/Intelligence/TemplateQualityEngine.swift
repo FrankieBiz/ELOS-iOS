@@ -1,46 +1,84 @@
 import Foundation
 
-/// Top-level coordinator. Resolves the builder's exercises against the catalog, runs the four
-/// dimension scorers, computes the weighted 0–100 composite, and merges/ranks the tips for
-/// inline display. Pure and synchronous — cheap enough to recompute on every keystroke.
+/// Top-level coordinator. Resolves the builder's exercises against the catalog, runs the shared
+/// muscle/movement analyzers once, feeds them to the dimension scorers, computes the weighted
+/// 0–100 composite, and merges/ranks the tips. Pure and synchronous — cheap enough to recompute on
+/// every keystroke, provided callers compute it *once* per view body rather than per row.
 enum TemplateQualityEngine {
 
-    /// Composite weights (sum to 1.0).
-    private static let weights: [QualityDimension: Double] = [
-        .volume:    0.30,
-        .balance:   0.25,
-        .selection: 0.25,
-        .repRest:   0.20,
-    ]
+    /// Composite weights, per scope. Each column sums to 1.0.
+    ///
+    /// The `.singleSession` column is unchanged from before `frequency` existed, so template scores
+    /// stay comparable across the change. (Session scores still move a little, because volume is now
+    /// counted fractionally — the weights are stable, the inputs are more accurate.)
+    static func weight(_ d: QualityDimension, scope: QualityScope) -> Double {
+        switch scope {
+        case .weeklySplit:
+            switch d {
+            case .volume:    return 0.28
+            case .balance:   return 0.22
+            case .selection: return 0.20
+            case .repRest:   return 0.15
+            case .frequency: return 0.15
+            }
+        case .singleSession:
+            switch d {
+            case .volume:    return 0.30
+            case .balance:   return 0.25
+            case .selection: return 0.25
+            case .repRest:   return 0.20
+            case .frequency: return 0.0   // not applicable to one workout
+            }
+        }
+    }
 
     static func score(days: [[ScoredExercise]],
                       dayNames: [String],
                       scope: QualityScope,
                       profile: TrainingProfile,
-                      catalog: [ExerciseCandidate]) -> QualityReport {
+                      catalog: [ExerciseCandidate],
+                      intent: TrainingIntent? = nil) -> QualityReport {
         let resolvedDays = ExerciseResolver.resolve(days, catalog: catalog)
         let totalExercises = resolvedDays.reduce(0) { $0 + $1.count }
 
-        // Gate: hold scoring until there's enough to judge — a half-built plan would flag
-        // "low volume" on everything, which reads as nagging rather than coaching.
+        // Shared analyzers — run once, consumed by several scorers and by the UI.
+        let volume = MuscleVolumeAnalyzer.analyze(resolvedDays: resolvedDays, scope: scope,
+                                                  intent: intent, dayNames: dayNames,
+                                                  profile: profile, catalog: catalog)
+        let movement = MovementQualityAnalyzer.analyze(resolvedDays: resolvedDays, scope: scope,
+                                                       intent: intent, dayNames: dayNames,
+                                                       catalog: catalog)
+
+        // Gate: hold *scoring* until there's enough to judge — a half-built plan would flag
+        // "low volume" on everything, which reads as nagging rather than coaching. The bars and
+        // movement profile are still returned so coverage can fill in as they build.
         let minToScore = scope == .singleSession ? 2 : 3
-        guard totalExercises >= minToScore else { return .empty }
+        guard totalExercises >= minToScore else {
+            return QualityReport(overall: 0, tier: .needsWork, dimensions: [], tips: [],
+                                 isScored: false, volume: volume, movement: movement)
+        }
 
         let dimensions = [
-            VolumeScorer.score(resolvedDays: resolvedDays, scope: scope, profile: profile),
-            BalanceScorer.score(resolvedDays: resolvedDays, scope: scope, dayNames: dayNames, catalog: catalog),
-            SelectionScorer.score(resolvedDays: resolvedDays, scope: scope, profile: profile),
+            VolumeScorer.score(volume: volume, scope: scope, profile: profile),
+            BalanceScorer.score(resolvedDays: resolvedDays, scope: scope, dayNames: dayNames,
+                                intent: intent, volume: volume, catalog: catalog),
+            SelectionScorer.score(resolvedDays: resolvedDays, scope: scope, profile: profile,
+                                  movement: movement),
             RepRestScorer.score(resolvedDays: resolvedDays, scope: scope, profile: profile),
+            FrequencyScorer.score(volume: volume, scope: scope, profile: profile),
         ]
 
-        let overall = Int(dimensions.reduce(0.0) { acc, dim in
-            acc + Double(dim.score) * (weights[dim.dimension] ?? 0)
-        }.rounded())
-        let tier = QualityTier(score: overall)
+        var weighted = 0.0
+        for dim in dimensions {
+            weighted += Double(dim.score) * weight(dim.dimension, scope: scope)
+        }
+        let overall = Int(weighted.rounded())
 
-        let tips = mergeTips(from: dimensions)
-        return QualityReport(overall: overall, tier: tier,
-                             dimensions: dimensions, tips: tips, isScored: true)
+        // Only surface tips from dimensions that apply at this scope.
+        let applicable = dimensions.filter { $0.dimension.applies(to: scope) }
+        return QualityReport(overall: overall, tier: QualityTier(score: overall),
+                             dimensions: dimensions, tips: mergeTips(from: applicable),
+                             isScored: true, volume: volume, movement: movement)
     }
 
     /// Flatten all dimension tips, dedupe by id, and rank: most urgent first, then weakest

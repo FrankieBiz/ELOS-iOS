@@ -4,9 +4,16 @@ import Foundation
 /// coverage gaps. Coverage is scope-aware — a weekly split should train every major group, while
 /// a single focused session (e.g. a Push day) is judged only against its inferred focus.
 enum BalanceScorer {
+    /// Muscle counts come from `volume` but read **direct** (primary) sets only, on purpose.
+    /// "Is this muscle targeted?" and "how much stimulus does it get?" are different questions:
+    /// bench + incline press gives the triceps real fractional volume but zero direct work, and
+    /// "add some direct triceps work" is the correct coaching. The bars show both segments, so the
+    /// tip and the bar agree rather than contradicting each other.
     static func score(resolvedDays: [[ResolvedExercise]],
                       scope: QualityScope,
                       dayNames: [String],
+                      intent: TrainingIntent?,
+                      volume: MuscleVolumeReport,
                       catalog: [ExerciseCandidate]) -> DimensionScore {
         let all = resolvedDays.flatMap { $0 }
         guard all.contains(where: { $0.candidate != nil }) else {
@@ -39,13 +46,13 @@ enum BalanceScorer {
         }
 
         // Antagonist: quads vs hamstrings (posterior chain is the commonly-neglected side)
-        let quadSets = fineSets(all, contains: "quad")
-        let hamSets  = fineSets(all, contains: "hamstring")
+        let quadSets = volume.directSets(for: .quads)
+        let hamSets  = volume.directSets(for: .hamstrings)
         if quadSets > 0 && hamSets == 0 {
             penalties += 0.18
             tips.append(QualityTip(
                 id: "bal-noham", dimension: .balance, severity: .warn,
-                message: "Quads are trained but there's no hamstring work — add a hinge (RDL, leg curl) to balance the knee and build the posterior chain.",
+                message: "Quads are trained but there's no direct hamstring work — add a hinge (RDL, leg curl) to balance the knee and build the posterior chain.",
                 action: .addMuscle("hamstrings")))
         } else if quadSets > 0 && hamSets > 0 {
             let ratio = Double(max(quadSets, hamSets)) / Double(min(quadSets, hamSets))
@@ -62,16 +69,26 @@ enum BalanceScorer {
         // Coverage gaps — scope aware
         switch scope {
         case .weeklySplit:
-            let trained = Set(all.compactMap { $0.muscleGroup })
             let major: [MuscleGroup] = [.chest, .back, .legs, .shoulders, .arms]
-            for g in major where !trained.contains(g) {
-                penalties += 0.14
-                tips.append(QualityTip(
-                    id: "bal-gap-\(g.rawValue)", dimension: .balance, severity: .warn,
-                    message: "No \(g.rawValue) work this week — every major muscle should be trained. Add a \(g.rawValue) movement or day.",
-                    action: .addMuscle(g.rawValue)))
+            for g in major where volume.directSets(forGroup: g) == 0 {
+                // A group can have zero *direct* work yet real indirect volume (arms off presses and
+                // rows). That's a lighter problem than a true blind spot, so say so and penalise less.
+                let indirect = volume.sets(forGroup: g)
+                if indirect > 0 {
+                    penalties += 0.08
+                    tips.append(QualityTip(
+                        id: "bal-gap-\(g.rawValue)", dimension: .balance, severity: .info,
+                        message: "\(g.displayName) only gets indirect work from your compounds. Add a direct \(g.rawValue) movement to actually drive growth there.",
+                        action: .addMuscle(g.rawValue)))
+                } else {
+                    penalties += 0.14
+                    tips.append(QualityTip(
+                        id: "bal-gap-\(g.rawValue)", dimension: .balance, severity: .warn,
+                        message: "No \(g.rawValue) work this week — every major muscle should be trained. Add a \(g.rawValue) movement or day.",
+                        action: .addMuscle(g.rawValue)))
+                }
             }
-            if !trained.contains(.core) {
+            if volume.directSets(forGroup: .core) == 0 {
                 penalties += 0.05
                 tips.append(QualityTip(
                     id: "bal-gap-core", dimension: .balance, severity: .info,
@@ -80,13 +97,17 @@ enum BalanceScorer {
             }
 
         case .singleSession:
-            let added = all.map {
-                DayExercise(id: $0.exercise.id, name: $0.exercise.name,
-                            sets: $0.exercise.sets, reps: $0.exercise.repsText)
-            }
-            let ctx = DayContextInferrer.infer(dayName: dayNames.first ?? "", added: added, catalog: catalog)
-            let trained = Set(all.compactMap { $0.muscleGroup })
-            if let arch = ctx.archetype {
+            let trained = Set(MuscleGroup.allCases.filter { volume.directSets(forGroup: $0) > 0 })
+            // Explicit intent wins; fall back to inferring from the day name.
+            let archetype: SplitArchetype? = intent?.focus ?? {
+                let added = all.map {
+                    DayExercise(id: $0.exercise.id, name: $0.exercise.name,
+                                sets: $0.exercise.sets, reps: $0.exercise.repsText)
+                }
+                return DayContextInferrer.infer(dayName: dayNames.first ?? "",
+                                                added: added, catalog: catalog).archetype
+            }()
+            if let arch = archetype {
                 let targetGroups = archetypeGroups(arch)
                 for g in targetGroups.subtracting(trained) {
                     penalties += 0.12
@@ -110,13 +131,6 @@ enum BalanceScorer {
     }
 
     // MARK: Helpers
-
-    private static func fineSets(_ all: [ResolvedExercise], contains needle: String) -> Int {
-        all.reduce(0) { acc, r in
-            guard let p = r.normalizedPrimary, p.contains(needle) else { return acc }
-            return acc + r.exercise.sets
-        }
-    }
 
     private static func archetypeGroups(_ a: SplitArchetype) -> Set<MuscleGroup> {
         Set(MuscleTaxonomy.targetMuscles(forArchetype: a).compactMap { MuscleTaxonomy.group(forMuscle: $0) })

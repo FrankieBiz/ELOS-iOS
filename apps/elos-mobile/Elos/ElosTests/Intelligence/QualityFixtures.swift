@@ -34,4 +34,29 @@ enum QualityFixtures {
     static func resolve(_ days: [[ScoredExercise]]) -> [[ResolvedExercise]] {
         ExerciseResolver.resolve(days, catalog: catalog)
     }
+
+    static let intermediate = TrainingProfile(goal: .hypertrophy, experience: .intermediate)
+
+    /// Build the shared muscle report the scorers now consume.
+    static func volume(_ days: [[ResolvedExercise]],
+                       scope: QualityScope,
+                       profile: TrainingProfile = intermediate,
+                       intent: TrainingIntent? = nil,
+                       dayNames: [String]? = nil) -> MuscleVolumeReport {
+        MuscleVolumeAnalyzer.analyze(
+            resolvedDays: days, scope: scope, intent: intent,
+            dayNames: dayNames ?? Array(repeating: "", count: days.count),
+            profile: profile, catalog: catalog)
+    }
+
+    /// Build the shared movement profile the selection scorer now consumes.
+    static func movement(_ days: [[ResolvedExercise]],
+                         scope: QualityScope,
+                         intent: TrainingIntent? = nil,
+                         dayNames: [String]? = nil) -> MovementProfile {
+        MovementQualityAnalyzer.analyze(
+            resolvedDays: days, scope: scope, intent: intent,
+            dayNames: dayNames ?? Array(repeating: "", count: days.count),
+            catalog: catalog)
+    }
 }

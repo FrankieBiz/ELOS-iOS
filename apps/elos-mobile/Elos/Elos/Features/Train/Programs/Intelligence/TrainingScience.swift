@@ -75,4 +75,101 @@ enum TrainingScience {
         case .advanced:     return 0.33
         }
     }
+
+    // MARK: - Fractional volume
+
+    /// A set that trains a muscle *secondarily* counts as half a set toward that muscle
+    /// (the standard fractional-volume convention). Bench press = 1.0 chest + 0.5 triceps per set.
+    /// This is why volume is `Double` throughout the bar layer.
+    static let secondaryCredit: Double = 0.5
+
+    // MARK: - Per-fine-muscle volume bands
+    //
+    // Weekly sets per muscle. Defined at the `FineMuscle` level because that's the level the
+    // literature defines them at, and because a `Legs` aggregate hides "hamstrings: 0".
+    //
+    // IMPORTANT: these are calibrated for FRACTIONAL counting (primary 1.0 + secondary 0.5), so they
+    // sit above the direct-sets-only numbers usually quoted. Don't compare them to a table that
+    // counts primary sets only.
+    //
+    struct VolumeBand: Equatable {
+        let mev: Double        // minimum effective volume
+        let targetLow: Double  // bottom of the productive band
+        let targetHigh: Double // top of the productive band
+        let mrv: Double        // maximum recoverable volume
+
+        /// Optional muscles are excluded from "every muscle covered" checks and never emit a
+        /// low-volume warning — they're prehab/indirect work (rotator cuff, forearms), not a gap.
+        ///
+        /// Explicit rather than inferred from `mev == 0`: *every* per-session band has an MEV of 0,
+        /// because no single workout is obliged to train any given muscle. Deriving the flag made
+        /// all session bands look optional and silently emptied session volume scoring.
+        let isOptional: Bool
+
+        init(mev: Double, targetLow: Double, targetHigh: Double, mrv: Double,
+             isOptional: Bool = false) {
+            self.mev = mev
+            self.targetLow = targetLow
+            self.targetHigh = targetHigh
+            self.mrv = mrv
+            self.isOptional = isOptional
+        }
+
+        func scaled(_ f: Double) -> VolumeBand {
+            VolumeBand(mev: (mev * f).rounded(), targetLow: (targetLow * f).rounded(),
+                       targetHigh: (targetHigh * f).rounded(), mrv: (mrv * f).rounded(),
+                       isOptional: isOptional)
+        }
+    }
+
+    /// Base weekly band at `.intermediate`.
+    private static func baseWeeklyBand(_ m: FineMuscle) -> VolumeBand {
+        switch m {
+        case .chest:       return VolumeBand(mev: 8, targetLow: 14, targetHigh: 20, mrv: 26)
+        case .lats:        return VolumeBand(mev: 8, targetLow: 14, targetHigh: 20, mrv: 26)
+        case .upperBack:   return VolumeBand(mev: 8, targetLow: 14, targetHigh: 20, mrv: 28)
+        case .lowerBack:   return VolumeBand(mev: 4, targetLow: 8,  targetHigh: 14, mrv: 20)
+        case .rearDelts:   return VolumeBand(mev: 4, targetLow: 8,  targetHigh: 14, mrv: 20)
+        case .frontDelts:  return VolumeBand(mev: 6, targetLow: 10, targetHigh: 16, mrv: 24)
+        case .sideDelts:   return VolumeBand(mev: 6, targetLow: 10, targetHigh: 16, mrv: 24)
+        case .rotatorCuff: return VolumeBand(mev: 0, targetLow: 2,  targetHigh: 6,  mrv: 12, isOptional: true)
+        case .biceps:      return VolumeBand(mev: 8, targetLow: 12, targetHigh: 18, mrv: 24)
+        case .triceps:     return VolumeBand(mev: 8, targetLow: 12, targetHigh: 18, mrv: 24)
+        case .forearms:    return VolumeBand(mev: 0, targetLow: 2,  targetHigh: 8,  mrv: 14, isOptional: true)
+        case .quads:       return VolumeBand(mev: 8, targetLow: 12, targetHigh: 18, mrv: 24)
+        case .hamstrings:  return VolumeBand(mev: 6, targetLow: 10, targetHigh: 16, mrv: 22)
+        case .calves:      return VolumeBand(mev: 6, targetLow: 10, targetHigh: 16, mrv: 22)
+        case .glutes:      return VolumeBand(mev: 6, targetLow: 10, targetHigh: 16, mrv: 22)
+        case .abs:         return VolumeBand(mev: 4, targetLow: 8,  targetHigh: 14, mrv: 20)
+        }
+    }
+
+    /// Beginners grow on less and recover from less; advanced lifters need more to progress.
+    static func experienceScale(_ e: TrainingExperienceLevel) -> Double {
+        switch e {
+        case .beginner:     return 0.75
+        case .intermediate: return 1.0
+        case .advanced:     return 1.15
+        }
+    }
+
+    static func weeklyBand(for m: FineMuscle, experience: TrainingExperienceLevel) -> VolumeBand {
+        baseWeeklyBand(m).scaled(experienceScale(experience))
+    }
+
+    /// Within a *single* session, the question isn't weekly adequacy but per-session dosing: enough
+    /// to be a real stimulus, not so much that the last sets are junk. Uniform across muscles —
+    /// `mev` is 0 because no single workout is obliged to train any particular muscle.
+    static func sessionBand(for m: FineMuscle) -> VolumeBand {
+        VolumeBand(mev: 0,
+                   targetLow: Double(sessionTargetLow),
+                   targetHigh: Double(sessionTargetHigh),
+                   mrv: Double(sessionJunkThreshold))
+    }
+
+    // MARK: - Frequency
+
+    /// Training a muscle twice a week beats once at matched weekly volume — the best-supported
+    /// frequency finding, and the main thing a sets-per-week number can't tell you.
+    static let targetWeeklyFrequency = 2
 }

@@ -1,8 +1,9 @@
 import Foundation
 
-/// The four scored dimensions of a workout's quality.
+/// The scored dimensions of a workout's quality. `frequency` applies to a week only — a single
+/// session has no frequency to judge, so it carries zero weight at `.singleSession` scope.
 enum QualityDimension: String, CaseIterable {
-    case volume, balance, selection, repRest
+    case volume, balance, selection, repRest, frequency
 
     var label: String {
         switch self {
@@ -10,6 +11,15 @@ enum QualityDimension: String, CaseIterable {
         case .balance:   return "Balance"
         case .selection: return "Selection"
         case .repRest:   return "Reps & rest"
+        case .frequency: return "Frequency"
+        }
+    }
+
+    /// Whether this dimension is meaningful at the given scope.
+    func applies(to scope: QualityScope) -> Bool {
+        switch self {
+        case .frequency: return scope == .weeklySplit
+        default:         return true
         }
     }
 }
@@ -39,9 +49,11 @@ enum TipSeverity: Int, Comparable {
 
 /// An optional one-tap follow-up a tip can offer the builder UI.
 enum TipAction: Equatable {
-    case addMuscle(String)   // open the picker biased toward a muscle group
-    case addPattern(String)  // suggest a movement pattern (e.g. "hinge")
-    case reorder             // re-sort the day compounds-first
+    case addMuscle(String)        // open the picker biased toward a muscle group
+    case addPattern(String)       // suggest a movement pattern (e.g. "hinge")
+    /// Re-sort a day compounds-first. Carries the day index because at weekly scope there is no
+    /// implicit "the day" — the split builder needs to know *which* day to reorder.
+    case reorder(dayIndex: Int)
     case noAction
 
     var isActionable: Bool { self != .noAction }
@@ -77,7 +89,29 @@ struct QualityReport: Equatable {
     let dimensions: [DimensionScore]
     let tips: [QualityTip]   // merged, deduped, ranked — for inline display
     let isScored: Bool       // false when there's too little to score meaningfully
+    /// Per-muscle coverage rows (one per `MuscleGroup`, each with fine children). Populated even
+    /// when `isScored` is false, so the bars can fill in as the lifter builds.
+    let volume: MuscleVolumeReport
+    /// Compound/isolation mix and pattern spread.
+    let movement: MovementProfile
+
+    init(overall: Int, tier: QualityTier, dimensions: [DimensionScore], tips: [QualityTip],
+         isScored: Bool, volume: MuscleVolumeReport = .empty,
+         movement: MovementProfile = .empty) {
+        self.overall = overall
+        self.tier = tier
+        self.dimensions = dimensions
+        self.tips = tips
+        self.isScored = isScored
+        self.volume = volume
+        self.movement = movement
+    }
 
     static let empty = QualityReport(overall: 0, tier: .needsWork,
                                      dimensions: [], tips: [], isScored: false)
+
+    /// Dimension scores that apply at the given scope, in `QualityDimension.allCases` order.
+    func dimensions(for scope: QualityScope) -> [DimensionScore] {
+        dimensions.filter { $0.dimension.applies(to: scope) }
+    }
 }

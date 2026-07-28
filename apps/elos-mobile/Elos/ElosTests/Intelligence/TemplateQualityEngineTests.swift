@@ -9,7 +9,10 @@ struct TemplateQualityEngineTests {
                                             dayNames: [""], scope: .singleSession,
                                             profile: profile, catalog: QualityFixtures.catalog)
         #expect(!r.isScored)
-        #expect(r == .empty)
+        #expect(r.overall == 0)
+        #expect(r.dimensions.isEmpty)
+        // The coverage bars are still produced while unscored, so they can fill in as you build.
+        #expect(r.volume.bars.count == MuscleGroup.allCases.count)
     }
 
     @Test func splitNeedsThreeExercises() {
@@ -33,7 +36,11 @@ struct TemplateQualityEngineTests {
         #expect(r.isScored)
         #expect(r.overall >= 75)
         #expect(r.tier == .dialedIn || r.tier == .optimized)
-        #expect(r.dimensions.count == 4)
+        // Five dimensions are computed; frequency doesn't apply to one session, so it's excluded
+        // from the scope-filtered view the UI renders and carries zero weight.
+        #expect(r.dimensions.count == 5)
+        #expect(r.dimensions(for: .singleSession).count == 4)
+        #expect(TemplateQualityEngine.weight(.frequency, scope: .singleSession) == 0)
     }
 
     @Test func poorTemplateScoresLowWithTips() {
