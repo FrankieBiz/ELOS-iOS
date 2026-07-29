@@ -79,18 +79,22 @@ struct TodayView: View {
 
     // MARK: Habits
     private var habitsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.m) {
             HStack {
-                Text("HABITS · \(vm.doneHabits)/\(vm.habits.count)")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
+                // With no habits yet this read "HABITS · 0/0" beside an empty ring stranded at the
+                // far right — a progress gauge for nothing, and a count that looks like a failure
+                // rather than an invitation. Both only appear once there's something to track.
+                Text(vm.habits.isEmpty ? "HABITS" : "HABITS · \(vm.doneHabits)/\(vm.habits.count)")
+                    .elosSectionLabel()
                 Spacer()
-                SmallRingView(
-                    progress: vm.habits.isEmpty ? 0 : Double(vm.doneHabits) / Double(vm.habits.count),
-                    color: .mHabits,
-                    size: 28
-                )
+                if !vm.habits.isEmpty {
+                    SmallRingView(
+                        progress: Double(vm.doneHabits) / Double(vm.habits.count),
+                        color: .mHabits,
+                        size: 28
+                    )
+                    .accessibilityLabel("\(vm.doneHabits) of \(vm.habits.count) habits done")
+                }
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -103,17 +107,17 @@ struct TodayView: View {
                     Button {
                         vm.showingAddHabit = true
                     } label: {
-                        HStack(spacing: 6) {
+                        HStack(spacing: Space.xs + 2) {
                             Image(systemName: "plus")
-                                .font(.system(size: 14, weight: .semibold))
-                            Text("Add")
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.system(.footnote, weight: .semibold))
+                            Text(vm.habits.isEmpty ? "Add your first habit" : "Add")
+                                .font(.system(.footnote, weight: .medium))
                         }
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .padding(.horizontal, Space.l)
+                        .padding(.vertical, Space.m)
+                        .background(Color(.secondarySystemGroupedBackground),
+                                    in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }

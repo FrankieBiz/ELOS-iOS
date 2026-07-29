@@ -194,13 +194,13 @@ struct ExercisePickerView: View {
     // MARK: Tab Picker
 
     private var tabPicker: some View {
-        Picker("Tab", selection: $tab) {
-            ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-        }
-        .pickerStyle(.segmented)
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        // Was `.pickerStyle(.segmented)`, whose grey selected capsule reads as stock UIKit and left
+        // the selection ambiguous against full-white unselected labels — the same problem fixed in
+        // Plan. Uses the shared control so both switchers look like one app.
+        ElosSegmentedControl(tabs: Tab.allCases, label: \.rawValue, selection: $tab)
+            .padding(.horizontal, Space.gutter)
+            .padding(.top, Space.s)
+            .padding(.bottom, Space.xs)
     }
 
     // MARK: Filter Area
@@ -234,21 +234,6 @@ struct ExercisePickerView: View {
                     chip(tag.rawValue, selected: bodyPartFilter == tag) { bodyPartFilter = tag; muscleFilter = "All" }
                 }
             }
-            HStack {
-                Spacer()
-                Menu {
-                    Picker("Sort", selection: $sortMode) {
-                        ForEach(ExerciseSortMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.arrow.down")
-                        Text(sortMode.rawValue)
-                    }
-                    .font(.caption).foregroundStyle(Color.tint)
-                }
-                .padding(.trailing, 16).padding(.vertical, 4)
-            }
             if bodyPartFilter != .all && availableMuscles.count > 1 {
                 Divider().padding(.leading, 16)
                 filterRow(label: "Muscle") {
@@ -265,16 +250,30 @@ struct ExercisePickerView: View {
                     }
                 }
             }
+            // Sort and the filter toggle were each alone in their own right-aligned row, stacking two
+            // near-empty lines on top of three chip rows — the filter chrome pushed the exercise list
+            // itself past halfway down the screen. One row, opposite ends, one line reclaimed.
             HStack {
+                Menu {
+                    Picker("Sort", selection: $sortMode) {
+                        ForEach(ExerciseSortMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                } label: {
+                    HStack(spacing: Space.xs) {
+                        Image(systemName: "arrow.up.arrow.down")
+                        Text(sortMode.rawValue)
+                    }
+                    .font(.elosCaption).foregroundStyle(Color.tint)
+                }
                 Spacer()
                 Button(showAdvancedFilters ? "Fewer filters" : "More filters") {
-                    withAnimation { showAdvancedFilters.toggle() }
+                    withAnimation(.snappy(duration: 0.2)) { showAdvancedFilters.toggle() }
                 }
-                .font(.caption)
+                .font(.elosCaption)
                 .foregroundStyle(Color.tint)
-                .padding(.trailing, 16)
-                .padding(.vertical, 6)
             }
+            .padding(.horizontal, Space.gutter)
+            .padding(.vertical, Space.xs + 2)
         }
         .background(Color(.systemBackground))
     }

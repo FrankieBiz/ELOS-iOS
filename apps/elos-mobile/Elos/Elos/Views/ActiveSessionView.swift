@@ -244,10 +244,14 @@ struct ActiveSessionView: View {
 
     private func statColumn(title: String, sub: String) -> some View {
         VStack(spacing: 3) {
-            Text(title).font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
-            Text(sub).font(.caption).foregroundStyle(.secondary)
+            Text(title)
+                .font(.elosNumeric(.title3, weight: .bold))
+                .contentTransition(.numericText())
+            Text(sub).font(.elosCaption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(sub): \(title)")
     }
 
     /// Wall-clock seconds since the session started — derived from the persisted
@@ -474,56 +478,72 @@ struct ActiveSessionView: View {
                 }
             }
 
-            // Always-visible add button so users can add exercises mid-session
+            // Always-visible add button so users can add exercises mid-session.
+            //
+            // Emphasis follows what the user can actually do. On an empty session this is the *only*
+            // useful action, so it takes the filled accent; once sets exist it steps back to the soft
+            // tint and lets Finish carry the weight. Previously it was permanently subdued while a
+            // full-width red Finish dominated a session with nothing in it to finish.
+            let isOnlyAction = vm.doneSetsCount == 0
             Button {
                 showExercisePicker = true
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: Space.s) {
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(Color.tint)
+                        .font(.title3)
                     Text("Add Exercise")
-                        .font(.subheadline).fontWeight(.semibold)
-                        .foregroundStyle(Color.tint)
+                        .font(.system(.subheadline, weight: .semibold))
                     Spacer()
                 }
-                .padding(.horizontal, 16).padding(.vertical, 14)
-                .background(Color.tintSoft)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .foregroundStyle(isOnlyAction ? .white : Color.tint)
+                .padding(.horizontal, Space.gutter).padding(.vertical, Space.l)
+                .background(
+                    isOnlyAction ? Color.tint : Color.tintSoft,
+                    in: RoundedRectangle(cornerRadius: Radius.button, style: .continuous)
+                )
             }
             .buttonStyle(.plain)
         }
     }
 
     private var emptyExercisesPrompt: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Space.m) {
             Image(systemName: "dumbbell.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 32))
+                .foregroundStyle(.tertiary)
             Text("No exercises yet")
-                .font(.headline)
+                .font(.elosHeadline)
             Text("Tap Add Exercise below to start logging sets.")
-                .font(.subheadline).foregroundStyle(.secondary)
+                .font(.elosCaption).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(32)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.vertical, 32).padding(.horizontal, Space.xxl)
+        .elosCard()
     }
 
     // MARK: Finish Button
     private var finishButton: some View {
-        Button { showFinishAlert = true } label: {
-            Label("Finish Workout", systemImage: "stop.fill")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.white)
+        // Finishing a workout is an accomplishment, not a destructive act, but this was filled with
+        // Color.bad — the same alarm red used for errors — and sat at full width below a subdued
+        // "Add Exercise". With no sets logged it was the loudest control on a screen where it had
+        // nothing to do. Nav-bar "Finish" already covers abandoning an empty session, so here it
+        // stays quiet until there's a workout to close out.
+        let hasWork = vm.doneSetsCount > 0
+        return Button { showFinishAlert = true } label: {
+            Label("Finish Workout", systemImage: "checkmark.circle.fill")
+                .font(.system(.headline, weight: .bold))
+                .foregroundStyle(hasWork ? .white : Color.secondary)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Color.bad)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.vertical, Space.l)
+                .background {
+                    RoundedRectangle(cornerRadius: Radius.button, style: .continuous)
+                        .fill(hasWork ? AnyShapeStyle(Color.good)
+                                      : AnyShapeStyle(Color(.secondarySystemGroupedBackground)))
+                }
         }
         .buttonStyle(.plain)
+        .disabled(!hasWork)
     }
 }
 
