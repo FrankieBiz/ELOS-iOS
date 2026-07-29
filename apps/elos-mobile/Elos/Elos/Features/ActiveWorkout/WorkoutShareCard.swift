@@ -128,7 +128,7 @@ struct WorkoutShareCard: View {
             .padding(28)
         }
         .frame(width: 390, height: 260)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     private func shareStatCol(value: String, label: String) -> some View {

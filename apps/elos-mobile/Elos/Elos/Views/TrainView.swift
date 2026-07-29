@@ -211,7 +211,7 @@ struct TrainView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var restDayCard: some View {
@@ -253,7 +253,7 @@ struct TrainView: View {
             }
             .padding(14)
             .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -281,8 +281,8 @@ struct TrainView: View {
         }
         .padding(14)
         .background(Color.warn.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.warn.opacity(0.3), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color.warn.opacity(0.3), lineWidth: 1))
     }
 
     // MARK: Program Header
@@ -491,7 +491,7 @@ struct TrainView: View {
                         .padding(.vertical, 8)
                         .frame(width: 140, alignment: .leading)
                         .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                 }
                 .padding(.horizontal, 1)
@@ -538,7 +538,7 @@ struct TrainView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(Color.tint)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .buttonStyle(.plain)
 
@@ -559,7 +559,7 @@ struct TrainView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .confirmationDialog("Skip today's workout?", isPresented: $showSkipConfirm, titleVisibility: .visible) {
@@ -673,7 +673,7 @@ struct TrainView: View {
                             .font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
                             .padding(.horizontal, 8).padding(.vertical, 3)
                             .background(Color.secondary.opacity(0.12))
-                            .clipShape(RoundedRectangle(cornerRadius: 5))
+                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                     }
                     .padding(.horizontal, 16).padding(.vertical, 10)
                     Divider().padding(.leading, 16)
@@ -742,7 +742,7 @@ struct TrainView: View {
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
         .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     // MARK: Muscle radar data
@@ -838,7 +838,7 @@ private struct QuickActionButton: View {
             .padding(.vertical, 10)
             .foregroundStyle(Color.tint)
             .background(Color.tintSoft)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -863,10 +863,10 @@ private struct WeekDayCard: View {
         .padding(.horizontal, 10).padding(.vertical, 8)
         .foregroundStyle(day.isToday ? Color.white : Color.primary)
         .background(day.isToday ? Color.tint : Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay {
             if !day.isToday && !day.isPast {
-                RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.3), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color.secondary.opacity(0.3), lineWidth: 1)
             }
         }
     }
@@ -897,7 +897,7 @@ private struct ExerciseCard: View {
                         .font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(Color.secondary.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.caption).foregroundStyle(.secondary)
                 }

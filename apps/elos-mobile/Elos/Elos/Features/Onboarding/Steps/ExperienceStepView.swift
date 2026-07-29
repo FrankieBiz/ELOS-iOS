@@ -97,9 +97,9 @@ private struct ExperienceChip: View {
             }
             .padding(14)
             .background(isSelected ? Color.tintSoft : Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(isSelected ? Color.tint : Color.clear, lineWidth: 1.5)
             )
         }
@@ -133,9 +133,9 @@ private struct GoalChip: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .background(isSelected ? Color.tintSoft : Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(isSelected ? Color.tint : Color.clear, lineWidth: 1.5)
             )
         }

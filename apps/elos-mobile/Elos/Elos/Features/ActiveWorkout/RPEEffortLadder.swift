@@ -23,7 +23,7 @@ struct RPEEffortLadder: View {
                                 .frame(minWidth: 36, minHeight: 34)
                                 .background(isSelected ? Color.tint : Color(.tertiarySystemBackground))
                                 .foregroundStyle(isSelected ? .white : Color.primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }

@@ -182,7 +182,7 @@ struct MeView: View {
                         .foregroundStyle(Color.tint)
                         .padding(.horizontal, 10).padding(.vertical, 5)
                         .background(Color.tintSoft)
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
@@ -226,7 +226,7 @@ struct MeView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 9)
                         .background(Color.mNutri.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .buttonStyle(.plain)
                 }
             }
@@ -241,7 +241,7 @@ struct MeView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 9)
                         .background(Color(.tertiarySystemFill))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .buttonStyle(.plain)
                 }
             }
@@ -361,7 +361,7 @@ struct MeView: View {
                 } label: {
                     HStack(spacing: 12) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 7)
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
                                 .fill(settingsItems[i].bg)
                                 .frame(width: 32, height: 32)
                             Image(systemName: settingsItems[i].icon)

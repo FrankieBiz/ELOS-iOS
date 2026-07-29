@@ -68,10 +68,10 @@ struct XPRankCard: View {
         VStack(alignment: .leading, spacing: 5) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 5)
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .fill(Color.secondary.opacity(0.12))
                         .frame(height: 10)
-                    RoundedRectangle(cornerRadius: 5)
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [progress.rank.color.opacity(0.7), progress.rank.color],
@@ -150,7 +150,7 @@ struct XPRankCard: View {
         }
         .padding(.vertical, 6)
         .background(Color(.tertiarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func statCell(icon: String, color: Color, value: String, label: String) -> some View {
@@ -234,6 +234,6 @@ struct XPRankCard: View {
         }
         .padding(12)
         .background(Color(.tertiarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }

@@ -57,7 +57,7 @@ struct ActiveSessionView: View {
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.warn.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
                     if let prName = trainVM.newPRExerciseName {
                         prRibbon(exerciseName: prName)
@@ -209,7 +209,7 @@ struct ActiveSessionView: View {
                 }
                 .padding(10)
                 .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
 
             Button {
@@ -221,7 +221,7 @@ struct ActiveSessionView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
                     .background(Color.tintSoft)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(.plain)
         }
@@ -358,8 +358,8 @@ struct ActiveSessionView: View {
         }
         .padding(12)
         .background(Color.yellow.opacity(0.15))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.yellow.opacity(0.4), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color.yellow.opacity(0.4), lineWidth: 1))
         .transition(.move(edge: .top).combined(with: .opacity))
     }
 
@@ -489,7 +489,7 @@ struct ActiveSessionView: View {
                 }
                 .padding(.horizontal, 16).padding(.vertical, 14)
                 .background(Color.tintSoft)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .buttonStyle(.plain)
         }
@@ -509,7 +509,7 @@ struct ActiveSessionView: View {
         .frame(maxWidth: .infinity)
         .padding(32)
         .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     // MARK: Finish Button
@@ -521,7 +521,7 @@ struct ActiveSessionView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(Color.bad)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -568,7 +568,7 @@ private struct SessionRPESheet: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(Color.tint)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 20)

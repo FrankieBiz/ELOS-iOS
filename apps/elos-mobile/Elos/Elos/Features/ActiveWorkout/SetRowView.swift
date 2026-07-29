@@ -99,7 +99,7 @@ struct SessionExerciseCard: View {
                         .font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(Color.secondary.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                 }
             }
             .buttonStyle(.plain)
@@ -166,7 +166,7 @@ struct SessionExerciseCard: View {
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
         .background(Color.good.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .contextMenu {
             Button { beginEditing(i) } label: { Label("Edit set", systemImage: "pencil") }
             Button(role: .destructive) { onSetToggle(i) } label: { Label("Uncomplete", systemImage: "arrow.uturn.backward") }
@@ -237,7 +237,7 @@ struct SessionExerciseCard: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(Color.good)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
             } else {
@@ -248,13 +248,13 @@ struct SessionExerciseCard: View {
                     Button { cancelEditing(i) } label: {
                         Text("Cancel").font(.subheadline).fontWeight(.semibold).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity).padding(.vertical, 10)
-                            .background(Color(.tertiarySystemBackground)).clipShape(RoundedRectangle(cornerRadius: 10))
+                            .background(Color(.tertiarySystemBackground)).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     Button { saveEditing(i) } label: {
                         Text("Save").font(.subheadline).fontWeight(.bold).foregroundStyle(.white)
                             .frame(maxWidth: .infinity).padding(.vertical, 10)
-                            .background(Color.tint).clipShape(RoundedRectangle(cornerRadius: 10))
+                            .background(Color.tint).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -262,8 +262,8 @@ struct SessionExerciseCard: View {
         }
         .padding(12)
         .background((mode == .edit ? Color.tint : Color.tint).opacity(0.06))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.tint.opacity(0.3), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.tint.opacity(0.3), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .contextMenu {
             if mode == .active {
                 Button(role: .destructive) { onSetDelete(i) } label: { Label("Delete set", systemImage: "trash") }
@@ -284,7 +284,7 @@ struct SessionExerciseCard: View {
                 .frame(maxWidth: width == nil ? .infinity : nil)
                 .frame(width: width)
                 .background(Color(.tertiarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .frame(maxWidth: width == nil ? .infinity : nil)
     }

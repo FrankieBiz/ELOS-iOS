@@ -26,7 +26,7 @@ struct ProgramSelectionStepView: View {
                     TextField("e.g. University High School", text: $vm.schoolName)
                         .padding(14)
                         .background(Color(.secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
 
                 // School year
@@ -47,7 +47,7 @@ struct ProgramSelectionStepView: View {
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
                                     .background(vm.schoolYear == years[i] ? Color.tint : Color(.secondarySystemBackground))
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             }
                             .buttonStyle(.plain)
                         }
@@ -85,7 +85,7 @@ struct ProgramSelectionStepView: View {
                 }
                 .padding(14)
                 .background(Color(.secondarySystemGroupedBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 Text("These are general estimates for educational use, not medical or dietary advice. Talk to a doctor or registered dietitian before changing how you eat — especially if you're still growing.")
                     .font(.caption2)

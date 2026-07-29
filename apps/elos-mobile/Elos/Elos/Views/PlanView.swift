@@ -85,7 +85,7 @@ struct PlanView: View {
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .foregroundStyle(selectedDayOffset == offset ? Color.white : Color.primary)
                         .background(selectedDayOffset == offset ? Color.tint : Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -176,7 +176,7 @@ struct PlanView: View {
                             .foregroundStyle(assignFilter == f ? .white : .primary)
                             .padding(.horizontal, 16).padding(.vertical, 8)
                             .background(assignFilter == f ? Color.tint : Color(.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -204,7 +204,7 @@ struct PlanView: View {
                 .font(.subheadline).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity).padding(.vertical, 14)
                 .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .sheet(isPresented: $showingAddAssignment) {
                     AddAssignmentSheet { name, subject, due in
                         vm.addAssignment(name: name, subject: subject, due: due)

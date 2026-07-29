@@ -83,7 +83,7 @@ private struct ErrorBanner: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background(Color.red.opacity(0.92))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .padding(.horizontal, 14)
         .padding(.top, 8)
         .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
@@ -134,7 +134,7 @@ private struct ResumeSessionPrompt: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(Color(.tertiarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
 
@@ -148,14 +148,13 @@ private struct ResumeSessionPrompt: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(Color.tint)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(14)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .elosCard()
         .shadow(color: .black.opacity(0.15), radius: 10, y: 4)
         .padding(.horizontal, 14)
         .padding(.bottom, 96)   // clear the tab bar

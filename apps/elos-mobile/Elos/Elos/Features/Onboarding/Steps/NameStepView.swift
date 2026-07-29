@@ -29,7 +29,7 @@ struct NameStepView: View {
                         .onSubmit { focused = .last }
                         .padding(14)
                         .background(Color(.secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -44,7 +44,7 @@ struct NameStepView: View {
                         .onSubmit { focused = .username }
                         .padding(14)
                         .background(Color(.secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
 
                 usernameField
@@ -79,7 +79,7 @@ struct NameStepView: View {
             }
             .padding(14)
             .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             Text(statusMessage)
                 .font(.caption)

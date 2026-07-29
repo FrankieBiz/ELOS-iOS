@@ -86,7 +86,7 @@ struct BodyMetricsStepView: View {
                 }
                 .frame(height: 120)
                 .background(Color(.secondarySystemGroupedBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
 
             // Weight + Age side by side
@@ -103,7 +103,7 @@ struct BodyMetricsStepView: View {
                     .pickerStyle(.wheel)
                     .frame(height: 120)
                     .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -115,7 +115,7 @@ struct BodyMetricsStepView: View {
                     .pickerStyle(.wheel)
                     .frame(height: 120)
                     .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
             }
 

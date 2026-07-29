@@ -46,7 +46,7 @@ private struct FeatureRow: View {
     var body: some View {
         HStack(spacing: 16) {
             ZStack {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(color.opacity(0.15))
                     .frame(width: 44, height: 44)
                 Image(systemName: icon)

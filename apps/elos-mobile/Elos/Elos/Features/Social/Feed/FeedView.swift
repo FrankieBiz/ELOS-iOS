@@ -205,7 +205,7 @@ struct FeedPostCard: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .background(imported ? Color(.tertiarySystemBackground) : Color.tint)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .disabled(imported)
@@ -356,7 +356,7 @@ struct SplitPostContent: View {
                             .lineLimit(1)
                             .padding(.horizontal, 10).padding(.vertical, 6)
                             .background(Color(.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
                 }
             }

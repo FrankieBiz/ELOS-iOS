@@ -46,7 +46,7 @@ struct TodayView: View {
         }
         .padding(14)
         .background(Color.warn.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // MARK: Header
@@ -97,7 +97,7 @@ struct TodayView: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -262,8 +262,7 @@ struct TodayView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
-            .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .elosCard()
         }
         .buttonStyle(.plain)
     }
@@ -308,7 +307,7 @@ struct TodayView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Color.mNutri.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         .buttonStyle(.plain)
                 }
             }
@@ -321,15 +320,14 @@ struct TodayView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Color(.tertiarySystemFill))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         .buttonStyle(.plain)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .elosCard()
     }
 
     // MARK: Helpers
@@ -381,8 +379,7 @@ private struct StatCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
-            .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .elosCard()
         }
         .buttonStyle(.plain)
     }
@@ -423,7 +420,7 @@ private struct HabitPillView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(habit.done ? Color.tintSoft : Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .shadow(color: .black.opacity(0.04), radius: 3, y: 1)
             .scaleEffect(pressed ? 0.96 : 1)
             .animation(.easeOut(duration: 0.1), value: pressed)
