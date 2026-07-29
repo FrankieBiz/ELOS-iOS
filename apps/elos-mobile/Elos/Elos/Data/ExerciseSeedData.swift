@@ -51,7 +51,11 @@ enum ExerciseCatalog {
     ]
 
     // (name, primaryMuscle, secondaryMuscles, equipment, movementPattern)
-    private static let catalog: [(String, String, [String], String, String)] = [
+    /// `internal` rather than `private` so tests can walk the shipped catalog and assert every
+    /// exercise's muscles actually resolve — a typo'd muscle key here silently removes that
+    /// exercise from all muscle-coverage scoring, which is invisible without a test over real data.
+    /// Tuple order: (name, primaryMuscle, secondaryMuscles, equipment, movementPattern).
+    static let catalog: [(String, String, [String], String, String)] = [
 
         // ── CHEST ──────────────────────────────────────────────────────────────
         ("Barbell Bench Press",             "chest",        ["triceps","front_delts"],          "barbell",    "push"),

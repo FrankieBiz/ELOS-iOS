@@ -88,7 +88,7 @@ enum MuscleTaxonomy {
         "biceps", "brachialis", "triceps", "forearms",
         "quads", "hamstrings", "calves",
         "glutes", "adductors", "hip_abductors",
-        "core", "obliques", "hip_flexors",
+        "abs", "core", "obliques", "hip_flexors",
     ]
 
     /// Map a raw muscle string to its display-level slot. Returns nil only for strings outside the
