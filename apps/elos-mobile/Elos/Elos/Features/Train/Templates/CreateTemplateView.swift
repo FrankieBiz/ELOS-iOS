@@ -390,10 +390,9 @@ struct TemplateBuilderView: View {
                                         let payload = bar.fine?.rawValue ?? bar.group.rawValue
                                         openPicker(biasedToMuscles: MuscleTaxonomy.targetMuscles(forPayload: payload))
                                     })
-                                .padding(14)
+                                .padding(Space.card)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color(.secondarySystemGroupedBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                                .elosCard()
                             }
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)

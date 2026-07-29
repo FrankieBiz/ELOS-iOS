@@ -62,7 +62,7 @@ struct QualityDimensionBars: View {
             ForEach(dimensions) { dim in
                 HStack(spacing: 10) {
                     Text(dim.dimension.label)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(.caption, weight: .medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
@@ -76,7 +76,7 @@ struct QualityDimensionBars: View {
                     }
                     .frame(height: 6)
                     Text("\(dim.score)")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.elosNumeric(.caption, weight: .semibold))
                         .foregroundStyle(QualityPalette.color(forScore: dim.score))
                         .frame(width: 26, alignment: .trailing)
                 }

@@ -49,41 +49,27 @@ extension Color {
     static let muscleSec = Color(hex: "F59E0B")
 }
 
-// MARK: - Vigil palette stub (keeps existing font references valid)
-extension Color {
-    static let vigil = VigilPalette()
-
-    struct VigilPalette {
-        let pearl     = Color.primary
-        let secondary = Color.secondary
-        let accent    = Color.tint
-        let danger    = Color.bad
-        let warning   = Color.warn
-        let success   = Color.good
-        let separator = Color.secondary.opacity(0.15)
-        var border: Color { separator }
-    }
-}
-
 // MARK: - Card Modifier
+
+/// The app's one card surface. Three deliberate details:
+/// - `.continuous` corners (squircles) rather than the default circular arc — the shape iOS itself
+///   uses, and the single clearest tell between a stock-looking and a considered SwiftUI app.
+/// - One radius for every card, from `Radius.card`, so nothing drifts (this file previously said
+///   12 while several hand-rolled cards used 16).
+/// - A whisper of elevation. The app was entirely flat, so cards and the grouped background read as
+///   one sheet; this separates them without looking like a drop-shadowed 2013 skeuomorph.
 struct ElosCardModifier: ViewModifier {
-    var cornerRadius: CGFloat = 12
+    var cornerRadius: CGFloat = Radius.card
     func body(content: Content) -> some View {
         content
             .background(Color(UIColor.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .shadow(color: .black.opacity(0.055), radius: 10, x: 0, y: 3)
     }
 }
 
 extension View {
-    func elosCard(cornerRadius: CGFloat = 12) -> some View {
-        modifier(ElosCardModifier(cornerRadius: cornerRadius))
-    }
-    func strndCard(cornerRadius: CGFloat = 12) -> some View {
-        modifier(ElosCardModifier(cornerRadius: cornerRadius))
-    }
-    func elosGlow(_: Color = .clear, radius _: CGFloat = 0) -> some View { self }
-    func elosGlassCard(cornerRadius: CGFloat = 12) -> some View {
+    func elosCard(cornerRadius: CGFloat = Radius.card) -> some View {
         modifier(ElosCardModifier(cornerRadius: cornerRadius))
     }
 }
@@ -97,10 +83,10 @@ struct ElosFilledButtonStyle: ButtonStyle {
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(color.opacity(configuration.isPressed ? 0.8 : 1))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .background(color.opacity(configuration.isPressed ? 0.85 : 1))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.button, style: .continuous))
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -118,10 +104,18 @@ struct ElosSecondaryButtonStyle: ButtonStyle {
             .foregroundStyle(Color.primary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(Color(UIColor.tertiarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            // Was `tertiarySystemGroupedBackground`, which is the *same* grey as the
+            // `systemGroupedBackground` pages these buttons sit on in light mode — the button was
+            // effectively invisible, reading as bare floating text. A raised fill plus a hairline
+            // border gives it a real edge on both light and dark.
+            .background(Color(UIColor.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.button, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.button, style: .continuous)
+                    .stroke(Color.primary.opacity(0.10), lineWidth: 1)
+            )
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 

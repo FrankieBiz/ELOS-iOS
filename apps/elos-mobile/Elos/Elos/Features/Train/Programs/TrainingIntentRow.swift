@@ -68,12 +68,12 @@ struct TrainingIntentRow: View {
     private func chip(icon: String, text: String, isSet: Bool) -> some View {
         HStack(spacing: 5) {
             Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(.caption2, weight: .semibold))
             Text(text)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(.caption, weight: .semibold))
                 .lineLimit(1)
             Image(systemName: "chevron.down")
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(.caption2, weight: .bold))
                 .foregroundStyle(.tertiary)
         }
         .foregroundStyle(isSet ? Color.tint : Color.secondary)

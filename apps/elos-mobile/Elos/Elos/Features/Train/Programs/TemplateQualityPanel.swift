@@ -32,9 +32,8 @@ struct TemplateQualityPanel: View {
                 if let onSeeFullReport { fullReportRow(onSeeFullReport) }
             }
         }
-        .padding(14)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .padding(Space.card)
+        .elosCard()
     }
 
     // MARK: Header (score ring + tier)
@@ -48,10 +47,10 @@ struct TemplateQualityPanel: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(.caption, weight: .semibold))
                         .foregroundStyle(.secondary)
                     Text(report.tier.rawValue)
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.system(.headline, weight: .bold))
                         .foregroundStyle(QualityPalette.color(forScore: report.overall))
                 }
 
@@ -74,10 +73,10 @@ struct TemplateQualityPanel: View {
         if report.tips.isEmpty {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 13))
+                    .font(.elosBody)
                     .foregroundStyle(Color.good)
                 Text("Looking dialed in — no issues to flag.")
-                    .font(.system(size: 12))
+                    .font(.elosCaption)
                     .foregroundStyle(.secondary)
             }
             .padding(.top, 2)
@@ -105,18 +104,18 @@ struct TemplateQualityPanel: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Image(systemName: "chart.bar.doc.horizontal")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(.caption, weight: .semibold))
                 Text("See full report")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(.footnote, weight: .semibold))
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(.caption2, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
             .foregroundStyle(Color.tint)
             .padding(.vertical, 9).padding(.horizontal, 11)
             .background(Color.tintSoft)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityHint("Opens muscle coverage, movement quality and frequency")

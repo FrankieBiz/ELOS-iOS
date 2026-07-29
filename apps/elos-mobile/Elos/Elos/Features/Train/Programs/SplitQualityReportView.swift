@@ -53,10 +53,10 @@ struct SplitQualityReportView: View {
             QualityScoreRing(score: report.overall, size: 76, lineWidth: 7)
             VStack(alignment: .leading, spacing: 4) {
                 Text(report.tier.rawValue)
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.elosTitle)
                     .foregroundStyle(QualityPalette.color(forScore: report.overall))
                 Text(verdict)
-                    .font(.system(size: 13))
+                    .font(.elosBody)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -116,7 +116,7 @@ struct SplitQualityReportView: View {
 
             if total <= 0 {
                 Text("Add some exercises to see your movement mix.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .font(.elosCaption).foregroundStyle(.secondary)
             } else {
                 // Compound vs isolation, by set volume.
                 VStack(alignment: .leading, spacing: 6) {
@@ -124,12 +124,12 @@ struct SplitQualityReportView: View {
                         let w = geo.size.width
                         HStack(spacing: 2) {
                             if m.compoundSets > 0 {
-                                RoundedRectangle(cornerRadius: 3)
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
                                     .fill(Color.tint)
                                     .frame(width: max(4, w * (m.compoundSets / total) - 1))
                             }
                             if m.isolationSets > 0 {
-                                RoundedRectangle(cornerRadius: 3)
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
                                     .fill(Color.tint.opacity(0.3))
                             }
                         }
@@ -167,7 +167,7 @@ struct SplitQualityReportView: View {
                 if let first = m.missingPatterns.first {
                     let examples = MovementQualityAnalyzer.examples(forPattern: first)
                     Text("Missing a \(MovementQualityAnalyzer.label(forPattern: first).lowercased()) pattern\(examples.isEmpty ? "" : " — \(examples)").")
-                        .font(.system(size: 12))
+                        .font(.elosCaption)
                         .foregroundStyle(Color.warn)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -180,15 +180,15 @@ struct SplitQualityReportView: View {
 
     private func swatch(_ c: Color, _ text: String) -> some View {
         HStack(spacing: 5) {
-            RoundedRectangle(cornerRadius: 2).fill(c).frame(width: 12, height: 8)
-            Text(text).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+            RoundedRectangle(cornerRadius: 2, style: .continuous).fill(c).frame(width: 12, height: 8)
+            Text(text).font(.system(.caption2, weight: .medium)).foregroundStyle(.secondary)
         }
     }
 
     private func patternPill(_ name: String, _ value: String, isMissing: Bool) -> some View {
         HStack(spacing: 4) {
-            Text(name).font(.system(size: 11, weight: .semibold))
-            Text(value).font(.system(size: 11, weight: .regular, design: .rounded))
+            Text(name).font(.system(.caption2, weight: .semibold))
+            Text(value).font(.elosNumeric(.caption2, weight: .regular))
                 .foregroundStyle(isMissing ? Color.warn : Color.secondary)
         }
         .foregroundStyle(isMissing ? Color.warn : Color.primary)
@@ -214,18 +214,18 @@ struct SplitQualityReportView: View {
             sectionTitle("FREQUENCY")
             if rows.isEmpty {
                 Text("No direct muscle work yet.")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .font(.elosCaption).foregroundStyle(.secondary)
             } else {
                 Text("Training a muscle \(TrainingScience.targetWeeklyFrequency)×/week beats once at the same volume.")
-                    .font(.system(size: 11))
+                    .font(.elosMicro)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 FlowRow(spacing: 6) {
                     ForEach(rows, id: \.0) { muscle, days in
                         let ok = days >= TrainingScience.targetWeeklyFrequency
                         HStack(spacing: 4) {
-                            Text(muscle.displayName).font(.system(size: 11, weight: .semibold))
-                            Text("×\(days)").font(.system(size: 11, weight: .bold, design: .rounded))
+                            Text(muscle.displayName).font(.system(.caption2, weight: .semibold))
+                            Text("×\(days)").font(.elosNumeric(.caption2, weight: .bold))
                         }
                         .foregroundStyle(ok ? Color.good : Color.warn)
                         .padding(.horizontal, 9).padding(.vertical, 5)
@@ -249,9 +249,9 @@ struct SplitQualityReportView: View {
             if report.tips.isEmpty {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 14)).foregroundStyle(Color.good)
+                        .font(.elosBody).foregroundStyle(Color.good)
                     Text("Nothing to flag — this week looks dialed in.")
-                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                        .font(.elosBody).foregroundStyle(.secondary)
                 }
             } else {
                 VStack(spacing: 0) {
@@ -276,18 +276,18 @@ struct SplitQualityReportView: View {
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(day.name.isEmpty ? "Day \(day.id + 1)" : day.name)
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(.subheadline, weight: .semibold))
                                 .lineLimit(1)
                             Text("\(day.exerciseCount) exercise\(day.exerciseCount == 1 ? "" : "s") · \(day.sets) sets")
-                                .font(.system(size: 11)).foregroundStyle(.secondary)
+                                .font(.elosMicro).foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 0)
                         if let s = day.score {
                             Text("\(s)")
-                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                                .font(.elosNumeric(.subheadline, weight: .bold))
                                 .foregroundStyle(QualityPalette.color(forScore: s))
                         } else {
-                            Text("—").font(.system(size: 15, weight: .semibold))
+                            Text("—").font(.system(.subheadline, weight: .semibold))
                                 .foregroundStyle(.tertiary)
                         }
                     }
@@ -304,10 +304,7 @@ struct SplitQualityReportView: View {
     // MARK: Bits
 
     private func sectionTitle(_ s: String) -> some View {
-        Text(s)
-            .font(.system(size: 10, weight: .semibold))
-            .tracking(1.5)
-            .foregroundStyle(.secondary)
+        Text(s).elosSectionLabel()
     }
 }
 
@@ -326,17 +323,17 @@ struct TipRow: View {
         } label: {
             HStack(alignment: .top, spacing: 9) {
                 Image(systemName: QualityPalette.icon(for: tip.severity))
-                    .font(.system(size: 12))
+                    .font(.elosCaption)
                     .foregroundStyle(QualityPalette.color(for: tip.severity))
                     .padding(.top, 1)
                 Text(tip.message)
-                    .font(.system(size: 12.5))
+                    .font(.elosCaption)
                     .foregroundStyle(Color.primary.opacity(0.85))
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if canTap {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(.caption2, weight: .semibold))
                         .foregroundStyle(.tertiary)
                         .padding(.top, 2)
                 }
@@ -351,12 +348,13 @@ struct TipRow: View {
 // MARK: - Card padding
 
 private extension View {
-    /// The report's card treatment, matching `.elosCard()` with the padding these sections want.
+    /// Standard card inset for the report's sections. The surface itself comes from the shared
+    /// `.elosCard()` rather than a hand-rolled background + clipShape, so radius, corner style and
+    /// elevation stay in one place.
     func cardPadding() -> some View {
-        self.padding(14)
+        self.padding(Space.card)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .elosCard()
     }
 }
 

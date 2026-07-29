@@ -110,10 +110,9 @@ struct MuscleBarRow: View {
     }
 
     private var rowContent: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Space.s + 2) {
             Text(bar.displayName)
-                .font(.system(size: isChild ? 12 : 13,
-                              weight: isChild ? .regular : .semibold))
+                .font(isChild ? .elosCaption : .system(.footnote, weight: .semibold))
                 .foregroundStyle(nameColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -122,8 +121,9 @@ struct MuscleBarRow: View {
             VolumeBarTrack(fill: bar.fill, directFill: bar.directFill,
                            color: color, height: isChild ? 7 : 9, isMuted: isMuted)
 
+            // Tabular figures so the column doesn't jitter as values change while editing.
             Text(valueText)
-                .font(.system(size: isChild ? 11 : 12, weight: .semibold, design: .rounded))
+                .font(.elosNumeric(isChild ? .caption2 : .caption, weight: .semibold))
                 .foregroundStyle(color)
                 .lineLimit(1)
                 .frame(width: 58, alignment: .trailing)
@@ -179,15 +179,12 @@ struct MuscleCoverageBars: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.m) {
             if let title {
-                Text(title)
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(1.5)
-                    .foregroundStyle(.secondary)
+                Text(title).elosSectionLabel()
             }
 
-            VStack(spacing: 9) {
+            VStack(spacing: Space.s + 1) {
                 ForEach(rows) { bar in
                     groupRow(bar)
                 }
@@ -195,6 +192,9 @@ struct MuscleCoverageBars: View {
 
             if showsLegend { legend }
         }
+        // Column-aligned bars can't reflow to the largest accessibility sizes without the label,
+        // track and value collapsing into each other.
+        .elosDenseLayout()
     }
 
     @ViewBuilder private func groupRow(_ bar: MuscleVolumeBar) -> some View {
@@ -217,7 +217,7 @@ struct MuscleCoverageBars: View {
 
                     if bar.isExpandable {
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(.caption2, weight: .bold))
                             .foregroundStyle(.tertiary)
                             .rotationEffect(.degrees(isOpen ? 0 : -90))
                             .frame(width: 12)
@@ -255,7 +255,7 @@ struct MuscleCoverageBars: View {
             legendItem(opacity: 0.38, text: "Indirect")
             HStack(spacing: 5) {
                 Rectangle().fill(Color.primary.opacity(0.28)).frame(width: 1.5, height: 9)
-                Text("Target").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text("Target").font(.elosMicro).foregroundStyle(.secondary)
             }
         }
         .padding(.top, 2)
@@ -265,7 +265,7 @@ struct MuscleCoverageBars: View {
     private func legendItem(opacity: Double, text: String) -> some View {
         HStack(spacing: 5) {
             Capsule().fill(Color.secondary.opacity(opacity)).frame(width: 14, height: 7)
-            Text(text).font(.system(size: 10)).foregroundStyle(.secondary)
+            Text(text).font(.elosMicro).foregroundStyle(.secondary)
         }
     }
 }
