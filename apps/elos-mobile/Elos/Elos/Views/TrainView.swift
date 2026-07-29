@@ -47,7 +47,7 @@ struct TrainView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(.vertical) {
                 VStack(spacing: 20) {
                     if context.shouldSuggestDeload { deloadBanner }
@@ -340,12 +340,19 @@ struct TrainView: View {
 
     // MARK: Week Strip
     private var weekStrip: some View {
+        // The strip lives inside a 16pt-gutter VStack, so it was being clipped flush against both
+        // screen edges — the last day looked broken rather than scrollable. Negative margins let it
+        // bleed to the true edges, and the inset padding restores the gutter for the content, so the
+        // first card lines up with everything above it and the last one runs off cleanly.
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: Space.s) {
                 ForEach(buildWeekDays()) { day in WeekDayCard(day: day) }
             }
-            .padding(.horizontal, 1)
+            .padding(.horizontal, Space.gutter)
+            .padding(.vertical, 2)   // room for the selected card's shadow
         }
+        .padding(.horizontal, -Space.gutter)
+        .scrollClipDisabled()
     }
 
     private func buildWeekDays() -> [WeekDay] {
@@ -503,11 +510,15 @@ struct TrainView: View {
     }
 
     private var quickActions: some View {
-        HStack(spacing: 10) {
-            QuickActionButton(icon: "list.bullet.clipboard", label: "Templates") { context.showTemplates   = true }
-            QuickActionButton(icon: "calendar.badge.plus",   label: "Programs")  { context.showSplitLibrary = true }
-            QuickActionButton(icon: "figure.cooldown",        label: "Stretches") { context.showStretches    = true }
-            QuickActionButton(icon: "dumbbell",               label: "Library")   { context.showLibrary      = true }
+        HStack(spacing: Space.s + 2) {
+            QuickActionButton(icon: "list.bullet.clipboard", label: "Templates",
+                              tint: .tint)    { context.showTemplates    = true }
+            QuickActionButton(icon: "calendar.badge.plus",   label: "Programs",
+                              tint: .mSched)  { context.showSplitLibrary = true }
+            QuickActionButton(icon: "figure.cooldown",       label: "Stretches",
+                              tint: .mGym)    { context.showStretches    = true }
+            QuickActionButton(icon: "dumbbell",              label: "Library",
+                              tint: .mAssign) { context.showLibrary      = true }
         }
     }
 
@@ -818,6 +829,11 @@ struct TrainView: View {
 private struct QuickActionButton: View {
     let icon: String
     let label: String
+    /// Per-destination colour. Four identically tinted orange tiles read as one undifferentiated
+    /// block — nothing to aim at. Giving each its own hue (from the existing module palette) makes
+    /// them scannable by colour, and the icon carries the tint while the label stays neutral so the
+    /// row doesn't shout.
+    var tint: Color = .tint
     let action: () -> Void
 
     var body: some View {
@@ -825,20 +841,25 @@ private struct QuickActionButton: View {
             HapticManager.impact(.light)
             action()
         } label: {
-            VStack(spacing: 6) {
+            VStack(spacing: Space.s) {
                 Image(systemName: icon)
                     .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(tint)
                 Text(label)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(.caption2, weight: .semibold))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                     .multilineTextAlignment(.center)
             }
-            .frame(maxWidth: .infinity, minHeight: 56)
-            .padding(.vertical, 10)
-            .foregroundStyle(Color.tint)
-            .background(Color.tintSoft)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .frame(maxWidth: .infinity, minHeight: 60)
+            .padding(.vertical, Space.m)
+            .background(tint.opacity(0.11))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                    .stroke(tint.opacity(0.18), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }

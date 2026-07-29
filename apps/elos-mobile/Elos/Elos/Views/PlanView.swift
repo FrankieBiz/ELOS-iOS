@@ -25,7 +25,7 @@ struct PlanView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(.vertical) {
                 VStack(spacing: 20) {
                     Picker("", selection: $segment) {
@@ -453,7 +453,7 @@ private struct AddAssignmentSheet: View {
     }()
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Assignment") {
                     TextField("Name (e.g. Essay draft)", text: $name)

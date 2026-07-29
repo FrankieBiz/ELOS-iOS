@@ -30,11 +30,27 @@ struct TodayView: View {
                 upcomingDueSection
                 quickStatsGrid
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 20)
+            .padding(.horizontal, Space.gutter)
+            .padding(.top, Space.xl)
             .padding(.bottom, 120)
         }
         .scrollIndicators(.hidden)
+        // This screen has a custom header instead of a navigation bar, so nothing was covering the
+        // status bar: scrolled content ran straight into the clock and became unreadable. A blur
+        // pinned over the top safe area lets content pass *behind* it, which is what the system
+        // toolbar would have done.
+        .overlay(alignment: .top) { statusBarScrim }
+    }
+
+    private var statusBarScrim: some View {
+        GeometryReader { proxy in
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .frame(height: proxy.safeAreaInsets.top)
+                .ignoresSafeArea(edges: .top)
+                .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .allowsHitTesting(false)
     }
 
     // MARK: Recovery hint (from Apple Health resting HR vs baseline)
@@ -219,13 +235,17 @@ struct TodayView: View {
 
     // MARK: Quick Stats
     private var quickStatsGrid: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.m) {
             sectionHeader("QUICK STATS")
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+            // Three cards in a two-column grid left a hole in the bottom-right and made the row
+            // heights ragged. Sleep and volume pair up; hydration takes the full width, which it
+            // wants anyway for its six adjust buttons.
+            HStack(spacing: Space.m) {
                 sleepCard
                 gymVolCard
-                hydrationCard
             }
+            .fixedSize(horizontal: false, vertical: true)   // equal heights across the pair
+            hydrationCard
         }
     }
 
@@ -268,9 +288,13 @@ struct TodayView: View {
     }
 
     private var gymVolCard: some View {
+        // "this session" read as a live figure even with no workout in progress, where it's just 0.
+        // Name what the number actually is in each case.
         StatCard(color: .mGym, label: "GYM VOL",
                  value: gymVolString,
-                 sub: "\(vm.weightUnit.label) this session") {
+                 sub: vm.sessionVolumeKg > 0
+                      ? "\(vm.weightUnit.label) this session"
+                      : "\(vm.weightUnit.label) — tap to train") {
             vm.selectedTab = .train
         }
     }

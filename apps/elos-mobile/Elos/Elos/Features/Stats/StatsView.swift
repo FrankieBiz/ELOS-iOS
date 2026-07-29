@@ -57,19 +57,19 @@ struct StatsView: View {
     // MARK: Body
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: Space.xl) {
                     summaryHeader
                     liftPicker
                     e1rmCard
                     volumeCard
                     prCard
                     if let err = analyticsVM.loadError {
-                        Text(err).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity)
+                        Text(err).font(.elosCaption).foregroundStyle(.secondary).frame(maxWidth: .infinity)
                     }
                 }
-                .padding(16)
+                .padding(Space.gutter)
                 .padding(.bottom, 60)
             }
             .scrollIndicators(.hidden)
@@ -87,7 +87,7 @@ struct StatsView: View {
     // MARK: Summary Header
 
     private var summaryHeader: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: Space.m) {
             summaryCell(
                 value: "\(mySessions.count)",
                 unit: "total",
@@ -125,69 +125,90 @@ struct StatsView: View {
     }
 
     private func summaryCell(value: String, unit: String, label: String, icon: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            HStack(spacing: Space.xs) {
                 Image(systemName: icon)
-                    .font(.caption)
+                    .font(.elosCaption)
                     .foregroundStyle(color)
+                    .frame(width: 14)
                 Text(label)
-                    .font(.caption)
+                    .font(.elosCaption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
-            HStack(alignment: .lastTextBaseline, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(value)
-                    .font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())
+                    .font(.elosNumeric(.title, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                 Text(unit)
-                    .font(.caption)
+                    .font(.elosCaption)
                     .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
+        .padding(Space.l)
         .elosCard()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value) \(unit)")
     }
 
     // MARK: Lift Picker
 
     private var liftPicker: some View {
+        // The chips live inside the page's 16pt gutter, so a plain horizontal ScrollView clipped the
+        // first and last capsule flush against the card edge and gave the row no room to scroll into.
+        // Padding in by the gutter and pulling the scroll view back out by the same amount lets the
+        // chips run edge-to-edge while still starting aligned with everything above them.
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: Space.s) {
                 ForEach(commonLifts) { lift in
                     let sel = lift.name == analyticsVM.selectedLift
                     Button(lift.short) {
                         analyticsVM.selectedLift = lift.name
                         analyticsVM.loadE1RM(liftName: lift.name)
                     }
-                    .font(.caption).fontWeight(sel ? .semibold : .regular)
+                    .font(.elosCaption).fontWeight(.semibold)
                     .foregroundStyle(sel ? .white : Color.primary)
-                    .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(sel ? Color.tint : Color(.secondarySystemBackground))
-                    .clipShape(Capsule())
+                    .padding(.horizontal, Space.m).padding(.vertical, 7)
+                    .background {
+                        Capsule().fill(sel ? Color.tint : Color(.secondarySystemGroupedBackground))
+                    }
+                    .overlay {
+                        Capsule().strokeBorder(
+                            sel ? .clear : Color.primary.opacity(0.07), lineWidth: 1
+                        )
+                    }
                     .accessibilityLabel(lift.name)
                     .accessibilityAddTraits(sel ? .isSelected : [])
                 }
             }
-            .padding(.horizontal, 1)
+            .padding(.horizontal, Space.gutter)
         }
+        .padding(.horizontal, -Space.gutter)
+        .scrollClipDisabled()
     }
 
     // MARK: e1RM Card
 
     private var e1rmCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
+        VStack(alignment: .leading, spacing: Space.m) {
+            HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Estimated 1RM").font(.subheadline).fontWeight(.semibold)
-                    Text(analyticsVM.selectedLift).font(.caption).foregroundStyle(.secondary)
+                    Text("Estimated 1RM").font(.elosHeadline)
+                    Text(analyticsVM.selectedLift)
+                        .font(.elosCaption).foregroundStyle(.secondary).lineLimit(1)
                 }
-                Spacer()
+                Spacer(minLength: Space.s)
                 if analyticsVM.isLoading { ProgressView().scaleEffect(0.7) }
                 if let last = analyticsVM.e1rmHistory.last {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(vm.weightUnit.formatWeight(kg: last.e1rm))
-                            .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
-                        Text("current").font(.caption).foregroundStyle(.secondary)
+                            .font(.elosNumeric(.title3, weight: .bold))
+                        Text("current").font(.elosMicro).foregroundStyle(.secondary)
                     }
+                    .fixedSize()
                 }
             }
             if analyticsVM.e1rmHistory.count >= 2 {
@@ -199,23 +220,30 @@ struct StatsView: View {
                 }
                 .frame(height: 160).chartXAxis(.hidden).chartYAxisLabel(vm.weightUnit.label)
             } else {
-                Text("Log a few sessions to see your e1RM trend.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
+                // Distinguish "no data" from "one point". With a single session the card was
+                // showing a concrete current e1RM *and* "log a few sessions" underneath it, which
+                // reads as though the number it just displayed doesn't count.
+                emptyState(
+                    analyticsVM.e1rmHistory.isEmpty
+                        ? "No logged sets for this lift yet."
+                        : "One session so far — log another to plot the trend.",
+                    minHeight: 80
+                )
             }
         }
-        .padding(16).elosCard()
+        .padding(Space.gutter).elosCard()
     }
 
     // MARK: Volume Card
 
     private var volumeCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Weekly Volume (Sets by Muscle)").font(.subheadline).fontWeight(.semibold)
+        VStack(alignment: .leading, spacing: Space.m) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Weekly Volume").font(.elosHeadline)
+                Text("Sets by muscle").font(.elosCaption).foregroundStyle(.secondary)
+            }
             if analyticsVM.volumeData.isEmpty {
-                Text("Complete a few sets to see your volume trends.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
+                emptyState("Complete a few sets to see your volume trends.", minHeight: 80)
             } else {
                 let data = Dictionary(grouping: analyticsVM.volumeData.prefix(20), by: { $0.muscle })
                     .mapValues { $0.map(\.sets).reduce(0, +) }
@@ -223,42 +251,91 @@ struct StatsView: View {
                 Chart(data, id: \.key) { item in
                     BarMark(
                         x: .value("Sets", item.value),
-                        y: .value("Muscle", item.key.capitalized.replacingOccurrences(of: "_", with: " "))
+                        y: .value("Muscle", Self.muscleLabel(item.key))
                     )
-                    .foregroundStyle(Color.tint.gradient)
-                    .annotation(position: .trailing) {
-                        Text("\(item.value)").font(.caption2).foregroundStyle(.secondary)
+                    // The server buckets any set whose exercise name it can't match into 'other'.
+                    // Drawn in the same tint as real muscles it reads as a muscle group called
+                    // "Other"; greyed out it reads as what it is — work that couldn't be attributed.
+                    .foregroundStyle(
+                        item.key == "other" ? AnyShapeStyle(Color.secondary.opacity(0.35))
+                                            : AnyShapeStyle(Color.tint.gradient)
+                    )
+                    .cornerRadius(4)
+                    .annotation(position: .trailing, spacing: 5) {
+                        Text("\(item.value)")
+                            .font(.elosNumeric(.caption2, weight: .semibold))
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .frame(height: 200).chartXAxis(.hidden)
+                .frame(height: 200)
+                .chartXAxis(.hidden)
+                .chartYAxis {
+                    AxisMarks(preset: .aligned, position: .leading) { _ in
+                        AxisValueLabel().font(.elosCaption)
+                    }
+                }
             }
         }
-        .padding(16).elosCard()
+        .padding(Space.gutter).elosCard()
     }
 
     // MARK: PR Board
 
     private var prCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Personal Records").font(.subheadline).fontWeight(.semibold)
+        VStack(alignment: .leading, spacing: Space.m) {
+            Text("Personal Records").font(.elosHeadline)
             if analyticsVM.prs.isEmpty {
-                Text("Log a few working sets to build your PR board.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)
+                emptyState("Log a few working sets to build your PR board.", minHeight: 60)
             } else {
-                ForEach(analyticsVM.prs.prefix(8)) { pr in
-                    HStack {
-                        Text(pr.exerciseName).font(.subheadline).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                        Text(vm.weightUnit.formatWeight(kg: pr.weightKg)).font(.system(size: 15, weight: .bold, design: .rounded).monospacedDigit())
-                        Text("×\(pr.reps)").font(.caption).foregroundStyle(.secondary).frame(width: 30)
-                        Text("e1RM \(vm.weightUnit.formatValue(kg: pr.e1rm, decimals: 0))").font(.caption2).foregroundStyle(Color.good)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(Color.good.opacity(0.12)).clipShape(Capsule())
+                // Four competing columns in one row left the exercise name truncating at ~12 chars
+                // while the e1RM badge hogged the trailing edge. Stacking the lift over its set gives
+                // the name the full width and reads as one record instead of four scattered numbers.
+                let top = Array(analyticsVM.prs.prefix(8))
+                VStack(spacing: 0) {
+                    ForEach(top) { pr in
+                        HStack(spacing: Space.m) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(pr.exerciseName)
+                                    .font(.elosBody).lineLimit(1)
+                                HStack(spacing: 4) {
+                                    Text(vm.weightUnit.formatWeight(kg: pr.weightKg))
+                                        .font(.elosNumeric(.caption, weight: .semibold))
+                                    Text("× \(pr.reps)")
+                                        .font(.elosCaption).foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                            Text("e1RM \(vm.weightUnit.formatValue(kg: pr.e1rm, decimals: 0))")
+                                .font(.elosNumeric(.caption2, weight: .semibold))
+                                .foregroundStyle(Color.good)
+                                .padding(.horizontal, Space.s).padding(.vertical, 3)
+                                .background(Color.good.opacity(0.12), in: Capsule())
+                                .fixedSize()
+                        }
+                        .padding(.vertical, Space.s)
+                        .accessibilityElement(children: .combine)
+
+                        if pr.id != top.last?.id {
+                            Divider().overlay(Color.primary.opacity(0.06))
+                        }
                     }
-                    if pr.id != analyticsVM.prs.prefix(8).last?.id { Divider() }
                 }
             }
         }
-        .padding(16).elosCard()
+        .padding(Space.gutter).elosCard()
+    }
+
+    private static func muscleLabel(_ key: String) -> String {
+        key == "other"
+            ? "Unmatched"
+            : key.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    private func emptyState(_ message: String, minHeight: CGFloat) -> some View {
+        Text(message)
+            .font(.elosCaption)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .center)
     }
 }

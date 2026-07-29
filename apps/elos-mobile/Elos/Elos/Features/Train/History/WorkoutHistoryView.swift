@@ -28,7 +28,7 @@ struct WorkoutHistoryView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Group {
                 if sessions.isEmpty {
                     VStack(spacing: 12) {

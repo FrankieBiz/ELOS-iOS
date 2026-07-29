@@ -104,36 +104,44 @@ struct XPRankCard: View {
             ForEach(GamificationEngine.Rank.ordered, id: \.self) { rank in
                 let reached  = rank.minXP <= progress.totalXP
                 let isCurrent = rank == progress.rank
-                VStack(spacing: 4) {
+                // Sizes here were 6–7pt, well below anything legible on device — the rank
+                // abbreviations read as grey smudges. Scaled up to the caption2 floor and the
+                // current rank is now the only one that gets a filled ring, so the eye lands on
+                // "where am I" without needing to read the labels at all.
+                VStack(spacing: 5) {
                     ZStack {
                         if isCurrent {
                             Circle()
                                 .stroke(rank.color.opacity(0.35), lineWidth: 3)
-                                .frame(width: 22, height: 22)
+                                .frame(width: 28, height: 28)
                         }
                         Circle()
-                            .fill(reached ? rank.color : Color.secondary.opacity(0.12))
-                            .frame(width: isCurrent ? 16 : 11, height: isCurrent ? 16 : 11)
+                            .fill(reached ? rank.color : Color.secondary.opacity(0.14))
+                            .frame(width: isCurrent ? 20 : 12, height: isCurrent ? 20 : 12)
                         if reached && !isCurrent {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 6, weight: .black))
+                                .font(.system(size: 8, weight: .black))
                                 .foregroundStyle(.white)
                         }
                         if isCurrent {
                             Image(systemName: rank.icon)
-                                .font(.system(size: 7, weight: .bold))
+                                .font(.system(size: 10, weight: .bold))
                                 .foregroundStyle(.white)
                         }
                     }
-                    .frame(width: 24, height: 24)
+                    .frame(width: 30, height: 30)
                     Text(String(rank.rawValue.prefix(3)).uppercased())
-                        .font(.system(size: 7, weight: isCurrent ? .bold : .regular))
+                        .font(.system(.caption2, weight: isCurrent ? .bold : .regular))
+                        .tracking(0.4)
                         .foregroundStyle(
                             isCurrent ? rank.color
-                            : (reached ? Color.secondary : Color.secondary.opacity(0.3))
+                            : (reached ? Color.secondary : Color.secondary.opacity(0.35))
                         )
                 }
                 .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(rank.rawValue)
+                .accessibilityValue(isCurrent ? "current rank" : (reached ? "unlocked" : "locked"))
             }
         }
     }

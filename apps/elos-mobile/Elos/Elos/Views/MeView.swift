@@ -10,7 +10,7 @@ struct MeView: View {
     @State private var showCrew          = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(.vertical) {
                 VStack(spacing: 16) {
                     profileHero
