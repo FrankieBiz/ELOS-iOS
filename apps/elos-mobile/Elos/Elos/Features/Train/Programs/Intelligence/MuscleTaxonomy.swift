@@ -67,10 +67,15 @@ enum SplitArchetype: String, CaseIterable {
 
 enum MuscleTaxonomy {
     static func normalize(_ s: String) -> String {
+        // `trimmingCharacters` only strips the ends, so an interior double space survived and made
+        // "Dumbbell Turkish  Get-Up" a different key from "Dumbbell Turkish Get-Up". That defeated
+        // the picker's adopt-by-identity dedupe — the seeded twin was neither adopted nor deleted,
+        // so the library listed the same lift up to three times. Collapse interior runs too.
         s.lowercased()
             .replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: "-", with: " ")
-            .trimmingCharacters(in: .whitespaces)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 
     private static let compoundPatterns: Set<String> = ["push", "pull", "squat", "hinge", "carry"]
