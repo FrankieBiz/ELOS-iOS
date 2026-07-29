@@ -11,9 +11,21 @@ struct StatsView: View {
 
     @StateObject private var analyticsVM = AnalyticsViewModel()
 
-    private let commonLifts = [
-        "Barbell Back Squat", "Barbell Bench Press", "Conventional Deadlift",
-        "Barbell Overhead Press", "Barbell Row",
+    /// Full catalog name plus the chip label, rather than deriving the label from the last word of
+    /// the name: "Barbell Bench Press" and "Barbell Overhead Press" both end in "Press", so the
+    /// picker rendered two identical, indistinguishable chips.
+    private struct Lift: Identifiable {
+        let name: String
+        let short: String
+        var id: String { name }
+    }
+
+    private let commonLifts: [Lift] = [
+        .init(name: "Barbell Back Squat",     short: "Squat"),
+        .init(name: "Barbell Bench Press",    short: "Bench"),
+        .init(name: "Conventional Deadlift",  short: "Deadlift"),
+        .init(name: "Barbell Overhead Press", short: "Overhead"),
+        .init(name: "Barbell Row",            short: "Row"),
     ]
 
     // MARK: Computed
@@ -140,17 +152,19 @@ struct StatsView: View {
     private var liftPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(commonLifts, id: \.self) { lift in
-                    let sel = lift == analyticsVM.selectedLift
-                    Button(lift.components(separatedBy: " ").last ?? lift) {
-                        analyticsVM.selectedLift = lift
-                        analyticsVM.loadE1RM(liftName: lift)
+                ForEach(commonLifts) { lift in
+                    let sel = lift.name == analyticsVM.selectedLift
+                    Button(lift.short) {
+                        analyticsVM.selectedLift = lift.name
+                        analyticsVM.loadE1RM(liftName: lift.name)
                     }
                     .font(.caption).fontWeight(sel ? .semibold : .regular)
                     .foregroundStyle(sel ? .white : Color.primary)
                     .padding(.horizontal, 12).padding(.vertical, 6)
                     .background(sel ? Color.tint : Color(.secondarySystemBackground))
                     .clipShape(Capsule())
+                    .accessibilityLabel(lift.name)
+                    .accessibilityAddTraits(sel ? .isSelected : [])
                 }
             }
             .padding(.horizontal, 1)
