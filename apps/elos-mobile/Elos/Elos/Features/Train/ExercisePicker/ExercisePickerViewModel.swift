@@ -95,9 +95,41 @@ final class ExercisePickerViewModel: ObservableObject {
         // Tolerate duplicate ids in the local store — `uniqueKeysWithValues` would trap.
         let existingByID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
+        // Second lookup, keyed by identity rather than id, over the *locally seeded* rows only
+        // (non-custom, no owner). `ExerciseCatalog.seedIfNeeded` inserts those with a fresh
+        // `UUID()` — an id the server has never heard of — so matching purely on id meant every
+        // server exercise looked new and got inserted alongside its seeded twin. That doubled the
+        // entire catalog: the picker listed "Arnold Press", "Assisted Pull-Up" etc. twice, and
+        // volume could be counted twice if both copies were added to a template.
+        //
+        // Matching on name + equipment lets the seeded row *adopt* the server id, converging the
+        // two into one record. Mirrors the local-id-then-reconcile pattern used for sessions.
+        func identityKey(_ name: String, _ equipment: String) -> String {
+            "\(MuscleTaxonomy.normalize(name))|\(MuscleTaxonomy.normalize(equipment))"
+        }
+        var seededByIdentity: [String: ExerciseDefinitionRecord] = [:]
+        for r in existing where !r.isCustom && r.ownerID.isEmpty {
+            seededByIdentity[identityKey(r.name, r.equipment)] = r
+        }
+
         for ex in incoming {
             let secondaryJSON = (try? String(data: JSONEncoder().encode(ex.secondary_muscles), encoding: .utf8)) ?? "[]"
             let instructionsJSON = (try? String(data: JSONEncoder().encode(ex.instructions ?? []), encoding: .utf8)) ?? "[]"
+            // Adopt a seeded twin before falling through to "insert new".
+            if existingByID[ex.id] == nil,
+               let seeded = seededByIdentity.removeValue(forKey: identityKey(ex.name, ex.equipment)) {
+                seeded.id = ex.id
+                seeded.ownerID = ex.owner_id ?? ""
+                seeded.name = ex.name
+                seeded.equipment = ex.equipment
+                seeded.primaryMuscle = ex.primary_muscle
+                seeded.secondaryMusclesJSON = secondaryJSON
+                seeded.movementPattern = ex.movement_pattern
+                seeded.isCustom = ex.is_custom
+                seeded.instructionsJSON = instructionsJSON
+                seeded.imageKey = ex.image_key ?? ""
+                continue
+            }
             if let record = existingByID[ex.id] {
                 // Update mutable fields so backend corrections (e.g. equipment type) propagate
                 record.name = ex.name
@@ -123,6 +155,16 @@ final class ExercisePickerViewModel: ObservableObject {
                 context.insert(record)
             }
         }
+
+        // Anything still in `seededByIdentity` that the server also sent under a different id is a
+        // leftover twin from before the adopt-by-identity fix above — drop it, keeping the
+        // server-backed row. Templates referencing a deleted id degrade gracefully: `ExerciseResolver`
+        // already falls back to normalized-name matching when an id misses.
+        let incomingIdentities = Set(incoming.map { identityKey($0.name, $0.equipment) })
+        for (key, orphan) in seededByIdentity where incomingIdentities.contains(key) {
+            context.delete(orphan)
+        }
+
         try? context.save()
     }
 

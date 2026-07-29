@@ -390,7 +390,7 @@ struct ExercisePickerView: View {
         guard bodyPartFilter != .all else { return [] }
         let muscles = dbExercises
             .filter { BodyPartFilter.from(primaryMuscle: $0.primaryMuscle) == bodyPartFilter }
-            .map { $0.primaryMuscle.capitalized }
+            .map { $0.primaryMuscle.muscleDisplayName }
         return ["All"] + Array(Set(muscles)).sorted()
     }
 
@@ -680,7 +680,7 @@ struct ExercisePickerView: View {
                         .font(.subheadline)
                     HStack(spacing: 6) {
                         equipmentBadge(row.equipment)
-                        Text(row.primaryMuscle.capitalized)
+                        Text(row.primaryMuscle.muscleDisplayName)
                             .font(.caption2).foregroundStyle(.secondary)
                         if row.isCustom {
                             Text("Custom")
@@ -886,4 +886,14 @@ enum MovementFilter: String, CaseIterable {
     case carry      = "Carry"
     case rotation   = "Rotation"
     case isolation  = "Isolation"
+}
+
+// MARK: - Muscle label
+
+extension String {
+    /// Catalog muscle keys are snake_case (`front_delts`, `hip_flexors`). Plain `.capitalized`
+    /// keeps the underscore, so the picker was showing "Front_Delts" to users.
+    var muscleDisplayName: String {
+        replacingOccurrences(of: "_", with: " ").capitalized
+    }
 }
