@@ -312,7 +312,7 @@ struct TrainView: View {
                     let cal = Calendar.current
                     let weeksIn = max(1, (cal.dateComponents([.weekOfYear], from: activatedAt, to: Date()).weekOfYear ?? 0) + 1)
                     Text("Wk \(weeksIn)")
-                        .font(.system(size: 14, weight: .regular, design: .monospaced))
+                        .font(.system(size: 14, weight: .regular, design: .rounded).monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
@@ -668,7 +668,7 @@ struct TrainView: View {
                     HStack {
                         Text(pr.lift).font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
                         Text(pr.weight)
-                            .font(.system(size: 16, weight: .bold, design: .monospaced))
+                            .font(.system(size: 16, weight: .bold, design: .rounded).monospacedDigit())
                         Text(pr.reps)
                             .font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
                             .padding(.horizontal, 8).padding(.vertical, 3)
@@ -734,7 +734,7 @@ struct TrainView: View {
     private func muscleChip(_ label: String, sets: Int, target: Int) -> some View {
         VStack(spacing: 2) {
             Text("\(sets)/\(target)")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(sets >= target ? Color.good : Color.primary)
             Text(label)
                 .font(.system(size: 9))
@@ -925,17 +925,17 @@ private struct ExerciseCard: View {
 
                     ForEach(exercise.sets.indices, id: \.self) { i in
                         HStack {
-                            Text("\(i + 1)").font(.caption.monospaced()).frame(width: 20).foregroundStyle(.secondary)
+                            Text("\(i + 1)").font(.caption.monospacedDigit()).frame(width: 20).foregroundStyle(.secondary)
                             Text(exercise.sets[i].weight.isEmpty ? "— \(unit.label)" : "\(exercise.sets[i].weight) \(unit.label)")
-                                .font(.system(size: 14, design: .monospaced))
+                                .font(.system(size: 14, design: .rounded).monospacedDigit())
                                 .foregroundStyle(exercise.sets[i].done ? .secondary : .primary)
                                 .frame(maxWidth: .infinity)
                             Text(exercise.sets[i].reps.isEmpty ? "—" : exercise.sets[i].reps)
-                                .font(.system(size: 14, design: .monospaced))
+                                .font(.system(size: 14, design: .rounded).monospacedDigit())
                                 .foregroundStyle(exercise.sets[i].done ? .secondary : .primary)
                                 .frame(width: 50)
                             Text(exercise.sets[i].rpe.isEmpty ? "—" : exercise.sets[i].rpe)
-                                .font(.caption.monospaced()).foregroundStyle(.secondary).frame(width: 40)
+                                .font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 40)
                             Image(systemName: exercise.sets[i].done ? "checkmark.circle.fill" : "circle")
                                 .foregroundStyle(exercise.sets[i].done ? Color.good : Color.secondary)
                                 .frame(width: 30)
@@ -982,7 +982,7 @@ private struct MuscleVolumeRow: View {
                 color: mv.onTrack ? .mGym : .warn, height: 6
             )
             Text("\(mv.current)/\(mv.target)")
-                .font(.system(size: 13, design: .monospaced)).foregroundStyle(.secondary).frame(width: 42)
+                .font(.system(size: 13, design: .rounded).monospacedDigit()).foregroundStyle(.secondary).frame(width: 42)
             Text(mv.trend)
                 .font(.caption).fontWeight(.semibold)
                 .foregroundStyle(mv.trendUp ? Color.good : Color.bad).frame(width: 36, alignment: .trailing)

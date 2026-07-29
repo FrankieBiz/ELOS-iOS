@@ -66,7 +66,7 @@ struct WorkoutShareCard: View {
 
                 // Volume hero
                 Text(volumeString)
-                    .font(.system(size: 52, weight: .black, design: .monospaced))
+                    .font(.system(size: 52, weight: .black, design: .rounded).monospacedDigit())
                     .foregroundStyle(.white)
                     .padding(.bottom, 20)
 
@@ -96,7 +96,7 @@ struct WorkoutShareCard: View {
                             .lineLimit(1)
                         Spacer()
                         Text("\(unit.formatWeight(kg: top.weightKg, decimals: 0)) × \(top.reps)")
-                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
                             .foregroundStyle(.white)
                     }
                     .padding(.bottom, capturedPR != nil ? 8 : 0)
@@ -134,7 +134,7 @@ struct WorkoutShareCard: View {
     private func shareStatCol(value: String, label: String) -> some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 20, weight: .bold, design: .monospaced))
+                .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(.white)
             Text(label)
                 .font(.system(size: 11, weight: .medium))

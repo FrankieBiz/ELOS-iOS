@@ -106,7 +106,7 @@ struct WorkoutHistoryView: View {
     private func summaryCell(value: String, label: String) -> some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(size: 20, weight: .bold, design: .monospaced))
+                .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
             Text(label)
                 .font(.caption2).foregroundStyle(.secondary)
         }

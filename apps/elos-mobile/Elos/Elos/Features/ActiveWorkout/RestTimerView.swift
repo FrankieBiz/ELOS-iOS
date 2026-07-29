@@ -32,7 +32,7 @@ struct RestTimerBar: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(formatted)
-                    .font(.system(size: 20, weight: .bold, design: .monospaced))
+                    .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(color)
                     .monospacedDigit()
                 Text(nextLabel.map { "Next: \($0)" } ?? "Resting")

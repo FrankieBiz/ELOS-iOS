@@ -42,14 +42,14 @@ struct XPRankCard: View {
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(progress.rank.color)
                 Text("\(progress.totalXP) XP total")
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.system(size: 12, design: .rounded).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             Spacer()
             if let next = progress.rank.nextRank {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(progress.xpToNext)")
-                        .font(.system(size: 18, weight: .bold, design: .monospaced))
+                        .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
                     Text("to \(next.rawValue)")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -160,7 +160,7 @@ struct XPRankCard: View {
                     .font(.system(size: 11))
                     .foregroundStyle(color)
                 Text(value)
-                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                    .font(.system(size: 16, weight: .bold, design: .rounded).monospacedDigit())
             }
             Text(label)
                 .font(.system(size: 10))
@@ -209,7 +209,7 @@ struct XPRankCard: View {
                             .font(.system(size: 14, weight: isCurrent ? .bold : .regular))
                             .foregroundStyle(isUnlocked ? .primary : .secondary)
                         Text("\(rank.minXP) XP")
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.system(size: 11, design: .rounded).monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -226,7 +226,7 @@ struct XPRankCard: View {
                             .foregroundStyle(rank.color)
                     } else {
                         Text("+\(rank.minXP - progress.totalXP) XP")
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(.system(size: 11, design: .rounded).monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                 }

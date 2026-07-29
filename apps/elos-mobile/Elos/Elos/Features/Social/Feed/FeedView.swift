@@ -232,7 +232,7 @@ struct ReactionBar: View {
                         Text(emoji).font(.system(size: 14))
                         if count > 0 {
                             Text("\(count)")
-                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
                                 .foregroundStyle(mine ? Color.tint : .secondary)
                         }
                     }
@@ -285,7 +285,7 @@ struct WorkoutPostContent: View {
 
     private func stat(_ value: String, _ label: String) -> some View {
         VStack(spacing: 3) {
-            Text(value).font(.system(size: 17, weight: .bold, design: .monospaced))
+            Text(value).font(.system(size: 17, weight: .bold, design: .rounded).monospacedDigit())
             Text(label).font(.system(size: 10)).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -297,7 +297,7 @@ struct WorkoutPostContent: View {
             Text(text).font(.system(size: 13, weight: .medium)).lineLimit(1)
             Spacer()
             if let trailing {
-                Text(trailing).font(.system(size: 13, weight: .bold, design: .monospaced))
+                Text(trailing).font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
             }
         }
     }
@@ -315,13 +315,13 @@ struct PrPostContent: View {
                 Text(payload.exercise_name ?? "Personal Record")
                     .font(.system(size: 16, weight: .bold))
                 Text("\(appVM.weightUnit.formatWeight(kg: payload.weight_kg ?? 0, decimals: 0)) × \(payload.reps ?? 0)")
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(.system(size: 13, design: .rounded).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             Spacer()
             VStack(spacing: 1) {
                 Text(appVM.weightUnit.formatValue(kg: payload.e1rm ?? 0, decimals: 0))
-                    .font(.system(size: 18, weight: .bold, design: .monospaced))
+                    .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(Color.tint)
                 Text("e1RM").font(.system(size: 10)).foregroundStyle(.secondary)
             }

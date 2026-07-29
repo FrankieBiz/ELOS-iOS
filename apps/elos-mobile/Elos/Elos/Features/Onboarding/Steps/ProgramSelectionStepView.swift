@@ -74,7 +74,7 @@ struct ProgramSelectionStepView: View {
 
                     HStack {
                         Text("\(vm.useAutoCalc ? vm.autoCalcCalories : vm.calGoal) kcal")
-                            .font(.system(size: 22, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 22, weight: .semibold, design: .rounded).monospacedDigit())
                             .foregroundStyle(Color.mNutri)
                         Spacer()
                         if !vm.useAutoCalc {

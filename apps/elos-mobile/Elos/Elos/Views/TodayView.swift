@@ -413,7 +413,7 @@ private struct HabitPillView: View {
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.primary)
                     Text("\(habit.streak)d streak")
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .font(.system(size: 11, weight: .regular, design: .rounded).monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
@@ -443,7 +443,7 @@ private struct ScheduleRowView: View {
         Button(action: onTap) {
             HStack(spacing: 12) {
                 Text(row.time)
-                    .font(.system(size: 13, weight: .regular, design: .monospaced))
+                    .font(.system(size: 13, weight: .regular, design: .rounded).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .frame(width: 44, alignment: .leading)
 
@@ -464,7 +464,7 @@ private struct ScheduleRowView: View {
 
                 if row.duration != "—" {
                     Text(row.duration)
-                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .font(.system(size: 12, weight: .regular, design: .rounded).monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }

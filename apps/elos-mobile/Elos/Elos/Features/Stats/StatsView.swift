@@ -124,7 +124,7 @@ struct StatsView: View {
             }
             HStack(alignment: .lastTextBaseline, spacing: 3) {
                 Text(value)
-                    .font(.system(size: 28, weight: .bold, design: .monospaced))
+                    .font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())
                 Text(unit)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -171,7 +171,7 @@ struct StatsView: View {
                 if let last = analyticsVM.e1rmHistory.last {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(vm.weightUnit.formatWeight(kg: last.e1rm))
-                            .font(.system(size: 18, weight: .bold, design: .monospaced))
+                            .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
                         Text("current").font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -235,7 +235,7 @@ struct StatsView: View {
                 ForEach(analyticsVM.prs.prefix(8)) { pr in
                     HStack {
                         Text(pr.exerciseName).font(.subheadline).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                        Text(vm.weightUnit.formatWeight(kg: pr.weightKg)).font(.system(size: 15, weight: .bold, design: .monospaced))
+                        Text(vm.weightUnit.formatWeight(kg: pr.weightKg)).font(.system(size: 15, weight: .bold, design: .rounded).monospacedDigit())
                         Text("×\(pr.reps)").font(.caption).foregroundStyle(.secondary).frame(width: 30)
                         Text("e1RM \(vm.weightUnit.formatValue(kg: pr.e1rm, decimals: 0))").font(.caption2).foregroundStyle(Color.good)
                             .padding(.horizontal, 6).padding(.vertical, 2)

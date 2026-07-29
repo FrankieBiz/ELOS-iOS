@@ -244,7 +244,7 @@ struct ActiveSessionView: View {
 
     private func statColumn(title: String, sub: String) -> some View {
         VStack(spacing: 3) {
-            Text(title).font(.system(size: 20, weight: .bold, design: .monospaced))
+            Text(title).font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
             Text(sub).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -544,7 +544,7 @@ private struct SessionRPESheet: View {
             .padding(.top, 28)
 
             Text("\(rpe)")
-                .font(.system(size: 56, weight: .bold, design: .monospaced))
+                .font(.system(size: 56, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(Color.tint)
 
             Slider(value: Binding(get: { Double(rpe) }, set: { rpe = Int($0) }),

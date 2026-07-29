@@ -89,7 +89,7 @@ struct PostSessionSummaryView: View {
 
     private func statColumn(title: String, sub: String) -> some View {
         VStack(spacing: 3) {
-            Text(title).font(.system(size: 18, weight: .bold, design: .monospaced))
+            Text(title).font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
             Text(sub).font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -267,7 +267,7 @@ struct PostSessionSummaryView: View {
                     ForEach(sorted, id: \.key) { item in
                         VStack(spacing: 2) {
                             Text("\(item.value)")
-                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
                             Text(item.key.capitalized)
                                 .font(.system(size: 9))
                                 .foregroundStyle(.secondary)

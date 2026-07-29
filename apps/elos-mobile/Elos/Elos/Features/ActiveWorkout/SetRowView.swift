@@ -151,7 +151,7 @@ struct SessionExerciseCard: View {
         let weightPart = s.weight.isEmpty ? "—" : s.weight
         return HStack(spacing: 10) {
             Image(systemName: "checkmark.circle.fill").font(.system(size: 16)).foregroundStyle(Color.good)
-            Text("\(i + 1)").font(.caption.monospaced()).foregroundStyle(.secondary).frame(width: 16)
+            Text("\(i + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 16)
             Text("\(weightPart) \(unit.label) × \(s.reps.isEmpty ? "—" : s.reps)\(rpePart)")
                 .font(.system(size: 14, weight: .medium, design: .rounded))
             Spacer()
@@ -179,7 +179,7 @@ struct SessionExerciseCard: View {
         let s = exercise.sets[i]
         let planned = (s.weight.isEmpty && s.reps.isEmpty) ? "— — —" : "\(s.weight.isEmpty ? "—" : s.weight) × \(s.reps.isEmpty ? "—" : s.reps)"
         return HStack(spacing: 10) {
-            Text("\(i + 1)").font(.caption.monospaced()).foregroundStyle(.secondary).frame(width: 16)
+            Text("\(i + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 16)
             Text(planned).font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
             Spacer()
         }

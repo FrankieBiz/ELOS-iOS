@@ -112,7 +112,7 @@ struct PlanView: View {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
                         HStack(spacing: 12) {
                             Text(row.time == "—" ? "  —  " : row.time)
-                                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                                .font(.system(size: 12, weight: .regular, design: .rounded).monospacedDigit())
                                 .foregroundStyle(.secondary)
                                 .frame(width: 44, alignment: .leading)
                             ModuleBarView(color: moduleColor(for: row.moduleType), opacity: row.isDone ? 0.5 : 1)
@@ -123,7 +123,7 @@ struct PlanView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             if row.durationMinutes > 0 {
                                 Text("\(row.durationMinutes)m")
-                                    .font(.system(size: 11, design: .monospaced))
+                                    .font(.system(size: 11, design: .rounded).monospacedDigit())
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -423,7 +423,7 @@ private struct ExamCard: View {
 
             VStack(spacing: 0) {
                 Text("\(exam.daysAway)")
-                    .font(.system(size: 42, weight: .bold, design: .monospaced))
+                    .font(.system(size: 42, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(urgencyColor)
                 Text("days").font(.caption).foregroundStyle(.secondary)
             }

@@ -120,7 +120,7 @@ struct MeView: View {
     private func heroStat(value: String, label: String) -> some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 17, weight: .bold, design: .monospaced))
+                .font(.system(size: 17, weight: .bold, design: .rounded).monospacedDigit())
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -265,7 +265,7 @@ struct MeView: View {
             .frame(width: 46, height: 46)
 
             Text(value)
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .font(.system(size: 12, weight: .bold, design: .rounded).monospacedDigit())
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
