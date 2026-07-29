@@ -105,8 +105,18 @@ struct GamificationEngine {
                 .compactMap { $0.finishedAt }
                 .map { cal.startOfDay(for: $0) }
         )
+        guard !completedDays.isEmpty else { return 0 }
+
+        // Anchor at today if it's already logged; otherwise at yesterday, so a streak stays
+        // alive through the current day until it's actually missed. Anchoring at today
+        // unconditionally would report 0 every morning before that day's workout is logged, even
+        // coming off a long streak — this matches how every other streak UI (Duolingo, Apple
+        // Fitness) reads: "still on" until a full day passes with nothing logged.
+        let today = cal.startOfDay(for: Date())
+        var date = completedDays.contains(today) ? today : cal.date(byAdding: .day, value: -1, to: today)!
+        guard completedDays.contains(date) else { return 0 }
+
         var streak = 0
-        var date = cal.startOfDay(for: Date())
         while completedDays.contains(date) {
             streak += 1
             guard let prev = cal.date(byAdding: .day, value: -1, to: date) else { break }
