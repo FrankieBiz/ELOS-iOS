@@ -86,3 +86,49 @@ extension View {
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
+
+// MARK: - Segmented control
+
+/// A tab switcher in the app's own visual language.
+///
+/// `.pickerStyle(.segmented)` was the one control on screen that read as stock UIKit: its selected
+/// segment is a grey capsule regardless of tint, so on a dark card the *unselected* labels (full
+/// white) out-weighted the selected one and the control appeared to have nothing selected. This
+/// draws selection with the accent instead, and slides it, so the current tab is unmistakable.
+struct ElosSegmentedControl<Tab: Hashable>: View {
+    let tabs: [Tab]
+    let label: (Tab) -> String
+    @Binding var selection: Tab
+
+    @Namespace private var indicator
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(tabs, id: \.self) { tab in
+                let isSelected = tab == selection
+                Button {
+                    withAnimation(.snappy(duration: 0.25)) { selection = tab }
+                } label: {
+                    Text(label(tab))
+                        .font(.system(.footnote, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .foregroundStyle(isSelected ? .white : .secondary)
+                        .padding(.vertical, 7)
+                        .frame(maxWidth: .infinity)
+                        .background {
+                            if isSelected {
+                                Capsule().fill(Color.tint)
+                                    .matchedGeometryEffect(id: "elosSegment", in: indicator)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(label(tab))
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+        .padding(3)
+        .background(Color(.secondarySystemGroupedBackground), in: Capsule())
+    }
+}

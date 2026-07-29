@@ -171,24 +171,22 @@ struct MeView: View {
     private var wellnessCard: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Today")
-                    .font(.subheadline).fontWeight(.bold)
+                Text("Today").font(.elosHeadline)
                 Spacer()
                 Button {
                     vm.showingLogSleep = true
                 } label: {
-                    Text("+ Log Sleep")
-                        .font(.caption).fontWeight(.semibold)
+                    Label("Log Sleep", systemImage: "plus")
+                        .font(.system(.caption, weight: .semibold))
                         .foregroundStyle(Color.tint)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(Color.tintSoft)
-                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .padding(.horizontal, Space.m).padding(.vertical, Space.xs + 2)
+                        .background(Color.tintSoft, in: Capsule())
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            .padding(.bottom, 12)
+            .padding(.horizontal, Space.gutter)
+            .padding(.top, Space.l)
+            .padding(.bottom, Space.m)
 
             Divider()
 
@@ -218,44 +216,68 @@ struct MeView: View {
 
             Divider()
 
-            HStack(spacing: 8) {
-                ForEach([8, 16, 32], id: \.self) { oz in
-                    Button("+\(oz)oz") { HapticManager.impact(.light); vm.addHydration(oz: oz) }
-                        .font(.caption).fontWeight(.semibold)
-                        .foregroundStyle(Color.mNutri)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .background(Color.mNutri.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            // Two equal-weight 3-button rows meant six large tap targets dominated the card, and the
+            // subtract row — a correction affordance, used far less than logging a drink — carried the
+            // same visual weight as the primary action. Adding stays prominent; subtracting drops to a
+            // compact borderless row. All six amounts remain available.
+            VStack(spacing: Space.s) {
+                HStack(spacing: Space.s) {
+                    ForEach([8, 16, 32], id: \.self) { oz in
+                        Button {
+                            HapticManager.impact(.light); vm.addHydration(oz: oz)
+                        } label: {
+                            Text("+\(oz)oz")
+                                .font(.system(.footnote, weight: .semibold))
+                                .foregroundStyle(Color.mNutri)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color.mNutri.opacity(0.12), in:
+                                    RoundedRectangle(cornerRadius: Radius.button, style: .continuous))
+                        }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Add \(oz) ounces")
+                    }
+                }
+                HStack(spacing: Space.s) {
+                    Spacer(minLength: 0)
+                    ForEach([8, 16, 32], id: \.self) { oz in
+                        Button {
+                            HapticManager.impact(.light); vm.removeHydration(oz: oz)
+                        } label: {
+                            Text("−\(oz)oz")
+                                .font(.elosCaption)
+                                .foregroundStyle(.secondary)
+                                // Borderless text alone read as a caption, not a control, and the
+                                // hit area fell well under 44pt. A hairline capsule plus real
+                                // padding restores both without competing with the add buttons.
+                                .padding(.horizontal, Space.m)
+                                .padding(.vertical, 7)
+                                .overlay {
+                                    Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
+                                }
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Remove \(oz) ounces")
+                    }
+                    Spacer(minLength: 0)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.top, 10)
-
-            HStack(spacing: 8) {
-                ForEach([8, 16, 32], id: \.self) { oz in
-                    Button("-\(oz)oz") { HapticManager.impact(.light); vm.removeHydration(oz: oz) }
-                        .font(.caption).fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .background(Color(.tertiarySystemFill))
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 10)
+            .padding(.horizontal, Space.l)
+            .padding(.top, Space.m)
+            .padding(.bottom, Space.m)
         }
         .elosCard()
     }
 
     private func wellnessRing(value: String, label: String, progress: Double, color: Color) -> some View {
-        VStack(spacing: 8) {
+        VStack(spacing: Space.s) {
             ZStack {
+                // The track was a 15%-opacity wash of the ring's own colour, so with nothing logged
+                // all three rings read as muddy coloured smudges rather than empty gauges. A neutral
+                // track means colour on screen always signals actual progress.
                 Circle()
-                    .stroke(color.opacity(0.15), lineWidth: 5)
+                    .stroke(Color.secondary.opacity(0.16), lineWidth: 5)
                 Circle()
                     .trim(from: 0, to: progress)
                     .stroke(color, style: StrokeStyle(lineWidth: 5, lineCap: .round))
@@ -265,12 +287,14 @@ struct MeView: View {
             .frame(width: 46, height: 46)
 
             Text(value)
-                .font(.system(size: 12, weight: .bold, design: .rounded).monospacedDigit())
+                .font(.elosNumeric(.caption, weight: .bold))
             Text(label)
-                .font(.caption2)
+                .font(.elosMicro)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
     }
 
     private var sleepDisplayValue: String {
@@ -288,8 +312,12 @@ struct MeView: View {
     private var habitsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Circle().fill(Color.mHabits).frame(width: 8, height: 8)
-                Text("Habits").font(.subheadline).fontWeight(.bold)
+                // A bare filled dot beside the title read as an unread/status badge rather than
+                // decoration; a glyph matches how every other card labels itself.
+                Image(systemName: "checklist")
+                    .font(.elosCaption)
+                    .foregroundStyle(Color.mHabits)
+                Text("Habits").font(.elosHeadline)
                 Spacer()
                 let bestStreak = vm.habits.map(\.streak).max() ?? 0
                 if bestStreak > 0 {

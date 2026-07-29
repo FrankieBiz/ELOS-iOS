@@ -27,13 +27,12 @@ struct PlanView: View {
     var body: some View {
         NavigationStack {
             ScrollView(.vertical) {
-                VStack(spacing: 20) {
-                    Picker("", selection: $segment) {
-                        ForEach(PlanSegmentExtended.allCases, id: \.self) { s in
-                            Text(s.rawValue).tag(s)
-                        }
-                    }
-                    .pickerStyle(.segmented)
+                VStack(spacing: Space.xl) {
+                    ElosSegmentedControl(
+                        tabs: PlanSegmentExtended.allCases,
+                        label: \.rawValue,
+                        selection: $segment
+                    )
 
                     switch segment {
                     case .schedule:    scheduleTab
@@ -42,8 +41,8 @@ struct PlanView: View {
                     case .courses:     coursesTab
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
+                .padding(.horizontal, Space.gutter)
+                .padding(.top, Space.m)
                 .padding(.bottom, 120)
             }
             .scrollIndicators(.hidden)
@@ -55,7 +54,7 @@ struct PlanView: View {
     // MARK: - Schedule Tab
 
     private var scheduleTab: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: Space.l) {
             dayPicker
             scheduleTimeline
             loadSummaryCard
@@ -63,49 +62,70 @@ struct PlanView: View {
     }
 
     private var dayPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+        // `weekLoadMap` is one call per day inside the loop otherwise — hoisted so the strip
+        // computes the week once instead of seven times.
+        let loadMap = vm.weekLoadMap(daysAhead: 7)
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Space.s) {
                 ForEach(0..<7, id: \.self) { offset in
                     let date = Calendar.current.date(byAdding: .day, value: offset, to: Calendar.current.startOfDay(for: Date())) ?? Date()
                     let comps = Calendar.current.dateComponents([.weekday, .day], from: date)
                     let letters = ["S", "M", "T", "W", "T", "F", "S"]
                     let letter = letters[(comps.weekday ?? 1) - 1]
                     let number = comps.day ?? 0
-                    let loadType = vm.weekLoadMap(daysAhead: 7)[safe: offset]?.loadType ?? "rest"
-                    let dotColor = dotColor(for: loadType)
+                    let loadType = loadMap[safe: offset]?.loadType ?? "rest"
+                    let isSelected = selectedDayOffset == offset
 
                     Button {
-                        withAnimation { selectedDayOffset = offset }
+                        withAnimation(.snappy(duration: 0.22)) { selectedDayOffset = offset }
                     } label: {
-                        VStack(spacing: 2) {
-                            Text(letter).font(.system(size: 10))
-                            Text("\(number)").font(.system(size: 15, weight: .bold))
-                            Circle().fill(dotColor).frame(width: 5, height: 5)
+                        VStack(spacing: 3) {
+                            Text(letter)
+                                .font(.system(.caption2, weight: .semibold))
+                                .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary)
+                            Text("\(number)")
+                                .font(.elosNumeric(.callout, weight: .bold))
+                            // On the selected day the dot sat grey-on-orange and read as a
+                            // rendering artefact; white keeps the load cue visible there.
+                            Circle()
+                                .fill(isSelected ? Color.white.opacity(0.9) : dotColor(for: loadType))
+                                .frame(width: 5, height: 5)
                         }
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .foregroundStyle(selectedDayOffset == offset ? Color.white : Color.primary)
-                        .background(selectedDayOffset == offset ? Color.tint : Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .frame(minWidth: 40)
+                        .padding(.horizontal, Space.m).padding(.vertical, Space.s)
+                        .foregroundStyle(isSelected ? Color.white : Color.primary)
+                        .background {
+                            RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                                .fill(isSelected ? Color.tint : Color(.secondarySystemGroupedBackground))
+                        }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(date.formatted(.dateTime.weekday(.wide).month().day()))
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
             }
+            .padding(.horizontal, Space.gutter)
         }
+        .padding(.horizontal, -Space.gutter)
+        .scrollClipDisabled()
     }
 
     private var scheduleTimeline: some View {
         let rows = vm.buildScheduleRows(for: selectedDate)
         return Group {
             if rows.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "calendar").font(.system(size: 28)).foregroundStyle(.secondary)
+                VStack(spacing: Space.s) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 26))
+                        .foregroundStyle(.tertiary)
                     Text("Nothing scheduled")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(.elosHeadline).foregroundStyle(.secondary)
                     Text("Set an active split or sync Canvas to see your schedule.")
-                        .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        .font(.elosCaption).foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(40)
+                .padding(.vertical, 32).padding(.horizontal, Space.xxl)
                 .elosCard()
             } else {
                 VStack(spacing: 0) {
@@ -141,55 +161,85 @@ struct PlanView: View {
         let hasExam = vm.exams.contains { examDateString($0) == dayString(selectedDate) }
         let gymDay  = vm.gymDay(for: selectedDate)
 
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Load: \(loadLabel(loadType))").font(.subheadline).fontWeight(.semibold)
-                Spacer()
-            }
+        let detail: String = {
             if hasExam {
-                Text("Gym shifted — exam detected. Split advances to next available day.")
-                    .font(.caption).foregroundStyle(.secondary)
+                return "Gym shifted — exam detected. Split advances to next available day."
             } else if let gd = gymDay, !gd.isRest {
-                Text("Training day: \(gd.dayName.isEmpty ? "Workout" : gd.dayName). Tap Start in the Train tab when ready.")
-                    .font(.caption).foregroundStyle(.secondary)
+                return "Training day: \(gd.dayName.isEmpty ? "Workout" : gd.dayName). Tap Start in the Train tab when ready."
             } else if vm.activeSplit == nil {
-                Text("No active split. Set one in Programs to see dynamic gym scheduling.")
-                    .font(.caption).foregroundStyle(.secondary)
+                return "No active split. Set one in Programs to see dynamic gym scheduling."
             } else {
-                Text("Rest or recovery day.")
-                    .font(.caption).foregroundStyle(.secondary)
+                return "Rest or recovery day."
             }
+        }()
+
+        // "Load: Rest" as one run-on subheadline buried the value in the label. Splitting the
+        // label off as a section header lets the load itself carry the weight and colour.
+        return HStack(alignment: .top, spacing: Space.m) {
+            Circle()
+                .fill(dotColor(for: loadType).opacity(0.15))
+                .frame(width: 34, height: 34)
+                .overlay {
+                    Image(systemName: hasExam ? "exclamationmark.triangle.fill" : "gauge.medium")
+                        .font(.elosCaption)
+                        .foregroundStyle(dotColor(for: loadType))
+                }
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Load").elosSectionLabel()
+                Text(loadLabel(loadType))
+                    .font(.elosHeadline)
+                    .foregroundStyle(dotColor(for: loadType))
+                Text(detail)
+                    .font(.elosCaption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
         }
-        .padding(16)
+        .padding(Space.gutter)
         .elosCard()
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Assignments Tab
 
     private var assignmentsTab: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 8) {
+        VStack(spacing: Space.l) {
+            HStack(spacing: Space.s) {
                 ForEach(AssignFilter.allCases, id: \.self) { f in
-                    Button { assignFilter = f } label: {
+                    let isSelected = assignFilter == f
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) { assignFilter = f }
+                    } label: {
                         Text(f.rawValue)
-                            .font(.subheadline).fontWeight(.semibold)
-                            .foregroundStyle(assignFilter == f ? .white : .primary)
-                            .padding(.horizontal, 16).padding(.vertical, 8)
-                            .background(assignFilter == f ? Color.tint : Color(.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .font(.system(.footnote, weight: .semibold))
+                            .foregroundStyle(isSelected ? .white : .secondary)
+                            .padding(.horizontal, Space.l).padding(.vertical, 7)
+                            .background {
+                                Capsule().fill(isSelected ? Color.tint : Color(.secondarySystemGroupedBackground))
+                            }
+                            .overlay {
+                                Capsule().strokeBorder(
+                                    isSelected ? .clear : Color.primary.opacity(0.07), lineWidth: 1
+                                )
+                            }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
                 Spacer()
             }
 
             let filtered = filteredAssignments
             if filtered.isEmpty {
-                VStack(spacing: 8) {
-                    Text(assignFilter == .done ? "No completed assignments." : "All caught up!")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                VStack(spacing: Space.s) {
+                    Image(systemName: assignFilter == .done ? "tray" : "checkmark.circle")
+                        .font(.system(size: 26)).foregroundStyle(.tertiary)
+                    Text(assignFilter == .done ? "No completed assignments" : "All caught up")
+                        .font(.elosHeadline).foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity).padding(40)
+                .frame(maxWidth: .infinity).padding(.vertical, 32)
+                .elosCard()
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(filtered.enumerated()), id: \.element.id) { i, a in
@@ -200,11 +250,12 @@ struct PlanView: View {
                 .elosCard()
             }
 
-            Button("+ Add assignment") { showingAddAssignment = true }
-                .font(.subheadline).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity).padding(.vertical, 14)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            Button { showingAddAssignment = true } label: {
+                Label("Add assignment", systemImage: "plus")
+                    .font(.system(.subheadline, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+            }
+                .buttonStyle(ElosSecondaryButtonStyle())
                 .sheet(isPresented: $showingAddAssignment) {
                     AddAssignmentSheet { name, subject, due in
                         vm.addAssignment(name: name, subject: subject, due: due)
@@ -224,11 +275,16 @@ struct PlanView: View {
     // MARK: - Exams Tab
 
     private var examsTab: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Space.m) {
             if vm.exams.isEmpty {
-                Text("No upcoming exams")
-                    .font(.subheadline).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity).padding(40)
+                VStack(spacing: Space.s) {
+                    Image(systemName: "graduationcap")
+                        .font(.system(size: 26)).foregroundStyle(.tertiary)
+                    Text("No upcoming exams")
+                        .font(.elosHeadline).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 32)
+                .elosCard()
             } else {
                 ForEach(vm.exams) { exam in ExamCard(exam: exam) }
             }
