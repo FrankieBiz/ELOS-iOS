@@ -28,20 +28,39 @@ struct ReadinessCheckInView: View {
     }
 
     var body: some View {
-        VStack(spacing: 20) {
+        // The content is taller than the 0.65 detent it was pinned to and had no ScrollView, so the
+        // "Morning Check-In" title was clipped off the top — and at larger Dynamic Type sizes the Log
+        // button itself would have been unreachable, stranding anyone who opened this sheet.
+        ScrollView {
+        VStack(spacing: Space.xl) {
             // Header
-            VStack(spacing: 4) {
-                Text("Morning Check-In")
-                    .font(.title2).fontWeight(.bold)
-                Text("How are you feeling today?")
-                    .font(.subheadline).foregroundStyle(.secondary)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Morning Check-In")
+                        .font(.title2).fontWeight(.bold)
+                    Text("How are you feeling today?")
+                        .font(.elosBody).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: Space.s)
+                // Starting a free workout opened this with no way out but a swipe. An explicit
+                // close means the check-in is skippable, which it always was in intent.
+                Button { onDismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Skip check-in")
             }
-            .padding(.top, 12)
+            .padding(.horizontal, Space.xl)
+            .padding(.top, Space.m)
 
             // Score
             Text("\(scoreEmoji) \(String(format: "%.1f", overallScore))/5")
-                .font(.system(size: 32, weight: .bold, design: .monospaced))
+                .font(.system(size: 32, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(scoreColor)
+                .contentTransition(.numericText())
+                .animation(.snappy(duration: 0.2), value: overallScore)
 
             // Apple Health recovery context (resting HR / steps / weight + hint)
             if vm.healthKitEnabled, vm.healthSnapshot.hasAnyMetric {
@@ -74,20 +93,23 @@ struct ReadinessCheckInView: View {
                         Text("Log Check-In")
                     }
                 }
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(.headline, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(checkInVM.saved ? Color.good : Color.tint)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding(.vertical, Space.l)
+                .background(
+                    checkInVM.saved ? Color.good : Color.tint,
+                    in: RoundedRectangle(cornerRadius: Radius.button, style: .continuous)
+                )
             }
             .buttonStyle(.plain)
             .disabled(checkInVM.isSaving || checkInVM.saved)
-            .padding(.horizontal, 20)
-
-            Spacer()
+            .padding(.horizontal, Space.xl)
+            .padding(.bottom, Space.xl)
         }
-        .presentationDetents([.fraction(0.65)])
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .presentationDetents([.medium, .large])
     }
 
     @ViewBuilder private var healthMetricsCard: some View {
@@ -193,7 +215,7 @@ private struct ReadinessSlider: View {
                     .font(.subheadline).fontWeight(.medium)
                 Spacer()
                 Text("\(Int(value))/5")
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .font(.elosNumeric(.subheadline, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
             Slider(value: $value, in: 1...5, step: 1)
