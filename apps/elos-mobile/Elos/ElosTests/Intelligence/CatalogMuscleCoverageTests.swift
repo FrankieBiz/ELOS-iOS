@@ -100,6 +100,11 @@ struct CatalogMuscleCoverageTests {
         // Pressing adds secondary triceps credit on top of the direct pushdown work.
         #expect(vol.sets(for: .triceps) > vol.directSets(for: .triceps))
         #expect(vol.sets(forGroup: .legs) == 0)
-        #expect(vol.sets(forGroup: .back) == 0)
+
+        // Back gets no *direct* work on a push day — but it is not zero overall, because the
+        // overhead press genuinely recruits the upper traps to rotate the scapula. That shows in
+        // the UI as an indirect-only (translucent) segment, which is the honest reading.
+        #expect(vol.directSets(forGroup: .back) == 0)
+        #expect(vol.sets(forGroup: .back) > 0, "OHP should credit the traps indirectly")
     }
 }
