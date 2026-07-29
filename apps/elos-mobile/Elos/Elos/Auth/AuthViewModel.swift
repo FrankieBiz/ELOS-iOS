@@ -40,12 +40,15 @@ final class AuthViewModel: ObservableObject {
         case .failure(let error):
             // User-cancelled taps shouldn't show an error.
             if (error as? ASAuthorizationError)?.code == .canceled { return }
-            errorMessage = "Sign in with Apple didn't complete. Please try again."
+            #if DEBUG
+            print("[Auth] Sign in with Apple failed: \(error)")
+            #endif
+            errorMessage = Self.appleFailureMessage(for: error)
         case .success(let authorization):
             guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
                   let tokenData = credential.identityToken,
                   let idToken = String(data: tokenData, encoding: .utf8) else {
-                errorMessage = "Sign in with Apple didn't complete. Please try again."
+                errorMessage = "Apple didn't return a sign-in token. Sign in with your email and password instead."
                 return
             }
             isAppleLoading = true
@@ -69,6 +72,35 @@ final class AuthViewModel: ObservableObject {
             } catch {
                 errorMessage = friendlyMessage(for: error)
             }
+        }
+    }
+
+    /// Apple's failures all arrive as the same opaque `ASAuthorizationError`, and collapsing them
+    /// into "please try again" left the two *most likely* causes invisible — both of which retrying
+    /// will never fix:
+    ///
+    /// 1. The build has no `com.apple.developer.applesignin` entitlement. Sign in with Apple needs a
+    ///    paid Apple Developer membership; a personal/free team can't provision it, so this build
+    ///    reports `.unknown`/`.notHandled` forever.
+    /// 2. On the Simulator, Sign in with Apple additionally requires the simulator itself to be
+    ///    signed into an Apple ID (Settings → Sign in to your iPhone).
+    ///
+    /// In both cases the useful instruction is "use email and password", so say that.
+    static func appleFailureMessage(for error: Error) -> String {
+        guard let authError = error as? ASAuthorizationError else {
+            return "Sign in with Apple didn't complete. You can sign in with your email and password instead."
+        }
+        switch authError.code {
+        case .unknown, .notHandled, .failed, .invalidResponse:
+            #if targetEnvironment(simulator)
+            return "Sign in with Apple isn't available here. The Simulator needs to be signed into an Apple ID (Settings → Sign in to your iPhone), and this build doesn't carry the Apple sign-in capability. Use your email and password instead."
+            #else
+            return "Sign in with Apple isn't available in this build. Use your email and password instead."
+            #endif
+        case .notInteractive:
+            return "Sign in with Apple couldn't open. Use your email and password instead."
+        default:
+            return "Sign in with Apple didn't complete. You can sign in with your email and password instead."
         }
     }
 
