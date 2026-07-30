@@ -19,10 +19,12 @@ struct CrewView: View {
     }
 
     private var inviteMessage: String {
+        // This text lands in someone else's messages app, so it's the app's most externally visible
+        // copy. The flex emoji and exclamation made it read like an ad the user didn't write.
         if let uname = vm.userProfile?.username, !uname.isEmpty {
-            return "Add me on Elos — @\(uname) 💪"
+            return "Add me on Elos — @\(uname)"
         }
-        return "Join my crew on Elos! 💪"
+        return "Join my crew on Elos"
     }
 
     var body: some View {

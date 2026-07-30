@@ -57,22 +57,25 @@ enum NotificationManager {
         // No split configured
         guard day.hasSplit else {
             return (
-                "Elos Check-In 📋",
-                "Don't break your streak — log your habits today."
+                // Notification copy carried an emoji on every title (📋 🛌 🏋️ 💪) and coach-speak
+                // in the bodies. A lock-screen notification is the app's most public surface —
+                // plain, specific text reads as a product, not a hype account.
+                "Check in with Elos",
+                "Log today's habits to keep your streak."
             )
         }
         // Rest / off day
         if day.dayName.isEmpty {
             return (
-                "Rest Day 🛌",
+                "Rest day",
                 "Recovery is part of the program. Log your sleep and habits tonight."
             )
         }
         // Training day
         let name = day.dayName
         return (
-            "\(name) 🏋️",
-            "Your \(name) session is loaded in Elos. Let's get after it."
+            name,
+            "Your \(name) session is ready."
         )
     }
 
@@ -83,8 +86,8 @@ enum NotificationManager {
         guard seconds > 0 else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "Rest Complete"
-        content.body  = "Time to hit the next set 💪"
+        content.title = "Rest complete"
+        content.body  = "Time for your next set."
         content.sound = .default
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(seconds), repeats: false)
