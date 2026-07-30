@@ -38,25 +38,26 @@ struct XPRankCard: View {
                     .foregroundStyle(progress.rank.color)
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(progress.rank.rawValue.uppercased())
-                    .font(.system(size: 20, weight: .bold))
+                Text(progress.rank.rawValue)
+                    .font(.title3).fontWeight(.bold)
                     .foregroundStyle(progress.rank.color)
-                Text("\(progress.totalXP) XP total")
-                    .font(.system(size: 12, design: .rounded).monospacedDigit())
+                Text("\(progress.totalXP.formatted()) XP")
+                    .font(.elosNumeric(.caption, weight: .medium))
                     .foregroundStyle(.secondary)
             }
-            Spacer()
+            Spacer(minLength: Space.s)
             if let next = progress.rank.nextRank {
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(progress.xpToNext)")
-                        .font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
+                    Text(progress.xpToNext.formatted())
+                        .font(.elosNumeric(.title3, weight: .bold))
                     Text("to \(next.rawValue)")
-                        .font(.system(size: 11))
+                        .font(.elosMicro)
                         .foregroundStyle(.secondary)
                 }
+                .fixedSize()
             } else {
                 Label("Max Rank", systemImage: "crown.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(.caption2, weight: .semibold))
                     .foregroundStyle(progress.rank.color)
             }
         }
@@ -83,15 +84,18 @@ struct XPRankCard: View {
                 }
             }
             .frame(height: 10)
-            HStack {
-                Text(progress.rank.rawValue)
-                    .font(.caption2).fontWeight(.semibold)
-                    .foregroundStyle(progress.rank.color)
-                Spacer()
-                if let next = progress.rank.nextRank {
-                    Text(next.rawValue)
-                        .font(.caption2)
+            // The bar used to be captioned with the current and next rank names at its ends — a
+            // verbatim repeat of the two labels sitting directly above it. Dropped; the row that
+            // remains is the one piece of information the header doesn't already carry.
+            if let next = progress.rank.nextRank {
+                HStack {
+                    Text("\(progress.totalXP - progress.rank.minXP) / \(next.minXP - progress.rank.minXP) XP")
+                        .font(.elosNumeric(.caption2, weight: .medium))
                         .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(Int(progress.progress * 100))%")
+                        .font(.elosNumeric(.caption2, weight: .semibold))
+                        .foregroundStyle(progress.rank.color)
                 }
             }
         }
@@ -100,50 +104,42 @@ struct XPRankCard: View {
     // MARK: Rank track (mini dot path)
 
     private var rankTrack: some View {
-        HStack(spacing: 0) {
-            ForEach(GamificationEngine.Rank.ordered, id: \.self) { rank in
-                let reached  = rank.minXP <= progress.totalXP
+        // Every dot used to be labelled with a three-letter abbreviation — ROO, CON, ATH, ELI, CHA,
+        // LEG — which reads as invented jargon and, at 6–7pt, as grey smudges. It was also the third
+        // place on this one card that named the ranks (header, progress-bar ends, here, and again in
+        // the expanded path). Each rank now shows its own symbol and nothing else: the header already
+        // says which rank you are, so the rail only has to answer "how far along the road am I".
+        HStack(spacing: Space.xs) {
+            ForEach(Array(GamificationEngine.Rank.ordered.enumerated()), id: \.element) { i, rank in
+                let reached   = rank.minXP <= progress.totalXP
                 let isCurrent = rank == progress.rank
-                // Sizes here were 6–7pt, well below anything legible on device — the rank
-                // abbreviations read as grey smudges. Scaled up to the caption2 floor and the
-                // current rank is now the only one that gets a filled ring, so the eye lands on
-                // "where am I" without needing to read the labels at all.
-                VStack(spacing: 5) {
-                    ZStack {
-                        if isCurrent {
-                            Circle()
-                                .stroke(rank.color.opacity(0.35), lineWidth: 3)
-                                .frame(width: 28, height: 28)
-                        }
-                        Circle()
-                            .fill(reached ? rank.color : Color.secondary.opacity(0.14))
-                            .frame(width: isCurrent ? 20 : 12, height: isCurrent ? 20 : 12)
-                        if reached && !isCurrent {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 8, weight: .black))
-                                .foregroundStyle(.white)
-                        }
-                        if isCurrent {
-                            Image(systemName: rank.icon)
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.white)
-                        }
-                    }
-                    .frame(width: 30, height: 30)
-                    Text(String(rank.rawValue.prefix(3)).uppercased())
-                        .font(.system(.caption2, weight: isCurrent ? .bold : .regular))
-                        .tracking(0.4)
+
+                if i > 0 {
+                    Capsule()
+                        .fill(reached ? rank.color.opacity(0.5) : Color.secondary.opacity(0.14))
+                        .frame(height: 2)
+                        .frame(maxWidth: .infinity)
+                }
+
+                ZStack {
+                    Circle()
+                        .fill(reached ? rank.color.opacity(isCurrent ? 1 : 0.22)
+                                      : Color.secondary.opacity(0.12))
+                        .frame(width: isCurrent ? 32 : 24, height: isCurrent ? 32 : 24)
+                    Image(systemName: rank.icon)
+                        .font(.system(size: isCurrent ? 14 : 10, weight: .semibold))
                         .foregroundStyle(
-                            isCurrent ? rank.color
-                            : (reached ? Color.secondary : Color.secondary.opacity(0.35))
+                            isCurrent ? .white
+                            : (reached ? rank.color : Color.secondary.opacity(0.45))
                         )
                 }
-                .frame(maxWidth: .infinity)
-                .accessibilityElement(children: .combine)
+                .frame(width: 32, height: 32)
+                .accessibilityElement(children: .ignore)
                 .accessibilityLabel(rank.rawValue)
                 .accessibilityValue(isCurrent ? "current rank" : (reached ? "unlocked" : "locked"))
             }
         }
+        .animation(.snappy(duration: 0.3), value: progress.rank)
     }
 
     // MARK: Stats row
@@ -165,17 +161,20 @@ struct XPRankCard: View {
         VStack(spacing: 4) {
             HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 11))
+                    .font(.elosMicro)
                     .foregroundStyle(color)
                 Text(value)
-                    .font(.system(size: 16, weight: .bold, design: .rounded).monospacedDigit())
+                    .font(.elosNumeric(.callout, weight: .bold))
+                    .contentTransition(.numericText())
             }
             Text(label)
-                .font(.system(size: 10))
+                .font(.elosMicro)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 4)
+        .padding(.vertical, Space.xs)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
     }
 
     // MARK: Rank path toggle
@@ -214,27 +213,28 @@ struct XPRankCard: View {
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(rank.rawValue)
-                            .font(.system(size: 14, weight: isCurrent ? .bold : .regular))
+                            .font(.system(.subheadline, weight: isCurrent ? .bold : .regular))
                             .foregroundStyle(isUnlocked ? .primary : .secondary)
-                        Text("\(rank.minXP) XP")
-                            .font(.system(size: 11, design: .rounded).monospacedDigit())
+                        Text("\(rank.minXP.formatted()) XP")
+                            .font(.elosNumeric(.caption2, weight: .regular))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     if isCurrent {
-                        Text("YOU")
-                            .font(.system(size: 9, weight: .bold))
+                        // "YOU" in a 9pt shouting caps badge was the loudest thing in the list for
+                        // information the filled row already conveys. A quiet word does the job.
+                        Text("Current")
+                            .font(.system(.caption2, weight: .semibold))
                             .foregroundStyle(rank.color)
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(rank.color.opacity(0.12))
-                            .clipShape(Capsule())
+                            .padding(.horizontal, Space.s).padding(.vertical, 3)
+                            .background(rank.color.opacity(0.14), in: Capsule())
                     } else if isUnlocked {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 18))
+                            .font(.title3)
                             .foregroundStyle(rank.color)
                     } else {
-                        Text("+\(rank.minXP - progress.totalXP) XP")
-                            .font(.system(size: 11, design: .rounded).monospacedDigit())
+                        Text("+\((rank.minXP - progress.totalXP).formatted())")
+                            .font(.elosNumeric(.caption2, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
                 }
