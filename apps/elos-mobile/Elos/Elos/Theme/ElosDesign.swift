@@ -87,6 +87,50 @@ extension View {
     }
 }
 
+// MARK: - Podium badge
+
+/// Rank indicator for leaderboards.
+///
+/// Replaces 🥇🥈🥉, which were duplicated as literal emoji in both `LeaderboardView` and the Train
+/// tab's weekly board. Emoji render at the system's own scale and colour, so they ignored the type
+/// ramp and the palette, and next to SF Symbols everywhere else they looked pasted in. This draws
+/// the placing itself — the number stays readable at any Dynamic Type size, and ranks past third
+/// degrade to a plain numeral instead of nothing.
+struct PodiumBadge: View {
+    let rank: Int
+    var size: CGFloat = 28
+
+    private var medal: Color? {
+        switch rank {
+        case 1:  return Color(red: 0.83, green: 0.69, blue: 0.22)   // gold
+        case 2:  return Color(red: 0.75, green: 0.75, blue: 0.78)   // silver
+        case 3:  return Color(red: 0.80, green: 0.50, blue: 0.20)   // bronze
+        default: return nil
+        }
+    }
+
+    var body: some View {
+        Group {
+            if let medal {
+                ZStack {
+                    Circle().fill(medal.opacity(0.18))
+                    Circle().strokeBorder(medal.opacity(0.55), lineWidth: 1)
+                    Text("\(rank)")
+                        .font(.system(size: size * 0.46, weight: .bold, design: .rounded))
+                        .foregroundStyle(medal)
+                }
+                .frame(width: size, height: size)
+            } else {
+                Text("\(rank)")
+                    .font(.elosNumeric(.caption, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: size, height: size)
+            }
+        }
+        .accessibilityLabel(rank <= 3 ? "Rank \(rank), podium" : "Rank \(rank)")
+    }
+}
+
 // MARK: - Segmented control
 
 /// A tab switcher in the app's own visual language.

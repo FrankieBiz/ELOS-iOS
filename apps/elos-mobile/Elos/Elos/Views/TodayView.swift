@@ -67,14 +67,17 @@ struct TodayView: View {
 
     // MARK: Header
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(vm.todayDateString)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .elosSectionLabel()
+            // largeTitle + a two-line greeting was the single biggest waste of space in the app.
+            // One line, a step down the ramp, and it scales rather than wraps for long names.
             Text(vm.greeting)
-                .font(.largeTitle)
-                .fontWeight(.bold)
+                .font(.title).fontWeight(.bold)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Habits
@@ -203,11 +206,14 @@ struct TodayView: View {
             VStack(spacing: 0) {
                 let pending = vm.assignments.filter { !$0.done }.prefix(3)
                 if pending.isEmpty {
-                    Text("All caught up! 🎉")
-                        .font(.subheadline)
+                    // "All caught up! 🎉" — a party popper and an exclamation mark for the routine
+                    // state of having no homework due. Stated plainly it reads as information
+                    // rather than the app congratulating you.
+                    Label("Nothing due", systemImage: "checkmark.circle")
+                        .font(.elosBody)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
-                        .padding(16)
+                        .padding(Space.gutter)
                 } else {
                     ForEach(Array(pending.enumerated()), id: \.element.id) { idx, assign in
                         AssignmentRow(assign: assign) {

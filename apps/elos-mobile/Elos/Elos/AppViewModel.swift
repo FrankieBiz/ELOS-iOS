@@ -130,14 +130,16 @@ class AppViewModel: ObservableObject {
     var doneSetsCount: Int  { exercises.flatMap(\.sets).filter(\.done).count }
     var totalSetsCount: Int { exercises.flatMap(\.sets).count }
 
+    /// Short by design. "Good afternoon, Frankie." wrapped to two lines as a large title and pushed
+    /// every piece of actual content a quarter of the way down the screen — a lot of real estate for
+    /// a phrase that carries no information. Dropping "Good" and the full stop fits one line.
     var greeting: String {
         let h = Calendar.current.component(.hour, from: Date())
         let name = displayName == "there" ? "there" : displayName
         switch h {
-        case 0...4:   return "Good evening, \(name)."
-        case 5...11:  return "Good morning, \(name)."
-        case 12...16: return "Good afternoon, \(name)."
-        default:      return "Good evening, \(name)."
+        case 5...11:  return "Morning, \(name)"
+        case 12...16: return "Afternoon, \(name)"
+        default:      return "Evening, \(name)"
         }
     }
 

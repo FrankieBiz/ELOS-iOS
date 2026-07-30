@@ -411,20 +411,21 @@ struct TrainView: View {
                         Spacer()
                     }
                 } else {
+                    // Medal emoji here were a second, independent copy of the ones in
+                    // LeaderboardView; both now draw the shared PodiumBadge.
                     HStack(spacing: 0) {
                         ForEach(Array(socialVM.weeklyBoard.prefix(3).enumerated()), id: \.element.id) { idx, entry in
-                            let medals = ["🥇","🥈","🥉"]
-                            HStack(spacing: 6) {
-                                Text(idx < medals.count ? medals[idx] : "#\(entry.rank)")
-                                    .font(.caption)
+                            HStack(spacing: Space.xs + 2) {
+                                PodiumBadge(rank: entry.rank, size: 22)
                                 AvatarCircle(initials: entry.initials, hex: entry.avatarHex, size: 24)
                                 Text(entry.displayName.components(separatedBy: " ").first ?? entry.displayName)
-                                    .font(.caption).fontWeight(entry.is_self ? .bold : .regular)
+                                    .font(.system(.caption, weight: entry.is_self ? .semibold : .regular))
                                     .foregroundStyle(entry.is_self ? Color.tint : .primary)
+                                    .lineLimit(1)
                             }
-                            if idx < 2 { Spacer() }
+                            if idx < 2 { Spacer(minLength: Space.s) }
                         }
-                        Spacer()
+                        Spacer(minLength: 0)
                     }
                     if let standings = socialVM.standings {
                         let rank = rankValue(for: socialVM.selectedMetric, standings: standings)

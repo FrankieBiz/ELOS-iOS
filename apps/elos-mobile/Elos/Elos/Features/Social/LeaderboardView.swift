@@ -183,40 +183,31 @@ private struct LeaderboardRow: View {
     let entry: LeaderboardEntryResponse
     let metric: String
 
-    private var rankIcon: String? {
-        switch entry.rank {
-        case 1: return "🥇"
-        case 2: return "🥈"
-        case 3: return "🥉"
-        default: return nil
-        }
-    }
-
     var body: some View {
-        HStack(spacing: 12) {
-            if let icon = rankIcon {
-                Text(icon).font(.title3).frame(width: 32)
-            } else {
-                Text("#\(entry.rank)")
-                    .font(.caption).fontWeight(.bold).foregroundStyle(.secondary)
-                    .frame(width: 32)
-            }
+        HStack(spacing: Space.m) {
+            PodiumBadge(rank: entry.rank, size: 30)
             AvatarCircle(initials: entry.initials, hex: entry.avatarHex, size: 36)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(entry.displayName)
-                    .font(.subheadline).fontWeight(entry.is_self ? .bold : .regular)
-                    .lineLimit(1)
-                if entry.is_self {
-                    Text("You").font(.caption2).foregroundStyle(Color.tint)
-                }
+            Text(entry.displayName)
+                .font(.system(.subheadline, weight: entry.is_self ? .semibold : .regular))
+                .lineLimit(1)
+            // "You" was a caption stacked under the name, giving self rows a taller layout than
+            // everyone else's and making the list bounce. Inline chip keeps every row one height.
+            if entry.is_self {
+                Text("You")
+                    .font(.system(.caption2, weight: .semibold))
+                    .foregroundStyle(Color.tint)
+                    .padding(.horizontal, Space.xs + 2).padding(.vertical, 2)
+                    .background(Color.tintSoft, in: Capsule())
             }
-            Spacer()
+            Spacer(minLength: Space.s)
             Text(formattedValue(entry.value, metric: metric))
-                .font(.subheadline).fontWeight(.semibold)
+                .font(.elosNumeric(.subheadline, weight: .semibold))
                 .foregroundStyle(entry.rank == 1 ? Color.tint : .primary)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, Space.l)
+        .padding(.vertical, Space.m)
+        .background(entry.is_self ? Color.tintSoft.opacity(0.5) : .clear)
+        .accessibilityElement(children: .combine)
     }
 
     private func formattedValue(_ value: Double, metric: String) -> String {
