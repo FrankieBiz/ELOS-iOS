@@ -90,27 +90,67 @@ struct TrainingIntent: Equatable, Codable {
 `TrainingIntent` needs a custom `init(from:)` (`decodeIfPresent(...) ?? []`) so templates saved before
 this ships still decode — synthesized `Decodable` would otherwise fail on the missing key.
 
-`TrainingScience.weeklyBand(for:profile:)` / `sessionBand(for:profile:)` are the **only** functions that
-change. Both already take a `profile: TrainingProfile` built fresh at each call site (`scoringProfile` in
-`CreateTemplateView`/`CreateSplitView`). Before returning a band, force `isOptional = true` (and zero
-`mev`/`targetLow`/`targetHigh`/`mrv`, matching how `rotatorCuff`/`forearms` are already defined) for any
-muscle in the *effective excluded set* for that call:
+**The merge point is `TemplateQualityEngine.score(days:dayNames:scope:profile:catalog:intent:)` itself —
+this file does change, as its very first step, before anything else runs:**
 
+```swift
+static func score(days: [[ScoredExercise]], dayNames: [String], scope: QualityScope,
+                  profile: TrainingProfile, catalog: [ExerciseCandidate],
+                  intent: TrainingIntent? = nil) -> QualityReport {
+    // Day-scoped exclusions only apply at the scope a single day actually has — D1 is enforced
+    // here, not by trusting every call site to withhold them. `.weeklySplit` never unions `intent`'s
+    // set in, so a `TrainingIntent.excludedMuscles` handed to a weekly call is provably inert,
+    // regardless of what any UI does or does not write to it.
+    let dayScoped: Set<FineMuscle> = scope == .singleSession ? (intent?.excludedMuscles ?? []) : []
+    let excluded = profile.volumeOverrides.excludedMuscles.union(dayScoped)
+    var overrides = profile.volumeOverrides
+    overrides.excludedMuscles = excluded
+    let profile = TrainingProfile(goal: profile.goal, experience: profile.experience, volumeOverrides: overrides)
+    // ...unchanged from here except BalanceScorer's call, which gains `excludedMuscles: excluded` (see
+    // below): MuscleVolumeAnalyzer.analyze(..., profile: profile, ...), VolumeScorer.score(..., profile: profile),
+    // FrequencyScorer.score(..., profile: profile), etc. all now see the merged exclusion set for free.
 ```
-effective = profile.volumeOverrides.excludedMuscles ∪ (this call's TrainingIntent?.excludedMuscles ?? [])
-```
 
-Because every consumer — `VolumeScorer`, `FrequencyScorer`, `MuscleVolumeAnalyzer`/bars — already branches
-on `isOptional`, **none of those files change.** The day-scoping (D1) falls out for free: a call site only
-folds in a `TrainingIntent` when it's scoring *that specific day*, and the weekly-scope call in
-`CreateSplitView.qualityReport` never has a single day's intent to fold in, so it only ever sees the global
-exclusions.
+`weeklyBand(for:profile:)`/`sessionBand(for:profile:)` change too (they're what actually reads
+`profile.volumeOverrides.excludedMuscles` to force `isOptional = true` and zero the targets, matching how
+`rotatorCuff`/`forearms` are already defined) — but **every other consumer downstream of `profile`**
+(`VolumeScorer`, `FrequencyScorer`, `MuscleVolumeAnalyzer`/bars) needs no change, because they already just
+forward whatever `profile` they're handed into those two functions.
 
-`BalanceScorer` gets one small, explicit addition: both its group-loops (`weeklySplit`'s five majors,
-`singleSession`'s `archetypeGroups`) skip a `MuscleGroup` if every one of its `children` is in the
-effective excluded set. (This does not change behavior for the lower-back example — "back" already only
-requires *any* back-group work, and the archetype table doesn't list lower back as expected for `.upper`
-in the first place — but it closes the real edge case of excluding an entire group.)
+`BalanceScorer.score` is the one exception that does need a new parameter: it doesn't take `profile:`
+today (only `intent:`, used for `focus`), so it can't see the *global* exclusion set on its own. Add
+`excludedMuscles: Set<FineMuscle>` as an explicit param (`TemplateQualityEngine` computes it once, at the
+same merge point above, and passes it to both the profile rebuild and this call) and skip a `MuscleGroup`
+in both group-loops (`weeklySplit`'s five majors, `singleSession`'s `archetypeGroups`) when every one of
+its `children` is in that set. (This does not change behavior for the lower-back example — "back" already
+only requires *any* back-group work, and the archetype table doesn't list lower back as expected for
+`.upper` in the first place — but it closes the real edge case of excluding an entire group.)
+
+**Why D1 (day-scoped, no weekly roll-up) holds structurally, not by convention:** the `scope ==
+.singleSession` check in the merge above is the actual guarantee — a `.weeklySplit` call never unions
+`intent?.excludedMuscles` in at all, so it is inert there by construction, independent of any UI. This is
+deliberately defense-in-depth rather than relying solely on call-site discipline: even if a future screen
+mistakenly handed a populated `TrainingIntent` into a weekly-scope call, the engine would still ignore its
+`excludedMuscles`.
+
+The UI layer gets a second, belt-and-suspenders fix on top, for a different reason — not correctness, but
+so the control itself never appears somewhere it would silently no-op: `TrainingIntentRow` is a **shared**
+component, used both by `CreateTemplateView` (day scope, `$intent`) and by `CreateSplitView`'s weekly panel
+(`CreateSplitView.swift:249`, `TrainingIntentRow(intent: $intent, showsFocus: false)` — the *same*
+split-wide `intent` that feeds the weekly score, and whose `excludedMuscles` the engine now ignores at that
+scope regardless). `TrainingIntentRow` already solves exactly this "don't show a control that means nothing
+here" problem for the focus chip via `showsFocus: Bool = true`, gated `false` at that one weekly call site.
+The new "Skip muscles" chip gets the identical treatment: add `showsSkip: Bool = true`, render the chip
+only `if showsSkip`, and pass `showsSkip: false` alongside the existing `showsFocus: false` at
+`CreateSplitView.swift:249`. (The per-day path is unaffected either way — `dayRow`'s new chip binds to
+`dayExcludedMuscles[i]`, not `intent`, and was never routed through the weekly `TrainingIntentRow`
+instance.)
+
+`daySummaries` (per-day, line ~262) is the one call site that must change to construct a fresh
+`TrainingIntent(goal: intent.goal, focus: nil, excludedMuscles: dayExcludedMuscles[i])` per day, in place
+of passing no intent at all today. `CreateTemplateView.qualityReport` (line 274) already passes its one
+`intent` — once `TrainingIntentRow`'s new chip (with `showsSkip` defaulting `true` there) writes to
+`intent.excludedMuscles`, no call-site change is needed there beyond the engine fix above.
 
 ### 2. Per-day storage for split days
 
@@ -123,10 +163,15 @@ var excludedMuscles: Set<FineMuscle> {
 }
 ```
 
-`CreateSplitView` gains `@State private var dayExcludedMuscles: [Set<FineMuscle>] = Array(repeating: [], count: 7)`,
-loaded/saved alongside `dayNames`/`dayIsRest`/`dayExercises`. `daySummaries`' existing per-day
-`.singleSession` scoring call constructs an ad-hoc `TrainingIntent(goal: intent.goal, focus: nil, excludedMuscles: dayExcludedMuscles[i])`
-just for that call — nothing persists a redundant per-day goal.
+`CreateSplitView` gains `@State private var dayExcludedMuscles: [Set<FineMuscle>] = Array(repeating: [], count: 7)`.
+Load path mirrors `dayIsRest`/`dayTemplateIDs` (`.onAppear`, from each loaded `UserSplitDayRecord`). Save
+path is `saveSplit()`'s `buildDays(for:)` (`CreateSplitView.swift:510`), which already rebuilds every
+`UserSplitDayRecord` from the `@State` arrays on *every* save (edit or create) rather than mutating
+existing records — `excludedMusclesJSON: encode(dayExcludedMuscles[i])` is one more field in that same
+per-day `UserSplitDayRecord(...)` initializer call (line 515), no new code path. `daySummaries`' existing
+per-day `.singleSession` scoring call constructs an ad-hoc
+`TrainingIntent(goal: intent.goal, focus: nil, excludedMuscles: dayExcludedMuscles[i])` just for that call
+— nothing persists a redundant per-day goal.
 
 ### 3. Cited recommendations
 
@@ -171,11 +216,18 @@ the shared citations above — not seven separate studies.
 
 New sheet, `SkipMusclesSheet`, built on `MuscleTargetSheet`'s proven shape: `NavigationStack` → `List` →
 `Section` per `MuscleGroup` → `Button` rows (checkmark circle, **not** `Toggle`) toggling membership in a
-`Set<FineMuscle>`, Cancel/Done toolbar.
+`Set<FineMuscle>`, Cancel/Done toolbar. Structurally this chip is unlike `focusChip`/`goalChip` (both
+`Menu`s) — it opens a `.sheet`, so `TrainingIntentRow` needs its own local `@State` presentation flag to
+drive that, not just another `Menu` label.
 
 - `TrainingIntentRow` gains a third chip ("Skip muscles", badge = count when > 0) opening the sheet bound
-  to `intent.excludedMuscles`. Used as-is in `CreateTemplateView`.
-- `CreateSplitView`'s day rows gain the same chip, bound to `dayExcludedMuscles[i]`.
+  to `intent.excludedMuscles`, gated by a new `showsSkip: Bool = true` param (same shape as the existing
+  `showsFocus`). Used as-is (both default `true`) in `CreateTemplateView`. `CreateSplitView`'s weekly-panel
+  call (`CreateSplitView.swift:249`) passes `showsSkip: false` alongside its existing `showsFocus: false`
+  — the chip must never appear on the weekly row, since that row's `intent` feeds the `.weeklySplit`
+  score and any write there would silently violate D1 (see Architecture §1).
+- `CreateSplitView`'s day rows gain the same chip, bound to `dayExcludedMuscles[i]` — not to `intent` at
+  all, so it's unaffected by the `showsSkip` gate above.
 - `MuscleBarRow` needs no change — it already renders `isOptional` muscles muted with an "optional" label,
   which is exactly the right treatment for an excluded muscle.
 
@@ -183,10 +235,14 @@ New sheet, `SkipMusclesSheet`, built on `MuscleTargetSheet`'s proven shape: `Nav
 
 - `AppViewModel.showQualityRater: Bool = true`, persisted to `UserDefaults` like other boolean prefs.
 - `SettingsView`"Training" section: `Toggle("Show Quality Rating", isOn: $vm.showQualityRater)`.
-- `CreateTemplateView`/`CreateSplitView` wrap their `TemplateQualityPanel` (and, transitively, the "See
-  full report" → `SplitQualityReportView` path) in `if vm.showQualityRater`. `MuscleGroupPanelWeekly`
-  (coverage bars) is already rendered as a sibling section, independent of `qualityPanel` — no change
-  needed there, it stays visible either way.
+- `CreateTemplateView`/`CreateSplitView` wrap only their `TemplateQualityPanel` call (and, transitively,
+  the "See full report" → `SplitQualityReportView` path) in `if vm.showQualityRater`. The coverage-bars
+  component differs by screen — `CreateSplitView.qualityPanel` (line 95) is a standalone
+  `@ViewBuilder` var, a sibling view within the same `Section` as `MuscleGroupPanelWeekly` (line 87), so
+  wrapping just `qualityPanel`'s call site is enough — no structural change needed there. `CreateTemplateView`
+  (line 384–413) currently renders `TemplateQualityPanel` and `MuscleCoverageBars` as two views inside the
+  *same* `VStack`/`Section` — the fix there is to wrap just the `TemplateQualityPanel` call in the `if`,
+  leaving `MuscleCoverageBars` and its enclosing `Section` unconditional, not to gate the whole section.
 
 ### Volume Targets citations
 
@@ -203,12 +259,18 @@ New sheet, `SkipMusclesSheet`, built on `MuscleTargetSheet`'s proven shape: `Nav
 ## Phases
 
 1. **Engine** — `VolumeOverrides.excludedMuscles`, `TrainingIntent.excludedMuscles` (+ backward-compatible
-   decode), `weeklyBand`/`sessionBand` effective-exclusion logic, `BalanceScorer`'s
-   all-children-excluded group skip, `ResearchCitation` + `MuscleGroup.volumeRationale`. Unit tests for
-   each (`TrainingScienceTests`, `BalanceScorerTests`).
-2. **Template UI** — `SkipMusclesSheet`, `TrainingIntentRow`'s third chip, wired in `CreateTemplateView`.
+   decode), `weeklyBand`/`sessionBand` effective-exclusion logic, the merge step at the top of
+   `TemplateQualityEngine.score` (rebuilds `profile` with unioned exclusions before calling any scorer),
+   `BalanceScorer.score`'s new `excludedMuscles:` param + all-children-excluded group skip,
+   `ResearchCitation` + `MuscleGroup.volumeRationale`. Unit tests for each (`TrainingScienceTests`,
+   `TemplateQualityEngineTests`, `BalanceScorerTests`), including one asserting a `TrainingIntent` with
+   `excludedMuscles` set does *not* affect a `.weeklySplit`-scope `score(...)` call (the direct regression
+   test for D1, exercising the engine-level guarantee independent of any UI gating).
+2. **Template UI** — `SkipMusclesSheet`, `TrainingIntentRow`'s third chip (+ `showsSkip` param), wired in
+   `CreateTemplateView`.
 3. **Split UI** — `UserSplitDayRecord.excludedMusclesJSON` (SwiftData migration), `dayExcludedMuscles`
-   array + per-day chip in `CreateSplitView`, `daySummaries`' ad-hoc per-day `TrainingIntent`.
+   array + per-day chip in `CreateSplitView`, `showsSkip: false` on the weekly `TrainingIntentRow` call,
+   `daySummaries`' ad-hoc per-day `TrainingIntent`.
 4. **Rater toggle** — `AppViewModel.showQualityRater`, Settings row, gate both builders' panels.
 5. **Volume Targets citations + global exclusion** — `GroupTargetEditor` footer/disclosure, the
    "Not training this" sentinel on the weekly-sets picker.
