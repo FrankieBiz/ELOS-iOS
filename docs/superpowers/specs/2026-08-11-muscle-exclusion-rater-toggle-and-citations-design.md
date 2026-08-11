@@ -77,6 +77,7 @@ struct VolumeOverrides: Equatable, Codable {
     var preference: VolumePreference = .standard
     var groupWeeklyTarget: [String: Int] = [:]
     var excludedMuscles: Set<FineMuscle> = []   // NEW — "not training this, anywhere"
+    var isCustomized: Bool { preference != .standard || !groupWeeklyTarget.isEmpty || !excludedMuscles.isEmpty }
 }
 
 // TrainingIntent — the PER-DAY/PER-TEMPLATE struct
@@ -87,8 +88,15 @@ struct TrainingIntent: Equatable, Codable {
 }
 ```
 
-`TrainingIntent` needs a custom `init(from:)` (`decodeIfPresent(...) ?? []`) so templates saved before
-this ships still decode — synthesized `Decodable` would otherwise fail on the missing key.
+**Both** `TrainingIntent` **and** `VolumeOverrides` need a custom `init(from:)`
+(`decodeIfPresent(...) ?? []`) so records saved before this ships still decode — synthesized `Decodable`
+would otherwise throw `keyNotFound` on the missing key, not just for templates but for `VolumeOverrides`
+too: it's decoded at `AppViewModel.swift:129` via `try? JSONDecoder().decode(VolumeOverrides.self, ...)`,
+and on a thrown decode the `try?` silently yields `nil`, resetting every existing user's saved
+`preference` *and* `groupWeeklyTarget` entries back to defaults on upgrade — the exact same failure mode
+as `TrainingIntent`, just on the global Volume Targets screen instead of a per-template blob. `isCustomized`
+also gains the `excludedMuscles` clause above so a lifter who has *only* set a global exclusion (no
+numeric override) still shows the "Custom" badge in Settings and gets the reset affordance.
 
 **The merge point is `TemplateQualityEngine.score(days:dayNames:scope:profile:catalog:intent:)` itself —
 this file does change, as its very first step, before anything else runs:**
@@ -263,9 +271,12 @@ drive that, not just another `Menu` label.
    `TemplateQualityEngine.score` (rebuilds `profile` with unioned exclusions before calling any scorer),
    `BalanceScorer.score`'s new `excludedMuscles:` param + all-children-excluded group skip,
    `ResearchCitation` + `MuscleGroup.volumeRationale`. Unit tests for each (`TrainingScienceTests`,
-   `TemplateQualityEngineTests`, `BalanceScorerTests`), including one asserting a `TrainingIntent` with
+   `TemplateQualityEngineTests`, `BalanceScorerTests`), including: one asserting a `TrainingIntent` with
    `excludedMuscles` set does *not* affect a `.weeklySplit`-scope `score(...)` call (the direct regression
-   test for D1, exercising the engine-level guarantee independent of any UI gating).
+   test for D1, exercising the engine-level guarantee independent of any UI gating); and one decoding a
+   pre-this-change JSON fixture through **both** `TrainingIntent(jsonString:)` and
+   `VolumeOverrides`'s decode path (the latter as exercised by `AppViewModel`'s `try?
+   JSONDecoder().decode(VolumeOverrides.self, ...)`), asserting neither silently drops existing data.
 2. **Template UI** — `SkipMusclesSheet`, `TrainingIntentRow`'s third chip (+ `showsSkip` param), wired in
    `CreateTemplateView`.
 3. **Split UI** — `UserSplitDayRecord.excludedMusclesJSON` (SwiftData migration), `dayExcludedMuscles`
@@ -282,8 +293,12 @@ drive that, not just another `Menu` label.
   exclusion picker is built on `MuscleTargetSheet`'s `Button`-row pattern specifically to avoid
   reintroducing that bug. The new "Not training this" picker row is a `Picker` addition (proven to work),
   not a `Toggle`.
-- **Old saved templates decoding `intentJSON` without `excludedMuscles`** — must not crash or silently
-  drop the whole `TrainingIntent`. Needs an explicit test loading a pre-this-change JSON fixture.
+- **Old saved data decoding without `excludedMuscles`** — applies to **both** structs, not just
+  `TrainingIntent`. `VolumeOverrides` is decoded at `AppViewModel.swift:129` via
+  `try? JSONDecoder().decode(VolumeOverrides.self, ...)`; a thrown decode silently yields `nil` and resets
+  every existing user's saved `preference` *and* `groupWeeklyTarget` back to defaults on upgrade — not a
+  crash, but silent data loss, and easy to miss because the `try?` swallows the error entirely. Both
+  structs need the custom `init(from:)` and both need a pre-this-change JSON fixture test.
 - **Citation accuracy** — the three citations above are real, well-known papers/frameworks; still worth a
   final read-through against the actual abstracts before shipping copy that names them, since this is
   user-facing "cited studies" text people may act on.
