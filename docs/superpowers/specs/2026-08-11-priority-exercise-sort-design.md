@@ -33,9 +33,11 @@ means.
 3. Also available as a bulk action in the split builder (`CreateSplitView`): one priority choice applied
    to every non-rest day in the split at once, as a separate action from the existing per-day Sort
    button (which is left unchanged).
-4. Using the feature as intended must not lower the day's own quality score. Fix the scoring
-   inconsistency (§1) so the order-quality check only penalizes same-muscle inversions — which makes it
-   inherently compatible with prioritized ordering without storing or looking up any new state.
+4. Using the feature as intended must not lower the day's own quality score, for the normal case where
+   every exercise resolves to a single primary muscle group (true for every catalog-derived exercise
+   today; see §6 for the narrow multi-primary exception). Fix the scoring inconsistency (§1) so the
+   order-quality check only penalizes same-muscle inversions — which makes it inherently compatible with
+   prioritized ordering without storing or looking up any new state.
 
 ## 3. Non-goals
 
@@ -62,19 +64,30 @@ enum ExerciseOrderer {
 }
 ```
 
-Backward compatible: existing call sites (`CreateSplitView`'s per-day Sort button, `CreateTemplateView`'s
-apply-order action, the "poor order" tip's fix action) omit `priority` and get identical behavior to
-today.
+Backward compatible: existing call sites (`CreateSplitView`'s per-day Sort button, the template
+builder's `reorderCompoundsFirst()` used by the "poor order" tip's fix action — see §4.4, this is *not*
+a standalone button) omit `priority` and get identical behavior to today.
 
 When `priority` is non-nil:
-1. Resolve each `DayExercise` to a `ResolvedExercise` via `ExerciseResolver.resolve` (already the
-   standard resolution path — same one `FatigueModel`/`TemplateQualityEngine` use), to read
-   `.isCompound` and `.muscleGroup` (`targets.primary.first?.group`).
+1. Convert `[DayExercise]` to `[ScoredExercise]` via the existing `ScoredExercise(day:)` adapter
+   (`ScoredExercise.swift:37`), wrap as a single-day `[[ScoredExercise]]`, and resolve via
+   `ExerciseResolver.resolve(_:catalog:)` (`ScoredExercise.swift:92`, which takes nested arrays — one day
+   in, one day of `[ResolvedExercise]` out) to read `.isCompound` and `.muscleGroup`
+   (`targets.primary.first?.group`). This is the same resolution path `FatigueModel`/
+   `TemplateQualityEngine` already use for identical questions — reuse it rather than re-deriving
+   compound-ness or muscle group a third way.
 2. Partition into `priorityGroup` (resolved `muscleGroup == priority`) and `rest` (everything else),
    preserving each exercise's original relative position within its partition.
 3. Sort each partition independently using the existing compound-before-isolation rule (extract the
    current `rank(_:)` closure from `order` into a shared private helper so both partitions and the
-   no-priority path use identical logic — no duplicated sort rule).
+   no-priority path use identical logic — no duplicated sort rule). Note: `rank(_:)` classifies
+   compound-ness via a catalog-only id/name lookup on the raw `DayExercise`
+   (`ExerciseOrderer.swift:7-11`), separately from the `ResolvedExercise.isCompound` used for
+   partitioning in step 1 — these are two different, intentionally-separate lookups (one for "does this
+   belong in the priority group", one for "is this a compound movement"), not something to unify onto a
+   single `ResolvedExercise` pass. `ResolvedExercise.isCompound` returns `false` for an unresolvable
+   exercise (nil candidate) where `rank(_:)` returns `2` (deliberately last) — different fallback values
+   for a reason, so keep them as separate calls.
 4. Concatenate `priorityGroup + rest`.
 
 If no exercise in the day matches the chosen priority, `priorityGroup` is empty and the result is
@@ -91,10 +104,12 @@ Current (`FatigueModel.swift:83-110`): every isolation-index-before-compound-ind
 `sharesPrimaryMuscle`.
 
 Change: only inversions where `sharesPrimaryMuscle == true` count toward `quality`. Inversions that
-don't share a primary muscle are no longer computed at all — the pair-count denominator changes to only
-same-muscle compound/isolation pairs (analogous to today's `totalPairs`, but restricted to pairs that
-matter). This is the same criterion the tip text already applies to decide *what to say*; the fix makes
-the *number* agree with it.
+don't share a primary muscle are no longer computed at all — the pair-count denominator changes from "all
+compound×isolation pairs" to "compound×isolation pairs that share a primary muscle" (ordered or not).
+Explicitly: `quality = 1 − (same-muscle pairs that are inverted) / (same-muscle compound×isolation pairs)`,
+guarding the zero-denominator case (no same-muscle pairs at all) to `1.0`, same as today's guard for "all
+one type, or fewer than two exercises." This is the same criterion the tip text already applies to
+decide *what to say*; the fix makes the *number* agree with it.
 
 `OrderReport.inversions` keeps only same-muscle inversions (the ones ever worth surfacing) — the
 `sharesPrimaryMuscle` field on `OrderInversion` becomes redundant with this filtering and can be dropped,
@@ -113,10 +128,25 @@ not tied to either builder, so both call sites share one implementation instead 
 
 ### 4.4 `CreateTemplateView` (primary entry point)
 
-The existing "Apply ExerciseOrderer (compound-first)" button (`CreateTemplateView.swift:326-332`) becomes
-the priority menu from §4.3. Selecting an option calls `ExerciseOrderer.order(asDays, catalog:,
-priority:)` with the chosen value and applies the result exactly as today's button already does
-(preserving each entry's settings, per the existing comment at line 326).
+Correction from an earlier draft of this spec: `CreateTemplateView` has **no existing standalone sort
+button** to convert. `reorderCompoundsFirst()` (`CreateTemplateView.swift:327-344`) exists, but its
+*only* caller is the `.reorder` tip action (line 308) — the exact call site §3/§4.6 say must stay
+unchanged. So this is a **new** control, added to the view, not a repurposed one.
+
+Placement: a small header row directly above the exercise-cards `ForEach`
+(`CreateTemplateView.swift:416-426`, right after the Quality Coach section and before the exercise
+list), styled like other section-label-plus-trailing-control rows elsewhere in the app (e.g. `PlanView`'s
+"This Week" header): a label ("Sort") and the priority menu from §4.3 as the trailing control. Shown only
+when `exercises.count > 1` (nothing to usefully sort with 0 or 1 exercise — same guard the underlying
+`ExerciseOrderer` logic already no-ops on).
+
+Selecting a menu option builds `asDays` the same way `reorderCompoundsFirst()` already does (lines
+328-331), calls `ExerciseOrderer.order(asDays, catalog:, priority:)` with the chosen value, and re-maps
+back into `[TemplateExerciseEntry]` using the same "match ordered names back to real entries, unmatched
+at the end" logic already in `reorderCompoundsFirst()` (lines 333-343). Rather than duplicating that
+re-mapping, extract it into a shared private helper parameterized by `priority`, and have both the new
+menu's action and the now-unchanged `reorderCompoundsFirst()` (still called by the `.reorder` tip, with
+no priority) call it.
 
 ### 4.5 `CreateSplitView` (bulk action)
 
@@ -152,6 +182,19 @@ No new persisted state, no new SwiftData fields, no new network calls.
 - Exercise with no resolvable catalog/machine/muscle data (`ResolvedExercise.hasKnownTargets == false`)
   → falls into `rest`, never crashes; same graceful-unknown handling the rest of the Intelligence layer
   already relies on.
+- **Multi-primary-muscle exception to Goal 4.** `MuscleTargets.primary` is `[FineMuscle]` and *can* span
+  more than one `MuscleGroup` for an exercise the lifter hand-corrected via the muscle check-off sheet
+  (`togglingPrimary` places no group constraint on the list). Partitioning in §4.1 uses only
+  `targets.primary.first?.group`, while `FatigueModel`'s inversion check compares the *full* primary sets
+  for overlap. A hand-edited exercise with primaries spanning two groups (e.g. `[chest, triceps]`,
+  `.first.group == chest`) could end up in `rest` while sharing a muscle with something in
+  `priorityGroup` — producing a same-muscle inversion that a pure single-primary case would never create,
+  narrowly contradicting Goal 4's "does not lower the score" claim. This requires a user-hand-corrected,
+  cross-group multi-primary exercise, which is uncommon (catalog/equipment/lexicon-derived targets are
+  always single-primary). Accepted as a known, narrow gap — not fixed by this design (fixing it would
+  mean partitioning by "any primary group matches," which raises its own tie-breaking question for
+  exercises matching multiple different priorities and isn't worth the added complexity for this edge
+  case).
 - Split-level bulk action on a split with zero non-rest days with exercises → no-op, button still safe
   to tap (iterates an empty set).
 - `FatigueModel.orderQuality` scoring change must not regress `FatigueModel`/`FatigueScorer`/
