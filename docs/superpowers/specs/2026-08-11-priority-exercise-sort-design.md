@@ -72,22 +72,24 @@ When `priority` is non-nil:
 1. Convert `[DayExercise]` to `[ScoredExercise]` via the existing `ScoredExercise(day:)` adapter
    (`ScoredExercise.swift:37`), wrap as a single-day `[[ScoredExercise]]`, and resolve via
    `ExerciseResolver.resolve(_:catalog:)` (`ScoredExercise.swift:92`, which takes nested arrays — one day
-   in, one day of `[ResolvedExercise]` out) to read `.isCompound` and `.muscleGroup`
-   (`targets.primary.first?.group`). This is the same resolution path `FatigueModel`/
-   `TemplateQualityEngine` already use for identical questions — reuse it rather than re-deriving
-   compound-ness or muscle group a third way.
+   in, one day of `[ResolvedExercise]` out) — needed only to read `.muscleGroup`
+   (`targets.primary.first?.group`, `ScoredExercise.swift:79`) for the partitioning in step 2.
+   `ResolvedExercise.isCompound` (line 84) is not used by the orderer at all; compound-ness for the
+   within-partition sort in step 3 comes from `rank(_:)` below, not from this resolution. This is the
+   same resolution path `FatigueModel`/`TemplateQualityEngine` already use to answer "what muscle does
+   this train" — reuse it rather than re-deriving muscle group a third way.
 2. Partition into `priorityGroup` (resolved `muscleGroup == priority`) and `rest` (everything else),
    preserving each exercise's original relative position within its partition.
 3. Sort each partition independently using the existing compound-before-isolation rule (extract the
    current `rank(_:)` closure from `order` into a shared private helper so both partitions and the
-   no-priority path use identical logic — no duplicated sort rule). Note: `rank(_:)` classifies
-   compound-ness via a catalog-only id/name lookup on the raw `DayExercise`
-   (`ExerciseOrderer.swift:7-11`), separately from the `ResolvedExercise.isCompound` used for
-   partitioning in step 1 — these are two different, intentionally-separate lookups (one for "does this
-   belong in the priority group", one for "is this a compound movement"), not something to unify onto a
-   single `ResolvedExercise` pass. `ResolvedExercise.isCompound` returns `false` for an unresolvable
-   exercise (nil candidate) where `rank(_:)` returns `2` (deliberately last) — different fallback values
-   for a reason, so keep them as separate calls.
+   no-priority path use identical logic — no duplicated sort rule). Note: within the orderer, `rank(_:)`
+   (a catalog-only id/name lookup on the raw `DayExercise`, `ExerciseOrderer.swift:7-11`) is the *only*
+   compound-ness check — it decides sort order within a partition, `muscleGroup` (step 1) decides
+   partition membership, and the two are orthogonal reads answering different questions. Separately,
+   `FatigueModel`'s own `ResolvedExercise.isCompound` (line 84) is a *different* compound-ness check used
+   by the scorer, with a different unresolvable-exercise fallback (`false`, vs. `rank(_:)`'s deliberate
+   "sort last" value of `2`) — intentionally not unified with `rank(_:)`, and not used anywhere in this
+   feature.
 4. Concatenate `priorityGroup + rest`.
 
 If no exercise in the day matches the chosen priority, `priorityGroup` is empty and the result is
@@ -114,6 +116,9 @@ decide *what to say*; the fix makes the *number* agree with it.
 `OrderReport.inversions` keeps only same-muscle inversions (the ones ever worth surfacing) — the
 `sharesPrimaryMuscle` field on `OrderInversion` becomes redundant with this filtering and can be dropped,
 simplifying `FatigueScorer.swift:50` (`f.order.inversions.first(where: ...)` → `f.order.inversions.first`).
+The same-muscle-first `.sorted` on the inversions list (`FatigueModel.swift:108`, ranking
+`sharesPrimaryMuscle` inversions ahead of others) also becomes a no-op once every remaining inversion is
+already same-muscle — remove it alongside the field rather than leaving dead sort logic behind.
 
 Net effect: a day sorted with an active priority (arm isolation before an unrelated leg compound) scores
 identically to one sorted with no priority, on this dimension — because the two exercises don't share a
@@ -151,10 +156,17 @@ no priority) call it.
 ### 4.5 `CreateSplitView` (bulk action)
 
 A new button, separate from the existing per-day "Sort" button
-(`CreateSplitView.swift` — the `withAnimation { dayExercises[i] = ExerciseOrderer.order(...) }` call in
-`dayRow`), labeled "Auto-order all days." Opens the same priority menu from §4.3; on selection, applies
-`ExerciseOrderer.order(dayExercises[i], catalog:, priority:)` to every `i` where `!dayIsRest[i] &&
-!dayExercises[i].isEmpty`, in one pass, wrapped in one `withAnimation`.
+(`CreateSplitView.swift` — the `withAnimation { dayExercises[i] = ExerciseOrderer.order(...) }` call
+inside `dayRow`, line 333+), labeled "Auto-order all days."
+
+Placement: as a trailing control in the "Weekly Schedule" section's header (`CreateSplitView.swift:99`,
+`Section("Weekly Schedule") { ForEach(0..<7) { dayRow(index: $0) } }`) — replace the plain string header
+with a custom `header:` view (`HStack { Text("Weekly Schedule"); Spacer(); <menu> }`), the same
+section that contains every day this action touches.
+
+Opens the same priority menu from §4.3; on selection, applies `ExerciseOrderer.order(dayExercises[i],
+catalog:, priority:)` to every `i` where `!dayIsRest[i] && !dayExercises[i].isEmpty`, in one pass, wrapped
+in one `withAnimation`.
 
 ### 4.6 "Poor order" tip (unchanged behavior, confirmed)
 
