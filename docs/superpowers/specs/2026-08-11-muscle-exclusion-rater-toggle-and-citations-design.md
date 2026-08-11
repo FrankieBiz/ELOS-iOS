@@ -125,6 +125,23 @@ static func score(days: [[ScoredExercise]], dayNames: [String], scope: QualitySc
 (`VolumeScorer`, `FrequencyScorer`, `MuscleVolumeAnalyzer`/bars) needs no change, because they already just
 forward whatever `profile` they're handed into those two functions.
 
+**Placement matters:** `weeklyBand` (`TrainingScience.swift:161–175`) has two return paths — an early
+return when `groupWeeklyTarget[m.group.rawValue]` is set (line 168–172), falling through to the base
+scaled band otherwise (line 174). The exclusion check must be the **first statement in the function**,
+ahead of the `groupWeeklyTarget` branch, so an excluded muscle is `isOptional` regardless of whether its
+group also happens to carry a numeric override — checking "before the existing return" without that
+qualifier is ambiguous and, placed after the `groupWeeklyTarget` branch instead, would silently ignore the
+exclusion for exactly that combination. `sessionBand` derives its `isOptional` from calling `weeklyBand`
+first (line 206), so the early return propagates automatically — no separate check needed there. One
+caveat: `sessionBand`'s own `targetLow`/`high` still floor at `sessionPerMuscleFloor`/`+1` (lines 196–197)
+rather than truly reaching 0 — harmless, since `isOptional` is what every consumer actually branches on,
+but worth knowing so a nonzero session number isn't mistaken for the exclusion not having applied.
+
+**The UI keeps the two override kinds mutually exclusive, closing the ambiguity at the source rather than
+relying on function-ordering alone:** picking "Not training this" for a group clears any existing
+`groupWeeklyTarget` entry for it, and picking a numeric weekly-sets value clears that group's children
+from `excludedMuscles`. A group is never simultaneously "excluded" and "has a stale numeric target."
+
 `BalanceScorer.score` is the one exception that does need a new parameter: it doesn't take `profile:`
 today (only `intent:`, used for `focus`), so it can't see the *global* exclusion set on its own. Add
 `excludedMuscles: Set<FineMuscle>` as an explicit param (`TemplateQualityEngine` computes it once, at the
@@ -261,8 +278,12 @@ drive that, not just another `Menu` label.
   exclusion option: the picker's sentinel-0 row ("Default (low–high)") is joined by a second sentinel
   ("Not training this") that sets `vm.volumeOverrides.excludedMuscles` for that group's children (a group
   toggle at this global-preference layer, consistent with `VolumeOverrides` staying group-level for
-  numeric targets — see D1/D5). This is the *global* exclusion lever; the per-day picker (previous
-  section) is the *day-scoped* one.
+  numeric targets — see D1/D5), **and clears any existing `groupWeeklyTarget[group.rawValue]` entry in the
+  same write** — picking a numeric value likewise removes that group's children from `excludedMuscles`.
+  The two are mutually exclusive states in the picker, not independently toggleable (see Architecture §1's
+  "Placement matters" note on why leaving both set would otherwise let a stale numeric target silently
+  outrank the exclusion). This is the *global* exclusion lever; the per-day picker (previous section) is
+  the *day-scoped* one.
 
 ## Phases
 
@@ -276,7 +297,9 @@ drive that, not just another `Menu` label.
    test for D1, exercising the engine-level guarantee independent of any UI gating); and one decoding a
    pre-this-change JSON fixture through **both** `TrainingIntent(jsonString:)` and
    `VolumeOverrides`'s decode path (the latter as exercised by `AppViewModel`'s `try?
-   JSONDecoder().decode(VolumeOverrides.self, ...)`), asserting neither silently drops existing data.
+   JSONDecoder().decode(VolumeOverrides.self, ...)`), asserting neither silently drops existing data; and
+   one asserting a muscle in `excludedMuscles` is `isOptional` in `weeklyBand` even when its group also has
+   a `groupWeeklyTarget` entry set (the exclusion-check-ordering regression test).
 2. **Template UI** — `SkipMusclesSheet`, `TrainingIntentRow`'s third chip (+ `showsSkip` param), wired in
    `CreateTemplateView`.
 3. **Split UI** — `UserSplitDayRecord.excludedMusclesJSON` (SwiftData migration), `dayExcludedMuscles`
