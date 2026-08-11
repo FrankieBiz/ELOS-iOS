@@ -126,10 +126,10 @@ muscle, the pairing was never counted as an inversion in the first place, priori
 
 ### 4.3 UI — `MuscleGroup` picker (shared)
 
-A small SwiftUI `Menu` (matches existing patterns like `TemplatePickerSheet`'s selection UI) listing:
-"Overall Best Growth", then `MuscleGroup.allCases` by `displayName`. Selecting an option returns the
-chosen `MuscleGroup?` (nil for "Overall Best Growth") via a completion closure — a plain reusable view,
-not tied to either builder, so both call sites share one implementation instead of two menus.
+A small SwiftUI `Menu` (matches the existing per-exercise options `Menu` at `CreateSplitView.swift:426`)
+listing: "Overall Best Growth", then `MuscleGroup.allCases` by `displayName`. Selecting an option returns
+the chosen `MuscleGroup?` (nil for "Overall Best Growth") via a completion closure — a plain reusable
+view, not tied to either builder, so both call sites share one implementation instead of two menus.
 
 ### 4.4 `CreateTemplateView` (primary entry point)
 
@@ -156,8 +156,8 @@ no priority) call it.
 ### 4.5 `CreateSplitView` (bulk action)
 
 A new button, separate from the existing per-day "Sort" button
-(`CreateSplitView.swift` — the `withAnimation { dayExercises[i] = ExerciseOrderer.order(...) }` call
-inside `dayRow`, line 333+), labeled "Auto-order all days."
+(`CreateSplitView.swift:407`, inside `dayRow` — the `withAnimation { dayExercises[i] =
+ExerciseOrderer.order(...) }` call), labeled "Auto-order all days."
 
 Placement: as a trailing control in the "Weekly Schedule" section's header (`CreateSplitView.swift:99`,
 `Section("Weekly Schedule") { ForEach(0..<7) { dayRow(index: $0) } }`) — replace the plain string header
@@ -209,11 +209,16 @@ No new persisted state, no new SwiftData fields, no new network calls.
   case).
 - Split-level bulk action on a split with zero non-rest days with exercises → no-op, button still safe
   to tap (iterates an empty set).
-- `FatigueModel.orderQuality` scoring change must not regress `FatigueModel`/`FatigueScorer`/
-  `MuscleCoverageTests` existing test expectations for days with *no* priority involved — same-muscle
-  inversions are unaffected by the fix; only cross-muscle inversions (previously counted, now not) change
-  behavior, and no existing test should have been asserting on that specific case (verify during
-  implementation).
+- `FatigueModel.orderQuality` scoring change affects two existing tests directly — this is expected, not
+  a regression to guard against. In `ElosTests/Intelligence/FatigueModelTests.swift`:
+  `anUnrelatedIsolationIsNotFlaggedAsSameMuscle` (a deliberate cross-muscle inversion, asserting
+  `.inversions.first?.sharesPrimaryMuscle == false`) must be rewritten — under the fix, a cross-muscle
+  pair is no longer computed as an inversion at all, so `.inversions` is empty and the old assertion no
+  longer holds; the rewritten test should assert `inversions.isEmpty` and `quality == 1.0` instead.
+  `isolationBeforeACompoundIsPenalised` references `.sharesPrimaryMuscle` on line 108 and won't compile
+  once the field is dropped (§4.2, §9) — drop that one assertion line; its `quality < 1.0` /
+  `inversions.count == 1` assertions are on a same-muscle day and are unaffected. Every other existing
+  `FatigueModel`/`FatigueScorer`/`MuscleCoverageTests` test is on same-muscle data and passes unchanged.
 
 ## 7. Testing
 
@@ -226,15 +231,19 @@ Pure-engine unit tests, per project convention (`ElosTests/Intelligence/`):
   - Priority with zero matches in the day: output identical to no-priority sort.
   - Priority group internal order and rest group internal order are each stable (ties preserve original
     relative order), matching today's stability guarantee.
-- `FatigueModel.orderQualityTests` (extend `FatigueModel` test coverage):
+- `FatigueModelTests` (existing file, `ElosTests/Intelligence/FatigueModelTests.swift`):
   - Same-muscle isolation-before-compound: still counted as an inversion, still lowers `quality` (no
-    regression).
+    regression) — `isolationBeforeACompoundIsPenalised` keeps its `quality`/`inversions.count`
+    assertions, drops only its `.sharesPrimaryMuscle` line (§6).
   - Cross-muscle isolation-before-compound: no longer counted; `quality` for a day whose only inversions
-    are cross-muscle is now `1.0`.
+    are cross-muscle is now `1.0` — rewrite `anUnrelatedIsolationIsNotFlaggedAsSameMuscle` to assert
+    `inversions.isEmpty` / `quality == 1.0` instead of its current `sharesPrimaryMuscle == false` (§6).
   - Mixed day (some same-muscle, some cross-muscle inversions): `quality` reflects only the same-muscle
-    ones.
-- Existing `MuscleCoverageTests`/`FatigueModelTests`/`VolumeTargetTests` suites re-run as a regression
-  check on the scoring change (§6).
+    ones (new test).
+  - `aFullyInvertedDayScoresZero` needs no change — its default same-muscle exercises mean the pair is
+    still counted, still scores `0.0`.
+- Existing `MuscleCoverageTests`/`VolumeTargetTests` suites re-run as a regression check on the scoring
+  change — unaffected, since neither exercises cross-muscle order inversions.
 
 Views get no new logic beyond wiring a menu selection to an existing call — no view-level tests needed
 beyond a smoke check that the buttons exist, consistent with how the current Sort button is (not)
