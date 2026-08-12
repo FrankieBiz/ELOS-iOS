@@ -117,6 +117,8 @@ struct CreateSplitView: View {
                             Label("Auto-order all days", systemImage: "arrow.up.arrow.down")
                                 .font(.caption)
                                 .labelStyle(.iconOnly)
+                                .padding(8)
+                                .contentShape(Rectangle())
                         }
                     }
                 }
