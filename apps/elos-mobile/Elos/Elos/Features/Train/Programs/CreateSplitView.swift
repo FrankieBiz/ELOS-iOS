@@ -36,6 +36,7 @@ struct CreateSplitView: View {
     @State private var dayTemplateIDs: [String] = Array(repeating: "", count: 7)
     @State private var dayIsRest: [Bool] = Array(repeating: false, count: 7)
     @State private var dayExercises: [[DayExercise]] = Array(repeating: [], count: 7)
+    @State private var dayExcludedMuscles: [Set<FineMuscle>] = Array(repeating: [], count: 7)
     @State private var activePicker: ActivePicker? = nil
     @State private var showDiscardConfirm = false
     @State private var showFullReport = false
@@ -45,11 +46,17 @@ struct CreateSplitView: View {
     @State private var pendingBiasMuscles: [String] = []
     /// Which exercise's muscle check-off is open, if any.
     @State private var muscleEdit: MuscleEdit? = nil
+    @State private var skipMusclesDay: SkipMusclesDay? = nil
 
     private struct MuscleEdit: Identifiable {
         let dayIndex: Int
         let exerciseIndex: Int
         var id: String { "\(dayIndex)-\(exerciseIndex)" }
+    }
+
+    private struct SkipMusclesDay: Identifiable {
+        let dayIndex: Int
+        var id: Int { dayIndex }
     }
 
     private var hasUnsavedContent: Bool {
@@ -123,6 +130,7 @@ struct CreateSplitView: View {
                         dayIsRest[i] = day.isRest
                         dayNames[i] = day.isRest ? "" : (day.dayName == dayLabels[i] ? "" : day.dayName)
                         dayTemplateIDs[i] = day.templateID
+                        dayExcludedMuscles[i] = day.excludedMuscles
                         if let data = day.exercisesJSON.data(using: .utf8),
                            let decoded = try? JSONDecoder().decode([DayExercise].self, from: data) {
                             dayExercises[i] = decoded
@@ -195,6 +203,9 @@ struct CreateSplitView: View {
                     }
                 }
             }
+            .sheet(item: $skipMusclesDay) { day in
+                SkipMusclesSheet(selection: $dayExcludedMuscles[day.dayIndex])
+            }
             .sheet(isPresented: $showFullReport) {
                 SplitQualityReportView(
                     report: qualityReport,
@@ -264,10 +275,13 @@ struct CreateSplitView: View {
             let day = dayExercises[i]
             guard !dayIsRest[i], !day.isEmpty else { return nil }
             let scored = day.map(ScoredExercise.init(day:))
+            let dayIntent = TrainingIntent(goal: intent.goal, focus: nil,
+                                          excludedMuscles: dayExcludedMuscles[i])
             let r = TemplateQualityEngine.score(days: [scored], dayNames: [dayNames[i]],
                                                 scope: .singleSession,
                                                 profile: scoringProfile,
-                                                catalog: exerciseCatalog)
+                                                catalog: exerciseCatalog,
+                                                intent: dayIntent)
             return SplitDaySummary(
                 id: i,
                 name: dayNames[i].isEmpty ? dayLabels[i] : dayNames[i],
@@ -371,6 +385,26 @@ struct CreateSplitView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
                     .buttonStyle(.plain)
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        skipMusclesDay = SkipMusclesDay(dayIndex: i)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "eye.slash")
+                                .font(.caption2)
+                            Text(dayExcludedMuscles[i].isEmpty
+                                 ? "Skip muscles" : "Skip muscles (\(dayExcludedMuscles[i].count))")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(Color.tint)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.tint.opacity(0.1))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    Spacer()
                 }
 
                 if dayExercises[i].isEmpty, MuscleTaxonomy.archetype(forDayName: dayNames[i]) != nil {
@@ -512,7 +546,7 @@ struct CreateSplitView: View {
                 let exData = try? encoder.encode(dayExercises[i])
                 let exJSON = exData.flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
                 let rest = isEffectivelyRest(i)
-                modelContext.insert(UserSplitDayRecord(
+                let day = UserSplitDayRecord(
                     splitID: splitID,
                     orderIndex: i,
                     dayLabel: label,
@@ -520,7 +554,9 @@ struct CreateSplitView: View {
                     templateID: rest ? "" : dayTemplateIDs[i],
                     isRest: rest,
                     exercisesJSON: rest ? "[]" : exJSON
-                ))
+                )
+                day.excludedMuscles = rest ? [] : dayExcludedMuscles[i]
+                modelContext.insert(day)
             }
         }
 
