@@ -7,13 +7,15 @@ struct BalanceScorerTests {
     private func score(_ days: [[ScoredExercise]],
                        scope: QualityScope,
                        dayNames: [String],
-                       intent: TrainingIntent? = nil) -> DimensionScore {
+                       intent: TrainingIntent? = nil,
+                       excludedMuscles: Set<FineMuscle> = []) -> DimensionScore {
         let resolved = QualityFixtures.resolve(days)
         let volume = QualityFixtures.volume(resolved, scope: scope,
                                             intent: intent, dayNames: dayNames)
         return BalanceScorer.score(resolvedDays: resolved, scope: scope, dayNames: dayNames,
                                    intent: intent, volume: volume,
-                                   catalog: QualityFixtures.catalog)
+                                   catalog: QualityFixtures.catalog,
+                                   excludedMuscles: excludedMuscles)
     }
 
     @Test func weeklyGapsFlaggedForMissingMajors() {
@@ -102,5 +104,32 @@ struct BalanceScorerTests {
         ], scope: .weeklySplit, dayNames: ["Push", "Pull", "Legs"])
         #expect(d.score >= 80)
         #expect(!d.tips.contains { $0.severity == .warn })
+    }
+
+    @Test func excludingEveryChildOfAMissingGroupSuppressesTheGapTip() {
+        let d = score([[QualityFixtures.sx("bench", sets: 12)]],
+                      scope: .weeklySplit, dayNames: [""],
+                      excludedMuscles: Set(MuscleGroup.legs.children))
+        #expect(!d.tips.contains { $0.id == "bal-gap-legs" })
+        // Back is untouched — still missing, still flagged.
+        #expect(d.tips.contains { $0.id == "bal-gap-back" })
+    }
+
+    @Test func excludingOnlySomeChildrenOfAGroupDoesNotSuppressTheGapTip() {
+        // Excluding calves alone doesn't excuse "no legs work at all" — quads/hamstrings are still
+        // expected.
+        let d = score([[QualityFixtures.sx("bench", sets: 12)]],
+                      scope: .weeklySplit, dayNames: [""],
+                      excludedMuscles: [.calves])
+        #expect(d.tips.contains { $0.id == "bal-gap-legs" })
+    }
+
+    @Test func excludingAFocusedSessionsMissingGroupSuppressesTheInfoTip() {
+        let d = score([[
+            QualityFixtures.sx("bench", sets: 4),
+            QualityFixtures.sx("incline", sets: 4),
+        ]], scope: .singleSession, dayNames: ["Push Day"],
+            excludedMuscles: [.sideDelts, .frontDelts, .rotatorCuff])
+        #expect(!d.tips.contains { $0.id.hasPrefix("bal-focusgap-shoulders") })
     }
 }

@@ -101,4 +101,62 @@ struct TemplateQualityEngineTests {
         let ids = r.tips.map { $0.id }
         #expect(Set(ids).count == ids.count)
     }
+
+    @Test func daySpecificExclusionAffectsSingleSessionScore() {
+        // Excluding a muscle that's genuinely missing removes the coverage-gap penalty for it.
+        let day = [
+            QualityFixtures.sx("bench", sets: 4),
+            QualityFixtures.sx("incline", sets: 4),
+        ]
+        let withoutExclusion = TemplateQualityEngine.score(
+            days: [day], dayNames: ["Push Day"], scope: .singleSession,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: TrainingIntent(goal: .hypertrophy, focus: .push))
+        let withExclusion = TemplateQualityEngine.score(
+            days: [day], dayNames: ["Push Day"], scope: .singleSession,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: TrainingIntent(goal: .hypertrophy, focus: .push, excludedMuscles: [.sideDelts, .frontDelts, .rotatorCuff, .biceps, .triceps, .forearms]))
+        let gapTips = { (r: QualityReport) in r.tips.filter { $0.id.hasPrefix("bal-focusgap-") } }
+        #expect(!gapTips(withoutExclusion).isEmpty)
+        #expect(gapTips(withExclusion).isEmpty)
+    }
+
+    @Test func dayScopedExclusionDoesNotAffectWeeklySplitScore() {
+        // D1: a per-day exclusion must be provably inert at `.weeklySplit` scope, regardless of what
+        // the intent passed in carries. This is the direct regression test for that guarantee.
+        let days: [[ScoredExercise]] = [
+            [QualityFixtures.sx("bench", sets: 6), QualityFixtures.sx("ohp", sets: 6)],
+            [QualityFixtures.sx("row", sets: 6), QualityFixtures.sx("pulldown", sets: 6)],
+            [QualityFixtures.sx("squat", sets: 6), QualityFixtures.sx("rdl", sets: 6)],
+        ]
+        let dayNames = ["Push", "Pull", "Legs"]
+        let withoutExclusion = TemplateQualityEngine.score(
+            days: days, dayNames: dayNames, scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: TrainingIntent(goal: .hypertrophy))
+        let withExclusion = TemplateQualityEngine.score(
+            days: days, dayNames: dayNames, scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: TrainingIntent(goal: .hypertrophy, excludedMuscles: [.quads, .hamstrings, .chest, .lats]))
+        #expect(withoutExclusion.overall == withExclusion.overall)
+    }
+
+    @Test func globalExclusionDoesAffectWeeklySplitScore() {
+        // Contrast with the test above: the *global* exclusion lever (VolumeOverrides) is not
+        // scope-gated — only the day-scoped one (TrainingIntent) is.
+        let days: [[ScoredExercise]] = [
+            [QualityFixtures.sx("squat", sets: 3)],
+        ]
+        let dayNames = ["Legs"]
+        let withoutExclusion = TemplateQualityEngine.score(
+            days: days, dayNames: dayNames, scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog)
+        let excludedProfile = TrainingProfile(
+            goal: .hypertrophy, experience: .intermediate,
+            volumeOverrides: VolumeOverrides(excludedMuscles: [.quads, .glutes]))
+        let withExclusion = TemplateQualityEngine.score(
+            days: days, dayNames: dayNames, scope: .weeklySplit,
+            profile: excludedProfile, catalog: QualityFixtures.catalog)
+        #expect(withoutExclusion.overall != withExclusion.overall)
+    }
 }

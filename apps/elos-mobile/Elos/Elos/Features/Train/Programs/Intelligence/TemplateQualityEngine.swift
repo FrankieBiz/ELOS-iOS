@@ -8,26 +8,31 @@ enum TemplateQualityEngine {
 
     /// Composite weights, per scope. Each column sums to 1.0.
     ///
-    /// The `.singleSession` column is unchanged from before `frequency` existed, so template scores
-    /// stay comparable across the change. (Session scores still move a little, because volume is now
-    /// counted fractionally — the weights are stable, the inputs are more accurate.)
+    /// `fatigue` earns real weight rather than a token slice: whether the sets land while the lifter
+    /// can still do them justice is on the same footing as whether the dose is right, and it's the
+    /// dimension that explains why two plans with identical set counts aren't equally good. Adding it
+    /// necessarily rescales every other dimension, so scores from before this change sit a few points
+    /// away from scores after it — the ranking between two plans is what's meaningful, not the
+    /// absolute number's continuity across engine versions.
     static func weight(_ d: QualityDimension, scope: QualityScope) -> Double {
         switch scope {
         case .weeklySplit:
             switch d {
-            case .volume:    return 0.28
-            case .balance:   return 0.22
-            case .selection: return 0.20
-            case .repRest:   return 0.15
-            case .frequency: return 0.15
+            case .volume:    return 0.24
+            case .balance:   return 0.19
+            case .selection: return 0.17
+            case .repRest:   return 0.13
+            case .frequency: return 0.13
+            case .fatigue:   return 0.14
             }
         case .singleSession:
             switch d {
-            case .volume:    return 0.30
-            case .balance:   return 0.25
-            case .selection: return 0.25
-            case .repRest:   return 0.20
+            case .volume:    return 0.26
+            case .balance:   return 0.21
+            case .selection: return 0.21
+            case .repRest:   return 0.16
             case .frequency: return 0.0   // not applicable to one workout
+            case .fatigue:   return 0.16
             }
         }
     }
@@ -38,6 +43,17 @@ enum TemplateQualityEngine {
                       profile: TrainingProfile,
                       catalog: [ExerciseCandidate],
                       intent: TrainingIntent? = nil) -> QualityReport {
+        // Day-scoped exclusions only apply at the scope a single day actually has — this makes D1
+        // (a day-level "skip this muscle" never affects a split's weekly score) an engine-level
+        // guarantee rather than something every call site has to remember to withhold. The *global*
+        // exclusion set (`profile.volumeOverrides.excludedMuscles`) is not scope-gated.
+        let dayScopedExclusions: Set<FineMuscle> = scope == .singleSession ? (intent?.excludedMuscles ?? []) : []
+        let excludedMuscles = profile.volumeOverrides.excludedMuscles.union(dayScopedExclusions)
+        var effectiveOverrides = profile.volumeOverrides
+        effectiveOverrides.excludedMuscles = excludedMuscles
+        let profile = TrainingProfile(goal: profile.goal, experience: profile.experience,
+                                      volumeOverrides: effectiveOverrides)
+
         let resolvedDays = ExerciseResolver.resolve(days, catalog: catalog)
         let totalExercises = resolvedDays.reduce(0) { $0 + $1.count }
 
@@ -61,11 +77,13 @@ enum TemplateQualityEngine {
         let dimensions = [
             VolumeScorer.score(volume: volume, scope: scope, profile: profile),
             BalanceScorer.score(resolvedDays: resolvedDays, scope: scope, dayNames: dayNames,
-                                intent: intent, volume: volume, catalog: catalog),
+                                intent: intent, volume: volume, catalog: catalog,
+                                excludedMuscles: excludedMuscles),
             SelectionScorer.score(resolvedDays: resolvedDays, scope: scope, profile: profile,
                                   movement: movement),
             RepRestScorer.score(resolvedDays: resolvedDays, scope: scope, profile: profile),
             FrequencyScorer.score(volume: volume, scope: scope, profile: profile),
+            FatigueScorer.score(resolvedDays: resolvedDays, dayNames: dayNames, scope: scope),
         ]
 
         var weighted = 0.0

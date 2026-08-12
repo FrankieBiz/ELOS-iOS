@@ -14,7 +14,8 @@ enum BalanceScorer {
                       dayNames: [String],
                       intent: TrainingIntent?,
                       volume: MuscleVolumeReport,
-                      catalog: [ExerciseCandidate]) -> DimensionScore {
+                      catalog: [ExerciseCandidate],
+                      excludedMuscles: Set<FineMuscle> = []) -> DimensionScore {
         let all = resolvedDays.flatMap { $0 }
         guard all.contains(where: { $0.candidate != nil }) else {
             return DimensionScore(dimension: .balance, score: 70, tips: [])
@@ -71,6 +72,7 @@ enum BalanceScorer {
         case .weeklySplit:
             let major: [MuscleGroup] = [.chest, .back, .legs, .shoulders, .arms]
             for g in major where volume.directSets(forGroup: g) == 0 {
+                if g.children.allSatisfy({ excludedMuscles.contains($0) }) { continue }
                 // A group can have zero *direct* work yet real indirect volume (arms off presses and
                 // rows). That's a lighter problem than a true blind spot, so say so and penalise less.
                 let indirect = volume.sets(forGroup: g)
@@ -88,7 +90,7 @@ enum BalanceScorer {
                         action: .addMuscle(g.rawValue)))
                 }
             }
-            if volume.directSets(forGroup: .core) == 0 {
+            if volume.directSets(forGroup: .core) == 0, !MuscleGroup.core.children.allSatisfy({ excludedMuscles.contains($0) }) {
                 penalties += 0.05
                 tips.append(QualityTip(
                     id: "bal-gap-core", dimension: .balance, severity: .info,
@@ -99,16 +101,12 @@ enum BalanceScorer {
         case .singleSession:
             let trained = Set(MuscleGroup.allCases.filter { volume.directSets(forGroup: $0) > 0 })
             // Explicit intent wins; fall back to inferring from the day name.
-            let archetype: SplitArchetype? = intent?.focus ?? {
-                let added = all.map {
-                    DayExercise(id: $0.exercise.id, name: $0.exercise.name,
-                                sets: $0.exercise.sets, reps: $0.exercise.repsText)
-                }
-                return DayContextInferrer.infer(dayName: dayNames.first ?? "",
-                                                added: added, catalog: catalog).archetype
-            }()
+            // Day name only — see the note on `MuscleVolumeAnalyzer.inferredArchetype`.
+            let archetype: SplitArchetype? = intent?.focus
+                ?? MuscleTaxonomy.archetype(forDayName: dayNames.first ?? "")
             if let arch = archetype {
                 let targetGroups = archetypeGroups(arch)
+                    .filter { !$0.children.allSatisfy({ excludedMuscles.contains($0) }) }
                 for g in targetGroups.subtracting(trained) {
                     penalties += 0.12
                     tips.append(QualityTip(
