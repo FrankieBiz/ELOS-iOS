@@ -144,10 +144,18 @@ struct TemplateQualityEngineTests {
     @Test func globalExclusionDoesAffectWeeklySplitScore() {
         // Contrast with the test above: the *global* exclusion lever (VolumeOverrides) is not
         // scope-gated — only the day-scoped one (TrainingIntent) is.
+        //
+        // Needs >= 3 total exercises for `.weeklySplit` scope to score at all (the `minToScore`
+        // gate) — a single-exercise fixture returns `overall: 0` on both sides regardless of
+        // exclusion, which trivially (and wrongly) satisfies a "!=" assertion for the wrong reason.
+        // Sets are deliberately lopsided (squat well-dosed, bench/row deep under minimum) so
+        // excluding quads/glutes actually shifts VolumeScorer's average quality rather than
+        // coincidentally averaging to the same number both ways (three equally-"under" muscles
+        // would do that).
         let days: [[ScoredExercise]] = [
-            [QualityFixtures.sx("squat", sets: 3)],
+            [QualityFixtures.sx("squat", sets: 20), QualityFixtures.sx("bench", sets: 2), QualityFixtures.sx("row", sets: 2)],
         ]
-        let dayNames = ["Legs"]
+        let dayNames = ["Full Body"]
         let withoutExclusion = TemplateQualityEngine.score(
             days: days, dayNames: dayNames, scope: .weeklySplit,
             profile: profile, catalog: QualityFixtures.catalog)
