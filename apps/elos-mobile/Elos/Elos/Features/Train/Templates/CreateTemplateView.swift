@@ -323,13 +323,15 @@ struct TemplateBuilderView: View {
         showAddExercise = true
     }
 
-    /// Apply `ExerciseOrderer` (compound-first) to the template, preserving each entry's settings.
-    private func reorderCompoundsFirst() {
+    /// Re-sorts `exercises` via `ExerciseOrderer`, preserving each entry's settings. Shared by the
+    /// "poor order" tip's fix action (no priority) and the new priority menu below, so the
+    /// name-matching re-map logic exists in exactly one place.
+    private func reorder(priority: MuscleGroup?) {
         let asDays = exercises.map {
             DayExercise(id: $0.exerciseID ?? "", name: $0.exerciseName,
                         sets: $0.targetSets, reps: $0.targetReps)
         }
-        let ordered = ExerciseOrderer.order(asDays, catalog: exerciseCatalog)
+        let ordered = ExerciseOrderer.order(asDays, catalog: exerciseCatalog, priority: priority)
         // Re-sort the real entries to match the ordered names, keeping any unmatched ones at the end.
         var remaining = exercises
         var result: [TemplateExerciseEntry] = []
@@ -341,6 +343,12 @@ struct TemplateBuilderView: View {
         }
         result.append(contentsOf: remaining)
         withAnimation(.elosEmphasis) { exercises = result }
+    }
+
+    /// Apply `ExerciseOrderer` (compound-first, no priority) — the "poor order" tip's fix action has no
+    /// context on which muscle the user cares about, so it always uses the default sort.
+    private func reorderCompoundsFirst() {
+        reorder(priority: nil)
     }
 
     var body: some View {
@@ -411,6 +419,29 @@ struct TemplateBuilderView: View {
                             .listRowSeparator(.hidden)
                             .listRowInsets(.init(top: 4, leading: 16, bottom: 8, trailing: 16))
                         }
+                    }
+
+                    // Priority sort — only useful with 2+ exercises to actually reorder.
+                    if exercises.count > 1 {
+                        HStack {
+                            Text("Sort").elosSectionLabel()
+                            Spacer()
+                            PriorityMenu(onSelect: { reorder(priority: $0) }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.up.arrow.down")
+                                        .font(.caption2)
+                                    Text("Sort by priority")
+                                        .font(.caption2)
+                                }
+                                .foregroundStyle(Color.tint)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(Color.tint.opacity(0.1))
+                                .clipShape(Capsule())
+                            }
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(.init(top: 4, leading: 16, bottom: 4, trailing: 16))
                     }
 
                     // Exercise cards
