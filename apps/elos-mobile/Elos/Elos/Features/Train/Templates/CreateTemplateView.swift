@@ -329,7 +329,7 @@ struct TemplateBuilderView: View {
     private func reorder(priority: MuscleGroup?) {
         let asDays = exercises.map {
             DayExercise(id: $0.exerciseID ?? "", name: $0.exerciseName,
-                        sets: $0.targetSets, reps: $0.targetReps)
+                        sets: $0.targetSets, reps: $0.targetReps, muscleTargets: $0.muscleTargets)
         }
         let ordered = ExerciseOrderer.order(asDays, catalog: exerciseCatalog, priority: priority)
         // Re-sort the real entries to match the ordered names, keeping any unmatched ones at the end.

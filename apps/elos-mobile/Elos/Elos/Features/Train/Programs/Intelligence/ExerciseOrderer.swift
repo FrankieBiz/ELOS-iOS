@@ -20,15 +20,19 @@ enum ExerciseOrderer {
         }
         guard let priority else { return sorted(exercises) }
 
-        // Resolve each exercise's muscle group through the same chain FatigueModel/TemplateQualityEngine
-        // use, so "which group is this for" never disagrees with the rest of the Intelligence layer.
+        // Resolve each exercise's targets through the same chain FatigueModel/TemplateQualityEngine use,
+        // so partition membership never disagrees with the rest of the Intelligence layer. Membership
+        // matches FatigueModel's own "shares a primary muscle" test — ANY primary, not just the first —
+        // so a priority-sorted day can't introduce a new same-muscle inversion in the fixed FatigueModel
+        // score. `ResolvedExercise.muscleGroup` (single, `.first`-only) is deliberately not used here:
+        // a manually-overridden exercise can carry primaries spanning two different groups.
         let scored = exercises.map { ScoredExercise(day: $0) }
         let resolved = ExerciseResolver.resolve([scored], catalog: catalog).first ?? []
 
         var priorityGroup: [DayExercise] = []
         var rest: [DayExercise] = []
         for (exercise, resolvedExercise) in zip(exercises, resolved) {
-            if resolvedExercise.muscleGroup == priority {
+            if resolvedExercise.targets.primary.contains(where: { $0.group == priority }) {
                 priorityGroup.append(exercise)
             } else {
                 rest.append(exercise)

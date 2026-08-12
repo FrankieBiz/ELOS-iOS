@@ -75,4 +75,15 @@ struct ExerciseOrdererTests {
         // curl and pushdown are both arms, both isolation (equal rank) — relative order must survive.
         #expect(ordered.map(\.id) == ["curl", "pushdown", "bench"])
     }
+
+    @Test func priorityPartitionMatchesAnyPrimaryMuscleNotJustTheFirst() {
+        // A manual muscle check-off override can span two different `MuscleGroup`s. `.first` (front
+        // delts → shoulders) alone would misclassify this as shoulders and drop it into the "rest"
+        // partition, even though it also has a back primary (lats) and should lead a back-priority sort.
+        let overridden = MuscleTargets(primary: [.frontDelts, .lats])
+        let day = [DayExercise(id: "curl", name: "Bicep Curl"),
+                   DayExercise(id: "multi", name: "Face Pull to Row", muscleTargets: overridden)]
+        let ordered = ExerciseOrderer.order(day, catalog: catalog, priority: .back)
+        #expect(ordered.map(\.id) == ["multi", "curl"])
+    }
 }
