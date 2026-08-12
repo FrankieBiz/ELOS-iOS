@@ -11,9 +11,13 @@ struct SettingsView: View {
     @State private var showingEditProfile       = false
     @State private var showingPlateCalc         = false
     @State private var showingBodyMetrics       = false
+    /// When opened via MeView's "About ELOS" row specifically (as opposed to "Preferences" or the
+    /// gear icon, which both land at the top), jump straight to the About section on appear.
+    var scrollToAbout: Bool = false
 
     var body: some View {
         NavigationView {
+            ScrollViewReader { proxy in
             List {
                 Section("Account") {
                     if let profile = vm.userProfile {
@@ -23,7 +27,7 @@ struct SettingsView: View {
                                     .fill(LinearGradient(colors: [.mSched, .tint], startPoint: .topLeading, endPoint: .bottomTrailing))
                                     .frame(width: 44, height: 44)
                                 Text(initials(from: profile))
-                                    .font(.system(size: 16, weight: .bold))
+                                    .font(.system(.callout, weight: .bold))
                                     .foregroundStyle(.white)
                             }
                             VStack(alignment: .leading, spacing: 2) {
@@ -108,6 +112,23 @@ struct SettingsView: View {
                         Label("Plate Calculator", systemImage: "scalemass")
                             .foregroundStyle(.primary)
                     }
+                    NavigationLink {
+                        VolumeTargetsView().environmentObject(vm)
+                    } label: {
+                        HStack {
+                            Label("Volume Targets", systemImage: "chart.bar")
+                            if vm.volumeOverrides.isCustomized {
+                                Spacer()
+                                Text("Custom")
+                                    .font(.elosCaption)
+                                    .foregroundStyle(Color.tint)
+                            }
+                        }
+                    }
+                    Toggle(isOn: $vm.showQualityRater) {
+                        Label("Show Quality Rating", systemImage: "gauge.medium")
+                    }
+                    .tint(Color.tint)
                 }
 
                 Section("Canvas LMS") {
@@ -167,6 +188,7 @@ struct SettingsView: View {
                 }
 
                 Section("About") {
+                    Color.clear.frame(height: 0).id("about")
                     HStack {
                         Text("Version")
                         Spacer()
@@ -235,6 +257,14 @@ struct SettingsView: View {
             .sheet(isPresented: $showingBodyMetrics) {
                 BodyMetricsView()
                     .environmentObject(vm)
+            }
+            .onAppear {
+                if scrollToAbout {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        withAnimation { proxy.scrollTo("about", anchor: .top) }
+                    }
+                }
+            }
             }
         }
     }
@@ -340,33 +370,19 @@ struct CanvasSyncSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        KeychainHelper.save(token, forKey: "canvasToken")
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
+                    Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
                 }
             }
             .onAppear {
                 token = KeychainHelper.load(forKey: "canvasToken") ?? ""
             }
+            // Persist on dismiss regardless of how the sheet closed — tapping Done previously was the
+            // only save path, so swiping down to close silently dropped whatever the user just pasted.
+            .onDisappear {
+                KeychainHelper.save(token, forKey: "canvasToken")
+            }
         }
     }
 }
 
-// MARK: - GoalRow
-
-private struct GoalRow: View {
-    let label: String
-    let value: String
-    let color: Color
-
-    var body: some View {
-        HStack {
-            Circle().fill(color).frame(width: 8, height: 8)
-            Text(label)
-            Spacer()
-            Text(value).fontWeight(.semibold).foregroundStyle(color)
-        }
-    }
-}
