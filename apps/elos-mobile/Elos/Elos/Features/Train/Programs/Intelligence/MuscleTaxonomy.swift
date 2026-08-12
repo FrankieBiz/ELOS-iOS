@@ -13,10 +13,34 @@ enum MuscleGroup: String, CaseIterable {
     }
 }
 
+extension MuscleGroup {
+    /// One plain-English sentence tying this group's recommended volume back to the shared
+    /// `TrainingScience.citations` — not a separate study per group, a contextual gloss on the same
+    /// two or three sources.
+    var volumeRationale: String {
+        switch self {
+        case .chest:
+            return "Chest responds reliably to more weekly sets up to a point, and hitting it from a couple of angles (flat, incline) recruits it more completely than one."
+        case .back:
+            return "Back covers more muscle mass than any other group and different pulling angles (rows, pulldowns) reach different parts of it, so it tends to reward higher volume and training it twice a week."
+        case .shoulders:
+            return "Front delts already get heavily worked by any pressing you do, so direct shoulder volume mainly needs to cover side and rear delts."
+        case .arms:
+            return "Biceps and triceps get real secondary work from pressing and pulling, so their direct-set targets sit a bit lower than the big compound-heavy groups."
+        case .legs:
+            return "Quads, hamstrings and calves are large, resilient muscles that generally tolerate — and benefit from — higher volume than upper-body muscles."
+        case .glutes:
+            return "Glutes respond to both squat- and hinge-pattern work, so their volume often overlaps with leg day rather than needing a dedicated block."
+        case .core:
+            return "A small amount of direct core work goes a long way once your compound lifts are already providing indirect bracing volume."
+        }
+    }
+}
+
 /// The display-level muscle slot — one level finer than `MuscleGroup`, coarser than the raw
 /// `primaryMuscle` strings in the catalog. Volume landmarks live at this level because that's where
 /// the training literature defines them, and because "Legs 24 sets" hides "hamstrings: 0".
-enum FineMuscle: String, CaseIterable {
+enum FineMuscle: String, CaseIterable, Codable, Hashable {
     case chest
     case lats, upperBack, lowerBack, rearDelts
     case frontDelts, sideDelts, rotatorCuff
@@ -103,7 +127,10 @@ enum MuscleTaxonomy {
 
         // Order matters: the more specific test must precede the substring it contains.
         if m.contains("pec") || m.contains("chest") { return .chest }
-        if m.contains("rear delt") { return .rearDelts }
+        // "Rear Shoulders" is the equipment database's term for the rear delts (98 machines use it).
+        // Without this it fell through to the generic shoulder test below and credited *side* delts,
+        // so every rear-delt machine trained the wrong muscle.
+        if m.contains("rear delt") || m.contains("rear shoulder") { return .rearDelts }
         if m.contains("lat") && !m.contains("lateral") { return .lats }
         if m.contains("lower back") || m.contains("erector") || m.contains("spinal") { return .lowerBack }
         if m.contains("trap") || m.contains("rhomboid") { return .upperBack }
@@ -138,6 +165,15 @@ enum MuscleTaxonomy {
 
     static func knownMuscles(forGroup g: MuscleGroup) -> [String] {
         knownMuscleVocabulary.filter { group(forMuscle: $0) == g }.map { normalize($0) }
+    }
+
+    /// The catalog's own key for a slot, snake_case and **not** normalized — `.lowerBack` →
+    /// `"lower_back"`. This is the interchange format for anything that also reads
+    /// `ExerciseDefinitionRecord.primaryMuscle`: the logged-set muscle keys, `Exercise.primaryMuscle`,
+    /// and the stats screens. Returning the normalized form here instead would split one muscle into
+    /// two buckets ("lower_back" from the catalog, "lower back" from the lexicon).
+    static func vocabularyKey(forFine f: FineMuscle) -> String? {
+        knownMuscleVocabulary.first { fine(forMuscle: $0) == f }
     }
 
     /// Resolve a `TipAction.addMuscle` payload — which may name a `FineMuscle`, a `MuscleGroup`, or a

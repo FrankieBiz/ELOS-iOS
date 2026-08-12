@@ -87,4 +87,16 @@ struct MuscleTaxonomyTests {
             for child in g.children { #expect(child.group == g) }
         }
     }
+
+    @Test func everyGroupHasAVolumeRationale() {
+        for g in MuscleGroup.allCases {
+            #expect(!g.volumeRationale.isEmpty)
+        }
+    }
+
+    @Test func citationsAreNonEmptyAndDistinct() {
+        #expect(TrainingScience.citations.count >= 2)
+        let titles = Set(TrainingScience.citations.map(\.title))
+        #expect(titles.count == TrainingScience.citations.count)
+    }
 }
