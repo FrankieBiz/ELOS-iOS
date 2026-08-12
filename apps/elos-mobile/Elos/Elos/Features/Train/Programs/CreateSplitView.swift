@@ -105,9 +105,19 @@ struct CreateSplitView: View {
                     }
                 }
 
-                Section("Weekly Schedule") {
+                Section {
                     ForEach(0..<7, id: \.self) { i in
                         dayRow(index: i)
+                    }
+                } header: {
+                    HStack {
+                        Text("Weekly Schedule")
+                        Spacer()
+                        PriorityMenu(onSelect: { autoOrderAllDays(priority: $0) }) {
+                            Label("Auto-order all days", systemImage: "arrow.up.arrow.down")
+                                .font(.caption)
+                                .labelStyle(.iconOnly)
+                        }
                     }
                 }
             }
@@ -344,6 +354,16 @@ struct CreateSplitView: View {
                           addedExerciseIDs: base.addedExerciseIDs,
                           addedExerciseNames: base.addedExerciseNames,
                           addedTargets: base.addedTargets)
+    }
+
+    /// Applies one priority to every non-rest, non-empty day in the split at once — separate from the
+    /// per-day "Sort" button inside `dayRow`, which stays a single-day, no-priority action.
+    private func autoOrderAllDays(priority: MuscleGroup?) {
+        withAnimation(.elosEmphasis) {
+            for i in dayExercises.indices where !dayIsRest[i] && !dayExercises[i].isEmpty {
+                dayExercises[i] = ExerciseOrderer.order(dayExercises[i], catalog: exerciseCatalog, priority: priority)
+            }
+        }
     }
 
     private func dayRow(index i: Int) -> some View {
