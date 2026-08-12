@@ -1,22 +1,45 @@
 import SwiftUI
 
-/// The "what are you building?" control. Two chips — focus and goal — that make the coach's targets
-/// explicit instead of guessed from the day name.
+/// The "what are you building?" control. Chips that make the coach's targets explicit instead of
+/// guessed from the day name.
 ///
 /// `focus` is optional: `nil` means "let it work that out from the name", which is exactly the
-/// pre-intent behaviour, so this never becomes a required step.
+/// pre-intent behaviour, so this never becomes a required step. `excludedMuscles` is opt-in the same
+/// way: an empty set means every scoring dimension behaves exactly as before this feature shipped.
 struct TrainingIntentRow: View {
     @Binding var intent: TrainingIntent
     /// Shown as the auto option's subtitle, e.g. the day name we'd infer from.
     var inferredFocus: SplitArchetype? = nil
     /// Weekly scope has no single focus — show only the goal chip.
     var showsFocus: Bool = true
+    /// The weekly split panel binds this row to the split-wide `TrainingIntent`, whose
+    /// `excludedMuscles` the engine ignores at `.weeklySplit` scope (see
+    /// `TemplateQualityEngine.score`) — the chip is hidden there too, so there's no control on
+    /// screen that would silently do nothing. Per-day exclusion in that context is a separate
+    /// per-day binding, not this row's `intent`.
+    var showsSkip: Bool = true
+
+    @State private var showingSkipSheet = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            if showsFocus { focusChip }
-            goalChip
-            Spacer(minLength: 0)
+        // Two/three chips side by side until the labels no longer fit, then stacked. Squeezed onto
+        // one row at larger text sizes they truncated to "Any f…" and "Muscl…" — a control whose
+        // entire job is to state the current focus and goal, unable to state either.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: Space.s) {
+                if showsFocus { focusChip }
+                goalChip
+                if showsSkip { skipChip }
+                Spacer(minLength: 0)
+            }
+            VStack(alignment: .leading, spacing: Space.s) {
+                if showsFocus { focusChip }
+                goalChip
+                if showsSkip { skipChip }
+            }
+        }
+        .sheet(isPresented: $showingSkipSheet) {
+            SkipMusclesSheet(selection: $intent.excludedMuscles)
         }
     }
 
@@ -63,6 +86,20 @@ struct TrainingIntentRow: View {
         .accessibilityValue(intent.goal.pickerLabel)
     }
 
+    // MARK: Skip muscles
+
+    private var skipChip: some View {
+        Button {
+            showingSkipSheet = true
+        } label: {
+            chip(icon: "eye.slash",
+                 text: intent.excludedMuscles.isEmpty ? "Skip muscles" : "Skip (\(intent.excludedMuscles.count))",
+                 isSet: !intent.excludedMuscles.isEmpty)
+        }
+        .accessibilityLabel("Skip muscles")
+        .accessibilityValue(intent.excludedMuscles.isEmpty ? "None" : "\(intent.excludedMuscles.count) selected")
+    }
+
     // MARK: Chip
 
     private func chip(icon: String, text: String, isSet: Bool) -> some View {
@@ -76,6 +113,8 @@ struct TrainingIntentRow: View {
                 .font(.system(.caption2, weight: .bold))
                 .foregroundStyle(.tertiary)
         }
+        // The chip sizes to its label; the row above decides whether both fit on one line.
+        .fixedSize()
         .foregroundStyle(isSet ? Color.tint : Color.secondary)
         .padding(.horizontal, 11)
         .padding(.vertical, 6)
