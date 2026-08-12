@@ -14,10 +14,16 @@ struct TrainingIntent: Equatable, Codable {
     /// The session's focus. `nil` = let the engine infer from the day name (the pre-intent behavior).
     /// Always `nil` at weekly scope — a whole week has no single focus.
     var focus: SplitArchetype?
+    /// Muscles the lifter has said they're not training on *this* day/template — distinct from
+    /// `VolumeOverrides.excludedMuscles`, which is global. Only takes effect when this intent is
+    /// scored at `.singleSession` scope (see `TemplateQualityEngine.score`); a `.weeklySplit`-scope
+    /// call ignores it entirely, by design.
+    var excludedMuscles: Set<FineMuscle> = []
 
-    init(goal: LiftingGoal, focus: SplitArchetype? = nil) {
+    init(goal: LiftingGoal, focus: SplitArchetype? = nil, excludedMuscles: Set<FineMuscle> = []) {
         self.goal = goal
         self.focus = focus
+        self.excludedMuscles = excludedMuscles
     }
 
     /// Seed from the user's saved profile, so the selector is never a blank chore.
@@ -45,6 +51,24 @@ struct TrainingIntent: Equatable, Codable {
               let decoded = try? JSONDecoder().decode(TrainingIntent.self, from: data)
         else { return nil }
         self = decoded
+    }
+
+    // MARK: Backward-compatible decode
+    //
+    // Synthesized `Decodable` throws `keyNotFound` on a template saved before `excludedMuscles`
+    // existed, which would make `init?(jsonString:)` return nil and drop the lifter's saved
+    // goal/focus entirely, not just the new field. Writing this by hand suppresses the synthesized
+    // memberwise init, which is why the explicit `init(goal:focus:excludedMuscles:)` above exists.
+
+    private enum CodingKeys: String, CodingKey {
+        case goal, focus, excludedMuscles
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        goal = try c.decode(LiftingGoal.self, forKey: .goal)
+        focus = try c.decodeIfPresent(SplitArchetype.self, forKey: .focus)
+        excludedMuscles = try c.decodeIfPresent(Set<FineMuscle>.self, forKey: .excludedMuscles) ?? []
     }
 }
 
