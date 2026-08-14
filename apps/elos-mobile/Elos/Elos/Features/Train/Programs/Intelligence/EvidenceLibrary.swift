@@ -1,6 +1,6 @@
 import Foundation
 
-enum EvidenceCertainty: String {
+enum EvidenceCertainty: String, CaseIterable {
     case high, medium, mediumLow, low
 
     var displayLabel: String {
@@ -13,7 +13,7 @@ enum EvidenceCertainty: String {
     }
 }
 
-enum EvidenceTopic: String {
+enum EvidenceTopic: String, CaseIterable {
     case exerciseSubstitution
 }
 
