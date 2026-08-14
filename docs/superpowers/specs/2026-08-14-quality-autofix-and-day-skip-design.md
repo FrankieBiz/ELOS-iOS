@@ -150,10 +150,13 @@ static func score(days: [[ScoredExercise]],
                   profile: TrainingProfile,
                   catalog: [ExerciseCandidate],
                   intent: TrainingIntent? = nil,
-                  dayExclusions: [Set<FineMuscle>] = []) -> QualityReport
+                  dayExclusions: [Set<FineMuscle>] = [],
+                  dayIsRest: [Bool] = []) -> QualityReport
 ```
 
-Defaulted so every existing call site compiles unchanged.
+Both new parameters are defaulted, so every existing call site compiles unchanged.
+`dayIsRest` is required, not incidental: the engine cannot derive "is this a training day" from
+`days` alone (see below).
 
 ```swift
 // A muscle the lifter has skipped on *every* day they actually train is skipped for the week —
@@ -167,13 +170,17 @@ Defaulted so every existing call site compiles unchanged.
 // A day index with no corresponding entry in `dayExclusions` votes as an empty set (killing the
 // intersection) rather than being skipped: a caller that passes a short array must not be able to
 // widen the exclusion by omission.
+func isTrainingDay(_ i: Int) -> Bool {
+    !(i < dayIsRest.count && dayIsRest[i]) && !days[i].isEmpty
+}
+func exclusions(_ i: Int) -> Set<FineMuscle> {
+    i < dayExclusions.count ? dayExclusions[i] : []
+}
+
 let weeklyExclusions: Set<FineMuscle> = {
     guard scope == .weeklySplit else { return [] }
-    let voting = days.indices.filter { isTrainingDay($0) }
+    let voting = days.indices.filter(isTrainingDay)
     guard let first = voting.first else { return [] }
-    func exclusions(_ i: Int) -> Set<FineMuscle> {
-        i < dayExclusions.count ? dayExclusions[i] : []
-    }
     return voting.dropFirst().reduce(exclusions(first)) { $0.intersection(exclusions($1)) }
 }()
 ```
@@ -182,8 +189,10 @@ Unioned with the existing global and day-scoped sets at `TemplateQualityEngine.s
 of the function is untouched — `effectiveOverrides.excludedMuscles` already flows to every scorer
 and to `MuscleVolumeAnalyzer`.
 
-**Call site:** `CreateSplitView.qualityReport` (`:250-257`) passes `dayExclusions:
-dayExcludedMuscles`. No other call site changes.
+**Call site:** `CreateSplitView.qualityReport` (`:250-257`) passes both `dayExclusions:
+dayExcludedMuscles` and `dayIsRest: dayIsRest` (the view already holds it at `:37`). No other call
+site changes; `CreateTemplateView`'s single-session call (`:274`) takes the defaults and is fenced
+out of the whole block by `guard scope == .weeklySplit`.
 
 ### One definition of "training day", shared by both phases
 
@@ -194,18 +203,12 @@ predicate. Toggling Rest on (`CreateSplitView.swift:381-386`) clears `dayTemplat
 exercises — and those exercises are still scored, because `qualityReport` (`:251`) passes all
 seven days unfiltered.
 
-A single helper is therefore defined once and used by both phases, mirroring the semantics
-`saveSplit`'s `isEffectivelyRest` (`:563-566`) already persists:
-
-```swift
-/// A day that actually contributes training. Not `!dayIsRest` — a day toggled to Rest keeps its
-/// exercises in state and keeps being scored — and not `!isEmpty` either, for the same reason.
-func isTrainingDay(_ i: Int) -> Bool { !dayIsRest[i] && !days[i].isEmpty }
-```
-
-Within the engine, which has no `dayIsRest`, a day is a training day when it is non-empty **and**
-its index is not flagged rest by the caller; `CreateSplitView` passes `dayIsRest` alongside
-`dayExclusions` so the engine can apply the same rule the chooser will.
+The predicate is `!dayIsRest[i] && !days[i].isEmpty` — mirroring the semantics `saveSplit`'s
+`isEffectivelyRest` (`:563-566`) already persists — and is written twice against the same
+semantics rather than shared as one literal function: the engine's array is `days`, the view's is
+`dayExercises`, and `daySummaries` (`:291`) already inlines exactly this test today. Phase 2's
+`FixDayChooser` uses the view-side form. Any change to the rule must change both; the tests in
+§1.4 pin the engine side.
 
 ## 1.2 A weekly exclusion must be visible, never silent
 
@@ -220,10 +223,27 @@ The asymmetry decides the design: failing to mute is merely annoying and visible
 wrongly hides information. So the mute is never allowed to be invisible.
 
 `MuscleVolumeBar` gains `let isExcluded: Bool`, set when a muscle is muted by the lifter's own
-choice (global, day-scoped, or the new weekly intersection) rather than by science
-(`band.isOptional`, e.g. rotator cuff). `MuscleCoverageBars` renders that row with an explicit
-**"Skipped"** value in place of the set count, reusing the existing `isMuted` styling path
-(`MuscleCoverageBars.swift:96`) for colour.
+choice rather than by science. The distinction is real and computable: an excluded muscle is in
+`profile.volumeOverrides.excludedMuscles` (already the merged global ∪ day-scoped ∪ weekly set by
+the time `MuscleVolumeAnalyzer` sees it, per `TemplateQualityEngine.swift:50-63`), whereas a
+science-optional muscle like rotator cuff carries `isOptional` on its *base* band
+(`TrainingScience.swift:144,147`) and is absent from that set. Both `fineRow` and `groupRow`
+already receive `profile` (`MuscleVolumeAnalyzer.swift:211,278`), so no new plumbing is needed.
+
+**A group row is excluded when every child is** — `childBars.allSatisfy(\.isExcluded)`. This must
+be stated explicitly because the existing `expectedChildren.isEmpty` branch (`:231`) does **not**
+catch it: weekly `expectedMuscles` is computed from the experience-only band overload (`:181-184`),
+which builds a fresh profile with empty overrides (`TrainingScience.swift:197-199`) and so cannot
+see exclusions at all. Without the explicit group rule, an all-excluded group falls through to the
+normal path, `worst` resolves to `.untrained`, and the row renders red with a set count — which is
+exactly the "Back — Skipped" example above failing to render. `expectedMuscles` itself is left
+alone: `isExcluded` now carries the meaning explicitly, and changing what "expected" means would
+ripple into `isExpected` and the group's in-range counts for no gain.
+
+`MuscleCoverageBars` renders an excluded row with an explicit **"Skipped"** value in place of the
+set count, reusing the existing `isMuted` styling path (`MuscleCoverageBars.swift:96`) for colour —
+which already fires, since an excluded muscle's band is forced `asOptional`
+(`TrainingScience.swift:175`).
 
 The row stays on screen and says what happened. A half-built split reads "Back — Skipped", which
 is immediately recognisable as wrong and one tap from being undone, instead of a bar that quietly
@@ -232,6 +252,11 @@ gets confirmation the app heard them, not just an absence of nagging.
 
 `VolumeScorer` and `BalanceScorer` continue to skip excluded muscles for scoring and tips — the
 nagging genuinely stops. Only the *rendering* changes.
+
+**One exception to fix while here:** `BalanceScorer`'s `bal-noham` (`:52-57`) is the sole gap tip
+that never consults `excludedMuscles` — every sibling gap check does (`:75`, `:93`, `:109`). So
+excluding hamstrings today still produces "add a hinge to balance the knee." Gate it the same way
+its siblings are gated.
 
 ## 1.3 Opening a day's own report
 
@@ -277,10 +302,11 @@ score. Its premise changes. It is replaced by two tests:
 /// the name-matching identity trap this repo has hit repeatedly.
 enum FixOperation: Equatable {
     case insertExercise(InsertSpec)
-    /// `permutation[newIndex] = oldIndex`. Positional, **not** id-keyed: a custom exercise carries
-    /// `id == ""` (`SplitHelpers.swift:4`), so two customs on one day are indistinguishable by id
-    /// and an id-keyed reorder cannot reproduce the intended ordering. That is the same
-    /// name-as-identity trap this design exists to avoid.
+    /// `permutation[newIndex] = oldIndex`. Positional, **not** id-keyed: a template exercise with
+    /// no catalog match becomes `ScoredExercise(id: "")` (`CreateTemplateView.swift:6-46`,
+    /// `exerciseID ?? ""`), so two such rows on one day are indistinguishable by id and an
+    /// id-keyed reorder cannot reproduce the intended ordering — the same name-as-identity trap
+    /// this design exists to avoid.
     case reorderDay(dayIndex: Int, permutation: [Int])
     case setReps(dayIndex: Int, exerciseIndex: Int, reps: String)
     /// Single-session scope only. `DayExercise` has no rest field and `ScoredExercise.init(day:)`
@@ -400,11 +426,18 @@ size from the actual shortfall: **`ceil(target − credit.total)`**, capped at a
 `TrainingScience.swift`.
 
 The shortfall is measured against **`credit.total`, not `credit.direct`** — `VolumeScorer.weekly`
-(`:70`) computes status from `credit.total`, so a muscle already earning indirect credit needs
-fewer new sets than its direct count suggests. Using `direct` here over-doses: a rear delt with
-`direct 0 / indirect 6` against `mev 8` needs 2 sets, and the direct-based formula would ask for
-8. (The added exercise contributes *direct* credit, so one added set closes one set of the total
-shortfall.)
+(`:69`) computes status from `credit.total`, so a muscle already earning indirect credit needs
+fewer new sets than its direct count suggests. A chest at `direct 5 / indirect 2` (total 7) against
+`mev 8` needs **1** set; the direct-based formula would ask for 3.
+
+One added set closes exactly one set of the shortfall: credit accumulates as a straight sum across
+exercises (`MuscleVolumeAnalyzer.swift:123-124`), and the "largest credit, not the sum" rule
+(`:163-165`) is intra-exercise only, so N sets of an exercise whose primary is M raise M's total by
+exactly N.
+
+Note the tip only exists for muscles with `direct > 0` — `VolumeScorer` skips untargeted muscles
+entirely (`:17-18`), which is `BalanceScorer`'s job instead. So the shortfall path never sees a
+zero-direct muscle.
 
 If one exercise cannot close the gap, the proposal is still offered with `resolvesTip: false` and
 an honest caveat. It is not silently inflated to 14 sets.
@@ -430,6 +463,14 @@ static func propose(for tip: QualityTip, context: Context) -> FixProposal?
 static func propose(for tip: QualityTip, context: Context,
                     using alternate: ExerciseCandidate) -> FixProposal?
 ```
+
+**Deriving the reorder permutation.** `ExerciseOrderer.order` returns reordered *values*, and
+`DayExercise` is not `Equatable` (`SplitHelpers.swift:3` declares only `Codable, Identifiable`), so
+the permutation must not be recovered by diffing outputs. `ExerciseOrderer` already computes the
+answer internally — it sorts `enumerated()` and maps back to `$0.element` (`:19,34-41`). Add a
+sibling `orderedIndices(_:catalog:priority:) -> [Int]` returning those offsets, and express
+`order` in terms of it. The permutation then comes straight from the sort, with no equality, no
+name matching, and no second implementation to drift.
 
 `propose` builds operations per tip action, simulates them, re-scores with the **same** parameters
 the builder uses, and verifies:
@@ -513,7 +554,8 @@ should know about.
 | Plan changed while the sheet is open | Indices re-validated on Confirm; abort with no change |
 | `sel-order` regenerating on another day | Counts as resolved — `(id, action)` differs |
 | Sort ties in day/candidate selection | Total tiebreak on index; Swift's sort is not stable |
-| Two customs on one day (both `id == ""`) | Reorder is positional, so they stay distinguishable |
+| Two unmatched exercises on one day (both `id == ""`) | Reorder is positional, so they stay distinguishable |
+| Added sets push a *secondary* muscle past its MRV | Surfaces as a new `vol-high-*` tip and a red dimension delta in the preview; cannot corrupt `resolvesTip`, which matches only the targeted tip |
 | Weekly skip concluded from a half-built split | Row renders "Skipped" rather than vanishing (§1.2) |
 | Muscle excluded on a day that also holds leftover exercises after a Rest toggle | Shared `isTrainingDay` predicate governs both phases (§1.1) |
 
@@ -543,7 +585,13 @@ than `days` cannot widen the weekly exclusion.
 
 **Coverage-bar rendering** — a muscle excluded by the lifter reports `isExcluded` and renders
 "Skipped"; a science-optional muscle (rotator cuff) does not, so the two mute reasons stay
-distinguishable.
+distinguishable. **A group whose every child is excluded reports `isExcluded` at group level** —
+the case that would otherwise render red with a set count, and the one §1.2's own worked example
+depends on.
+
+**`ExerciseOrderer.orderedIndices`** — returns a valid permutation of the input indices, and
+`order` composed from it produces the identical array it produces today (a characterization test
+over the existing `ExerciseOrdererTests` fixtures).
 
 ### Verification reality
 
