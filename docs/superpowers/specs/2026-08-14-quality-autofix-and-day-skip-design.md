@@ -99,10 +99,10 @@ discard confirmations do.
 ## Decisions (locked)
 
 - **Per-tip fixes only.** No bulk "fix everything" in v1.
-- **Tier 1 + Tier 2 in scope** (see table below); volume-reduction and structural tips stay
+- **Tier 1 + Tier 2 in scope** (enumerated in §2.7); volume-reduction and structural tips stay
   read-only.
 - **Weekly skip rule:** a muscle excluded on **every training day** is excluded for the week
-  (§1.1 defines "training day" once, for both phases). Excluded on some days only → unchanged
+  (§1.1 fixes one definition of "training day" for both phases). Excluded on some days only → unchanged
   behavior. A weekly exclusion always renders as an explicit "Skipped" row rather than
   disappearing (§1.2) — it is allowed to stop the nagging, never to hide information.
 - **The engine returns a typed operation list, not a mutated plan.**
@@ -230,8 +230,11 @@ science-optional muscle like rotator cuff carries `isOptional` on its *base* ban
 (`TrainingScience.swift:144,147`) and is absent from that set. Both `fineRow` and `groupRow`
 already receive `profile` (`MuscleVolumeAnalyzer.swift:211,278`), so no new plumbing is needed.
 
-**A group row is excluded when every child is** — `childBars.allSatisfy(\.isExcluded)`. This must
-be stated explicitly because the existing `expectedChildren.isEmpty` branch (`:231`) does **not**
+**A group row is excluded when every child is** — `childBars.allSatisfy(\.isExcluded)`, applied
+uniformly to all three of `groupRow`'s return paths (the single-child mirror at `:224`, the
+no-expected-children branch at `:234`, and the normal path at `:268`); for the single-child case
+`childBars` holds exactly that one child, so the same expression is correct there. This must be
+stated explicitly because the existing `expectedChildren.isEmpty` branch (`:231`) does **not**
 catch it: weekly `expectedMuscles` is computed from the experience-only band overload (`:181-184`),
 which builds a fresh profile with empty overrides (`TrainingScience.swift:197-199`) and so cannot
 see exclusions at all. Without the explicit group rule, an all-excluded group falls through to the
@@ -468,17 +471,32 @@ static func propose(for tip: QualityTip, context: Context,
 `DayExercise` is not `Equatable` (`SplitHelpers.swift:3` declares only `Codable, Identifiable`), so
 the permutation must not be recovered by diffing outputs. `ExerciseOrderer` already computes the
 answer internally — it sorts `enumerated()` and maps back to `$0.element` (`:19,34-41`). Add a
-sibling `orderedIndices(_:catalog:priority:) -> [Int]` returning those offsets, and express
-`order` in terms of it. The permutation then comes straight from the sort, with no equality, no
-name matching, and no second implementation to drift.
+sibling `orderedIndices(_:catalog:priority:) -> [Int]` and express `order` in terms of it, so the
+permutation comes straight from the sort with no equality, no name matching, and no second
+implementation to drift.
+
+Note this is slightly more than surfacing an existing value: on the `priority != nil` path
+(`:29-41`) the `enumerated().offset` values are local to the `priorityGroup` and `rest`
+sub-arrays, so `orderedIndices` must thread the *original* indices through the partition. The
+tip-driven fix path always calls it with `priority: nil`, but the function must be correct for
+both, since `order` will be composed from it. A characterization test over the existing
+`ExerciseOrdererTests` fixtures pins that `order` still returns exactly what it returns today.
 
 `propose` builds operations per tip action, simulates them, re-scores with the **same** parameters
 the builder uses, and verifies:
 
 ```swift
-let after = TemplateQualityEngine.score(days: simulated, …, dayExclusions: context.dayExcludedMuscles)
+let after = TemplateQualityEngine.score(days: simulated, …,
+                                        dayExclusions: context.dayExcludedMuscles,
+                                        dayIsRest: context.dayIsRest)
 let resolvesTip = !after.tips.contains { $0.id == tip.id && $0.action == tip.action }
 ```
+
+**`dayIsRest` must be passed here.** Omitting it lets it default to `[]`, which degrades
+`isTrainingDay` to `!days[i].isEmpty` — so a Rest-toggled day still holding exercises would vote in
+the *after* intersection but not in the builder's *before* report. The two reports would then be
+computed under different weekly exclusion sets, making the delta meaningless and `resolvesTip`
+unreliable. The before/after pair must always be scored with identical parameters.
 
 **Suppression rule.** Return `nil` when `!resolvesTip && scoreDelta <= 0` — a change that neither
 clears the tip nor improves the score is noise, and offering it is what "sloppy" looks like. A fix
@@ -532,14 +550,41 @@ invent rest storage on `DayExercise`.
 `Context`; it already has the `@Query profiles` (`:240`) that `CreateSplitView:11` derives it from,
 but doesn't currently expose it.
 
+## 2.7 The fixable set — `canFix`'s whitelist
+
+`QualityFixEngine.canFix` is load-bearing: it decides which tips get a button. It is a whitelist on
+tip id prefix, not on `action.isActionable`, so a tip can carry an action for the manual path
+without claiming to be auto-fixable.
+
+| Tip id | Tier | Operation |
+|---|---|---|
+| `bal-gap-*`, `bal-focusgap-*`, `bal-noham` | 1 | `insertExercise` — one primary-target exercise |
+| `vol-low-*`, `vol-light-*` | 1 | `insertExercise` — sets sized from the shortfall (§2.3) |
+| `sel-hinge` | 1 | `insertExercise` — one hinge-pattern exercise |
+| `sel-order`, `fatigue-order-*` | 1 | `reorderDay` |
+| `rr-reps` | 2 | `setReps` on every out-of-range exercise in scope |
+| `rr-rest` | 2 | `setRest` — single-session scope only |
+
+Everything else — `vol-high-*`, `vol-more`, `sess-junk-*`, `sess-short`, `sess-long`,
+`bal-pushpull`, `bal-quadham`, `bal-single-group`, `sel-compound`, `fatigue-long-*`, `freq-once-*` —
+is deliberately **not** fixable and keeps today's behavior. See Out of scope for why.
+
+`canFix` returning true is necessary but not sufficient: `propose` can still return `nil` (no
+eligible day, no candidate, or a change that neither clears the tip nor helps), in which case the
+UI falls back to the manual path.
+
 ### One adjacent bug fixed deliberately
 
 `CreateTemplateView`'s manual add path (`:525-536`) never calls `SetRepDefaults`, so a squat added
 in the template builder gets a generic `3 × 8-10` while the same squat added in the split builder
-gets `4 × 5-8` (`CreateSplitView.swift:187-188`). Auto-fix must produce identical results in both
-builders, so this is corrected as part of the work rather than worked around. **Called out
-explicitly because it changes existing manual-add behavior**, which no one asked for and everyone
-should know about.
+gets `4 × 5-8` (`CreateSplitView.swift:187-188`). Auto-fix inserts carry their own sets/reps from
+`InsertSpec` (§2.3), so auto-fix is self-consistent either way — this is an independent drive-by
+fix, corrected because leaving the two builders disagreeing while working directly on the seam
+between them is how the disagreement survives another year.
+
+**It changes existing manual-add behavior**, which no one asked for. It therefore lands as its own
+commit, so the auto-fix change stays behavior-preserving for the manual path and this can be
+reverted alone if it surprises anyone.
 
 ## Error handling and edge cases
 
