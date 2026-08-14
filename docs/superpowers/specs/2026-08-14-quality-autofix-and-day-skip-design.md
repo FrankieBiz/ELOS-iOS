@@ -101,8 +101,10 @@ discard confirmations do.
 - **Per-tip fixes only.** No bulk "fix everything" in v1.
 - **Tier 1 + Tier 2 in scope** (see table below); volume-reduction and structural tips stay
   read-only.
-- **Weekly skip rule:** a muscle excluded on **every active (non-empty) day** is excluded for the
-  week. Excluded on some days only → unchanged behavior.
+- **Weekly skip rule:** a muscle excluded on **every training day** is excluded for the week
+  (§1.1 defines "training day" once, for both phases). Excluded on some days only → unchanged
+  behavior. A weekly exclusion always renders as an explicit "Skipped" row rather than
+  disappearing (§1.2) — it is allowed to stop the nagging, never to hide information.
 - **The engine returns a typed operation list, not a mutated plan.**
 - **Alternate picks:** an insert fix offers the #2 and #3 ranked candidates.
 - **One spec, two phases.** Phase 1 lands first; Phase 2 depends on its per-day exclusion data.
@@ -156,26 +158,82 @@ Defaulted so every existing call site compiles unchanged.
 ```swift
 // A muscle the lifter has skipped on *every* day they actually train is skipped for the week —
 // there is no remaining day that disagrees. Skipped on only some days, the week still expects it
-// on the others, which is what keeps a single day's skip from hiding a real gap.
+// on the others, which is what keeps one day's skip from hiding a real gap.
 //
-// Only non-empty days vote. A rest day carries no exclusions, and an unbuilt day has no opinion
-// yet; letting either into the intersection would zero it out permanently.
+// Only training days vote. Including non-training days would fold in their empty exclusion sets
+// and intersect the result to nothing, disabling the rule entirely. Note this cuts the other way
+// too — see §1.2 for why a wrong weekly exclusion must stay *visible* rather than silent.
+//
+// A day index with no corresponding entry in `dayExclusions` votes as an empty set (killing the
+// intersection) rather than being skipped: a caller that passes a short array must not be able to
+// widen the exclusion by omission.
 let weeklyExclusions: Set<FineMuscle> = {
-    guard scope == .weeklySplit, !dayExclusions.isEmpty else { return [] }
-    let active = days.indices.filter { !days[$0].isEmpty && $0 < dayExclusions.count }
-    guard let first = active.first else { return [] }
-    return active.dropFirst().reduce(dayExclusions[first]) { $0.intersection(dayExclusions[$1]) }
+    guard scope == .weeklySplit else { return [] }
+    let voting = days.indices.filter { isTrainingDay($0) }
+    guard let first = voting.first else { return [] }
+    func exclusions(_ i: Int) -> Set<FineMuscle> {
+        i < dayExclusions.count ? dayExclusions[i] : []
+    }
+    return voting.dropFirst().reduce(exclusions(first)) { $0.intersection(exclusions($1)) }
 }()
 ```
 
 Unioned with the existing global and day-scoped sets at `TemplateQualityEngine.swift:51`. The rest
 of the function is untouched — `effectiveOverrides.excludedMuscles` already flows to every scorer
-and to `MuscleVolumeAnalyzer`, so the coverage bars mute correctly with no further change.
+and to `MuscleVolumeAnalyzer`.
 
 **Call site:** `CreateSplitView.qualityReport` (`:250-257`) passes `dayExclusions:
 dayExcludedMuscles`. No other call site changes.
 
-## 1.2 Making the skip visible where it was set
+### One definition of "training day", shared by both phases
+
+Phase 1's intersection and Phase 2's `FixDayChooser` veto must not disagree about which days
+count. They would if written independently: `dayIsRest` and `days[i].isEmpty` are **not** the same
+predicate. Toggling Rest on (`CreateSplitView.swift:381-386`) clears `dayTemplateIDs` and
+`dayNames` but deliberately leaves `dayExercises[i]` intact, so a day marked Rest can still hold
+exercises — and those exercises are still scored, because `qualityReport` (`:251`) passes all
+seven days unfiltered.
+
+A single helper is therefore defined once and used by both phases, mirroring the semantics
+`saveSplit`'s `isEffectivelyRest` (`:563-566`) already persists:
+
+```swift
+/// A day that actually contributes training. Not `!dayIsRest` — a day toggled to Rest keeps its
+/// exercises in state and keeps being scored — and not `!isEmpty` either, for the same reason.
+func isTrainingDay(_ i: Int) -> Bool { !dayIsRest[i] && !days[i].isEmpty }
+```
+
+Within the engine, which has no `dayIsRest`, a day is a training day when it is non-empty **and**
+its index is not flagged rest by the caller; `CreateSplitView` passes `dayIsRest` alongside
+`dayExclusions` so the engine can apply the same rule the chooser will.
+
+## 1.2 A weekly exclusion must be visible, never silent
+
+The intersection rule has a failure mode worth designing against rather than arguing away.
+Mid-build, a user with two Push days built and Pull days still to come may skip back on both to
+quiet the coach. The intersection then concludes back is skipped for the week and mutes it —
+hiding a gap they fully intend to fill. The rule self-corrects the moment a Pull day appears, but
+the wrong state is live in between, and *silent* wrongness during the exact minutes someone is
+making decisions is the worst kind.
+
+The asymmetry decides the design: failing to mute is merely annoying and visible, while muting
+wrongly hides information. So the mute is never allowed to be invisible.
+
+`MuscleVolumeBar` gains `let isExcluded: Bool`, set when a muscle is muted by the lifter's own
+choice (global, day-scoped, or the new weekly intersection) rather than by science
+(`band.isOptional`, e.g. rotator cuff). `MuscleCoverageBars` renders that row with an explicit
+**"Skipped"** value in place of the set count, reusing the existing `isMuted` styling path
+(`MuscleCoverageBars.swift:96`) for colour.
+
+The row stays on screen and says what happened. A half-built split reads "Back — Skipped", which
+is immediately recognisable as wrong and one tap from being undone, instead of a bar that quietly
+vanished. This also answers the original complaint more directly than muting ever could: the user
+gets confirmation the app heard them, not just an absence of nagging.
+
+`VolumeScorer` and `BalanceScorer` continue to skip excluded muscles for scoring and tips — the
+nagging genuinely stops. Only the *rendering* changes.
+
+## 1.3 Opening a day's own report
 
 `SplitDaySummary` (`SplitQualityReportView.swift:5-11`) gains `let report: QualityReport`.
 `daySummaries` (`CreateSplitView.swift:288-307`) already computes it and discards it — it now
@@ -196,7 +254,7 @@ finding, which is the existing convention documented at `MuscleCoverageBars.swif
 This is where a skipped Lower Back renders **muted**, via the `isMuted` path already implemented
 at `MuscleCoverageBars.swift:96`.
 
-## 1.3 Test change to declare, not bury
+## 1.4 Test change to declare, not bury
 
 `ElosTests/Intelligence/TemplateQualityEngineTests.swift:124-142`,
 `dayScopedExclusionDoesNotAffectWeeklySplitScore`, asserts a per-day skip *never* moves the weekly
@@ -219,8 +277,15 @@ score. Its premise changes. It is replaced by two tests:
 /// the name-matching identity trap this repo has hit repeatedly.
 enum FixOperation: Equatable {
     case insertExercise(InsertSpec)
-    case reorderDay(dayIndex: Int, orderedIDs: [String])
+    /// `permutation[newIndex] = oldIndex`. Positional, **not** id-keyed: a custom exercise carries
+    /// `id == ""` (`SplitHelpers.swift:4`), so two customs on one day are indistinguishable by id
+    /// and an id-keyed reorder cannot reproduce the intended ordering. That is the same
+    /// name-as-identity trap this design exists to avoid.
+    case reorderDay(dayIndex: Int, permutation: [Int])
     case setReps(dayIndex: Int, exerciseIndex: Int, reps: String)
+    /// Single-session scope only. `DayExercise` has no rest field and `ScoredExercise.init(day:)`
+    /// hard-codes `restSeconds: nil`, so the split builder's `apply` implements this as an
+    /// intentional no-op — see §2.6.
     case setRest(dayIndex: Int, exerciseIndex: Int, seconds: Int)
 }
 
@@ -312,6 +377,11 @@ Pipeline:
    target set. This is a correctness constraint: `bal-gap-*` and `bal-focusgap-*` fire on
    **direct** sets being zero, so a secondary-only pick would not clear the tip it claims to fix.
    For `forPattern`, filter on `movementPattern` equality instead.
+   **Both sides of that membership test must be normalized** — compare
+   `MuscleTaxonomy.normalize(candidate.primaryMuscle)` against the normalized target set. The
+   catalog stores snake_case (`"lower_back"`) while the target vocabulary is normalized
+   (`"lower back"`); comparing raw against normalized silently drops every candidate for that
+   muscle. This repo has shipped that exact bug twice.
 3. **Hard duplicate filter** — drop anything whose id, or normalized name, is already on that day.
    The engine's own −4.0 penalty is not a guarantee.
 4. **Hard equipment filter**, with a fallback: filter by `EquipmentPreference.isAvailable`; if
@@ -324,10 +394,17 @@ Pipeline:
 
 **Set sizing.** Presence-test tips (`bal-*`, `sel-hinge`) take
 `SetRepDefaults.defaults(forMovementPattern:)` unchanged. Dose tips (`vol-low-*`, `vol-light-*`)
-size from the actual shortfall — `ceil(target − current direct credit)`, where target is
-`band.mev` for `vol-low` and `band.targetLow` for `vol-light` — clamped to
-`max(default.sets, …)` and capped at a new `TrainingScience.maxAutoFixSetsPerExercise` (5). House
-rule: every tunable number lives in `TrainingScience.swift`.
+size from the actual shortfall: **`ceil(target − credit.total)`**, capped at a new
+`TrainingScience.maxAutoFixSetsPerExercise` (5), where target is `band.mev` for `vol-low` and
+`band.targetLow` for `vol-light`. House rule: every tunable number lives in
+`TrainingScience.swift`.
+
+The shortfall is measured against **`credit.total`, not `credit.direct`** — `VolumeScorer.weekly`
+(`:70`) computes status from `credit.total`, so a muscle already earning indirect credit needs
+fewer new sets than its direct count suggests. Using `direct` here over-doses: a rear delt with
+`direct 0 / indirect 6` against `mev 8` needs 2 sets, and the direct-based formula would ask for
+8. (The added exercise contributes *direct* credit, so one added set closes one set of the total
+shortfall.)
 
 If one exercise cannot close the gap, the proposal is still offered with `resolvesTip: false` and
 an honest caveat. It is not silently inflated to 14 sets.
@@ -401,7 +478,18 @@ as a competing second button in a small row.
 
 **Both builders** gain an `apply(_ operations: [FixOperation])` that switches over the operations
 and mutates its own native state, wrapped in `withAnimation(.elosEmphasis)` to match the existing
-reorder. Indices are re-validated at apply time; an out-of-range operation aborts with no change.
+reorder. Indices and permutations are re-validated at apply time; an out-of-range or non-bijective
+operation aborts with no change.
+
+`CreateSplitView.apply` implements `setRest` as an **intentional no-op** with a comment saying so —
+`DayExercise` has no rest field, `rr-rest` only fires at single-session scope on exercises with
+non-nil rest, and a split-sourced day always has `restSeconds: nil`, so the case is unreachable
+there. The switch must still cover it, and an implementer should not read that gap as a prompt to
+invent rest storage on `DayExercise`.
+
+`CreateTemplateView` needs a one-line `equipmentPreference` computed property to build the
+`Context`; it already has the `@Query profiles` (`:240`) that `CreateSplitView:11` derives it from,
+but doesn't currently expose it.
 
 ### One adjacent bug fixed deliberately
 
@@ -425,6 +513,9 @@ should know about.
 | Plan changed while the sheet is open | Indices re-validated on Confirm; abort with no change |
 | `sel-order` regenerating on another day | Counts as resolved — `(id, action)` differs |
 | Sort ties in day/candidate selection | Total tiebreak on index; Swift's sort is not stable |
+| Two customs on one day (both `id == ""`) | Reorder is positional, so they stay distinguishable |
+| Weekly skip concluded from a half-built split | Row renders "Skipped" rather than vanishing (§1.2) |
+| Muscle excluded on a day that also holds leftover exercises after a Rest toggle | Shared `isTrainingDay` predicate governs both phases (§1.1) |
 
 ## Testing
 
@@ -446,7 +537,13 @@ to fix, applying the proposal genuinely clears that `(id, action)` in the after-
 a dose fix that can't close the gap reports `resolvesTip: false`; `propose` returns `nil` for the
 no-help case; Tier 2 retune moves `rr-reps` out of the tip list.
 
-**`TemplateQualityEngineTests`** — the two replacement tests from §1.3.
+**`TemplateQualityEngineTests`** — the two replacement tests from §1.4, plus: a day toggled to Rest
+while still holding exercises does not vote in the intersection; a `dayExclusions` array shorter
+than `days` cannot widen the weekly exclusion.
+
+**Coverage-bar rendering** — a muscle excluded by the lifter reports `isExcluded` and renders
+"Skipped"; a science-optional muscle (rotator cuff) does not, so the two mute reasons stay
+distinguishable.
 
 ### Verification reality
 
@@ -481,9 +578,18 @@ The Swift Testing files are still written and committed — they run in CI/on a 
 - **`TemplateQualityEngine.score` signature change.** Mitigated by defaulting `dayExclusions`;
   every existing call site compiles untouched.
 - **`TipAction` gaining cases** breaks exhaustive switches — by design, caught at compile time.
-- **The weekly-skip rule changes a green test's premise.** Declared in §1.3 rather than quietly
+- **The weekly-skip rule changes a green test's premise.** Declared in §1.4 rather than quietly
   edited.
 - **Fix quality is only as good as `movementPattern` data.** Verified 404/404 seeded exercises
   carry a pattern; server-synced and user-custom exercises may not, and
   `MovementQualityAnalyzer.analyze` already guards for empty. The picker's pattern filter will
   simply not select them, which degrades to "no auto-fix offered" rather than a wrong fix.
+- **The muscle vocabulary can produce false negatives.** `MuscleTaxonomy.knownMuscleVocabulary`
+  (`:113-121`) does not list every string `fine(forMuscle:)` can resolve — `"upper_back"` resolves
+  to `.upperBack` but is absent from the vocabulary. A catalog entry with such a primary muscle is
+  filtered out of the candidate pool despite legitimately crediting that muscle. The failure is
+  "no fix offered," never a wrong fix, so it degrades to the manual path. Worth an audit pass over
+  the vocabulary against the real catalog's distinct `primaryMuscle` values, but not a blocker.
+- **The weekly skip rule can be wrong mid-build**, as analysed in §1.2. Mitigated by rendering
+  rather than hiding, and self-correcting as days are added. Accepted deliberately: the opposite
+  failure — refusing to honour a skip — is the complaint that started this work.
