@@ -44,10 +44,17 @@ enum ExerciseSubstitutionEngine {
             reasons.append("Same muscle group (\(cGroup.displayName))")
         }
 
-        let patternsMatch = source.movementPattern == candidate.movementPattern
-        if patternsMatch && specificPatterns.contains(candidate.movementPattern.lowercased()) {
+        // Nothing in the data model guarantees canonical casing/whitespace on `movementPattern`
+        // (same reason `MuscleTaxonomy.isCompound`, `ScoredExercise.swift`'s `ResolvedExercise`,
+        // and `ExercisePickerView.swift:491` all normalize it defensively before comparing) — so
+        // normalize both sides here too, or two candidates identical except for pattern casing
+        // silently score differently.
+        let sourcePattern = source.movementPattern.lowercased().trimmingCharacters(in: .whitespaces)
+        let candidatePattern = candidate.movementPattern.lowercased().trimmingCharacters(in: .whitespaces)
+        let patternsMatch = sourcePattern == candidatePattern
+        if patternsMatch && specificPatterns.contains(candidatePattern) {
             score += 1
-            reasons.append("Same \(candidate.movementPattern) pattern")
+            reasons.append("Same \(candidatePattern) pattern")
         }
 
         let sourceSecondary = Set(source.secondaryMuscles.map(MuscleTaxonomy.normalize))

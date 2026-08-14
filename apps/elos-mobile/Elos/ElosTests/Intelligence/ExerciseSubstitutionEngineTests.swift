@@ -56,6 +56,30 @@ struct ExerciseSubstitutionEngineTests {
         #expect(score == 1)
     }
 
+    @Test func patternMatchIsCaseInsensitive() {
+        // Same fixture pair as `exactMuscleMatchPlusPatternMatchDoesNotDoubleCountViaCompoundClass`,
+        // but the candidate's movementPattern is cased differently ("Rotation" vs "rotation").
+        // Nothing in the data model guarantees canonical casing, so the pattern-match point must
+        // still fire regardless — this regression-tests the bug where it silently disappeared.
+        let lower = ExerciseCandidate(
+            id: "10", name: "Cable Woodchop", primaryMuscle: "abs",
+            secondaryMuscles: [], equipment: "cable",
+            movementPattern: "rotation", isCustom: false)
+        let upper = ExerciseCandidate(
+            id: "11", name: "Landmine Rotation", primaryMuscle: "abs",
+            secondaryMuscles: [], equipment: "landmine",
+            movementPattern: "Rotation", isCustom: false)
+        let source = ExerciseCandidate(
+            id: "9", name: "Pallof Press", primaryMuscle: "abs",
+            secondaryMuscles: [], equipment: "cable",
+            movementPattern: "rotation", isCustom: false)
+
+        let (lowerScore, _) = ExerciseSubstitutionEngine.scoreCandidate(source: source, candidate: lower)
+        let (upperScore, _) = ExerciseSubstitutionEngine.scoreCandidate(source: source, candidate: upper)
+        #expect(lowerScore == upperScore)
+        #expect(upperScore == 4) // same primary muscle (+3) + same rotation pattern (+1)
+    }
+
     @Test func barbellSquatUnavailablePrefersEquipmentMatchedQuadCompounds() {
         let equipment = EquipmentPreference(posture: .custom, customTypes: ["dumbbell", "machine"])
         let all = [Self.squat, Self.goblet, Self.legExtension, Self.legCurl, Self.rdl]
