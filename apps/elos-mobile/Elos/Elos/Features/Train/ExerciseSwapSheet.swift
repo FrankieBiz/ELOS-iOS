@@ -12,6 +12,7 @@ struct ExerciseSwapSheet: View {
     /// these would collide, since logged sets are keyed by exercise name, not instance id.
     var existingNames: [String] = []
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @State private var duplicateName: String?
 
     @Query(sort: \ExerciseDefinitionRecord.name) private var dbExercises: [ExerciseDefinitionRecord]
@@ -27,56 +28,64 @@ struct ExerciseSwapSheet: View {
         return ExerciseSubstitutionEngine.suggest(for: source, candidates: candidates, equipment: equipmentPreference)
     }
 
-    private func adopt(_ suggestion: SubstitutionSuggestion) {
-        if existingNames.contains(suggestion.name) {
-            duplicateName = suggestion.name
+    /// Shared by the suggestion-tap path and the manual picker's `onPickSingle` — same duplicate
+    /// check, same adopt call, same dismiss-on-success. Adopting used to silently no-op from the
+    /// suggestions list because nothing ever dismissed the sheet; unifying here means both paths
+    /// behave identically instead of drifting.
+    private func tryAdopt(_ picked: PickedExercise) {
+        if existingNames.contains(picked.name) {
+            duplicateName = picked.name
             return
         }
-        exercise.adopt(PickedExercise(id: suggestion.id, name: suggestion.name), in: modelContext)
+        exercise.adopt(picked, in: modelContext)
+        dismiss()
+    }
+
+    /// Suggestion panel content, or nothing when there's nothing to suggest. Built as `AnyView` to
+    /// match `ExercisePickerView.topContent`'s erased signature.
+    private func suggestionsPanel(_ suggestions: [SubstitutionSuggestion]) -> AnyView {
+        guard !suggestions.isEmpty else { return AnyView(EmptyView()) }
+        return AnyView(
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Suggested for you")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    EvidenceBadge(topic: .exerciseSubstitution)
+                }
+                ForEach(suggestions) { suggestion in
+                    Button {
+                        tryAdopt(PickedExercise(id: suggestion.id, name: suggestion.name))
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(suggestion.name)
+                                .font(.body.weight(.medium))
+                            Text(suggestion.reason)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    Divider()
+                }
+                Text("Or choose manually")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+            }
+            .padding()
+        )
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if !suggestions.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Suggested for you")
-                            .font(.subheadline.weight(.semibold))
-                        Spacer()
-                        EvidenceBadge(topic: .exerciseSubstitution)
-                    }
-                    ForEach(suggestions) { suggestion in
-                        Button {
-                            adopt(suggestion)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(suggestion.name)
-                                    .font(.body.weight(.medium))
-                                Text(suggestion.reason)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .buttonStyle(.plain)
-                        Divider()
-                    }
-                    Text("Or choose manually")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 4)
-                }
-                .padding()
-            }
-
-            ExercisePickerView(onPickSingle: { picked in
-                if existingNames.contains(picked.name) {
-                    duplicateName = picked.name
-                    return
-                }
-                exercise.adopt(picked, in: modelContext)
-            })
-        }
+        // Evaluated once per body pass rather than once for the emptiness check and again inside
+        // the panel builder.
+        let suggestions = suggestions
+        ExercisePickerView(
+            onPickSingle: { picked in tryAdopt(picked) },
+            topContent: { suggestionsPanel(suggestions) }
+        )
         .alert("Already in this workout", isPresented: Binding(
             get: { duplicateName != nil },
             set: { if !$0 { duplicateName = nil } }

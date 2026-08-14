@@ -11,6 +11,9 @@ struct PickedExercise: Hashable {
     var equipmentDedupeKey: String? = nil
     var equipmentBrandName: String? = nil
     var isGenericExercise: Bool = true
+    /// Set when the lifter answered the muscle check-off at pick time — e.g. chose "Rear delt" on a
+    /// Pec/Rear Delt station. `nil` leaves it to automatic resolution.
+    var muscleTargets: MuscleTargets? = nil
 }
 
 struct ExercisePickerView: View {
@@ -21,6 +24,13 @@ struct ExercisePickerView: View {
     var prefilterMachineName: String? = nil
     /// Split-day focus for Smart Sort. nil/empty when the picker is opened outside split building.
     var dayContext: DayContext = .empty
+    /// Optional content rendered at the top of this view's own content area — inside its
+    /// `NavigationView`, under its real title bar/Cancel button. A caller that wraps this view in an
+    /// external sibling VStack would push that title bar/Cancel down below whatever sits above it,
+    /// since this view brings its own `NavigationView`; this is the seam for adding content without
+    /// causing that regression. Used by `ExerciseSwapSheet` to surface substitution suggestions.
+    /// Defaults to nothing for every other call site.
+    var topContent: () -> AnyView = { AnyView(EmptyView()) }
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -40,6 +50,7 @@ struct ExercisePickerView: View {
     @State private var selectedIDs: Set<String> = []
     @State private var selectedItems: [PickedExercise] = []
     @State private var machinePick: MachinePick? = nil
+    @State private var muscleAsk: MuscleAsk? = nil
     @State private var howToRow: ExerciseHowTo? = nil
     @State private var sortMode: ExerciseSortMode = .smart
     @State private var coverageExpanded = true
@@ -50,6 +61,15 @@ struct ExercisePickerView: View {
         let row: Row
         let variants: [EquipmentRecord]
         var isMultiPick: Bool = false   // true when triggered from multi-select
+    }
+
+    /// A pick held back until the lifter says which movement they're doing on a machine that supports
+    /// more than one.
+    private struct MuscleAsk: Identifiable {
+        let id = UUID()
+        let picked: PickedExercise
+        let record: EquipmentRecord
+        let isMultiPick: Bool
     }
 
     private var isMultiSelect: Bool { onConfirmMulti != nil }
@@ -140,6 +160,7 @@ struct ExercisePickerView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
+                topContent()
                 tabPicker
                 filterArea
                 if dayContext.hasFocus && !coverageChips.isEmpty {
@@ -188,6 +209,17 @@ struct ExercisePickerView: View {
                 }
             }
             .sheet(item: $howToRow) { ExerciseHowToSheet(howTo: $0) }
+            .sheet(item: $muscleAsk) { ask in
+                MuscleTargetSheet(
+                    title: ask.picked.name,
+                    record: ask.record,
+                    initial: EquipmentMuscleMap.targets(for: ask.record) ?? MuscleTargets()
+                ) { chosen in
+                    var picked = ask.picked
+                    picked.muscleTargets = chosen   // nil = they chose to leave it automatic
+                    commitResolved(picked)
+                }
+            }
         }
     }
 
@@ -267,7 +299,7 @@ struct ExercisePickerView: View {
                 }
                 Spacer()
                 Button(showAdvancedFilters ? "Fewer filters" : "More filters") {
-                    withAnimation(.snappy(duration: 0.2)) { showAdvancedFilters.toggle() }
+                    withAnimation(.elosQuick) { showAdvancedFilters.toggle() }
                 }
                 .font(.elosCaption)
                 .foregroundStyle(Color.tint)
@@ -308,16 +340,8 @@ struct ExercisePickerView: View {
 
     // MARK: Coverage Strip
 
-    private var addedDayCandidates: [ExerciseCandidate] {
-        let ids = dayContext.addedExerciseIDs
-        let names = dayContext.addedExerciseNames   // already normalized
-        return dbExercises
-            .filter { ids.contains($0.id) || names.contains(MuscleTaxonomy.normalize($0.name)) }
-            .map { ExerciseCandidate(record: $0) }
-    }
-
     private var coverageChips: [CoverageChip] {
-        MuscleCoverage.chips(context: dayContext, addedCandidates: addedDayCandidates)
+        MuscleCoverage.chips(context: dayContext)
     }
 
     @ViewBuilder private var coverageStrip: some View {
@@ -604,7 +628,16 @@ struct ExercisePickerView: View {
     }
 
     private func machineRowView(_ machine: EquipmentRecord) -> some View {
-        Button {
+        // Deselecting has to short-circuit before the muscle sheet — otherwise tapping a selected
+        // ambiguous machine would re-ask instead of removing it.
+        let isSelected = selectedIDs.contains(machine.equipmentId)
+        return Button {
+            HapticManager.impact(.light)
+            if isMultiSelect && isSelected {
+                selectedIDs.remove(machine.equipmentId)
+                selectedItems.removeAll { $0.id == machine.equipmentId }
+                return
+            }
             let picked = PickedExercise(
                 id: machine.equipmentId,
                 name: "\(machine.brandName) \(machine.machineName)",
@@ -613,24 +646,13 @@ struct ExercisePickerView: View {
                 equipmentBrandName: machine.brandName,
                 isGenericExercise: false
             )
-            if isMultiSelect {
-                if selectedIDs.contains(machine.equipmentId) {
-                    selectedIDs.remove(machine.equipmentId)
-                    selectedItems.removeAll { $0.id == machine.equipmentId }
-                } else {
-                    selectedIDs.insert(machine.equipmentId)
-                    selectedItems.append(picked)
-                }
-            } else {
-                onPickSingle?(picked)
-                dismiss()
-            }
+            commit(picked, machine: machine)
         } label: {
             HStack(spacing: 10) {
                 if isMultiSelect {
-                    Image(systemName: selectedIDs.contains(machine.equipmentId) ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(selectedIDs.contains(machine.equipmentId) ? Color.tint : Color.secondary)
-                        .font(.system(size: 20))
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(isSelected ? Color.tint : Color.secondary)
+                        .font(.title3)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(machine.brandName) \(machine.machineName)")
@@ -638,15 +660,47 @@ struct ExercisePickerView: View {
                         .font(.subheadline)
                     HStack(spacing: 6) {
                         machineBadge(machine.equipmentType)
-                        if !machine.modelSeries.isEmpty {
-                            Text(machine.modelSeries)
+                        // What it trains, so the picker is honest before the exercise is even added.
+                        if let t = EquipmentMuscleMap.targets(for: machine) {
+                            Text(t.summary)
                                 .font(.caption2).foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        if EquipmentMuscleMap.isAmbiguous(machine) {
+                            Text("choose movement")
+                                .font(.caption2).fontWeight(.semibold)
+                                .foregroundStyle(Color.warn)
                         }
                     }
                 }
                 Spacer()
             }
             .padding(.vertical, 2)
+        }
+    }
+
+    /// Finish a pick, asking which movement first when the machine supports several that train
+    /// different muscle groups (a Pec/Rear Delt station). Everything else commits straight through.
+    private func commit(_ picked: PickedExercise, machine: EquipmentRecord?) {
+        // Only ask when the machine *is* the exercise. Picking the "Pec Fly" exercise and then a
+        // Pec/Rear Delt machine to do it on already states the intent — don't re-ask.
+        if let machine, picked.muscleTargets == nil, picked.id == machine.equipmentId,
+           EquipmentMuscleMap.isAmbiguous(machine) {
+            muscleAsk = MuscleAsk(picked: picked, record: machine, isMultiPick: isMultiSelect)
+            return
+        }
+        commitResolved(picked)
+    }
+
+    /// Add the pick, no further questions. Separate from `commit` so answering the muscle sheet can't
+    /// loop back into asking again.
+    private func commitResolved(_ picked: PickedExercise) {
+        if isMultiSelect {
+            selectedIDs.insert(picked.id)
+            selectedItems.append(picked)
+        } else {
+            onPickSingle?(picked)
+            dismiss()
         }
     }
 
@@ -671,7 +725,7 @@ struct ExercisePickerView: View {
                 if isMultiSelect {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(isSelected ? Color.tint : Color.secondary)
-                        .font(.system(size: 20))
+                        .font(.title3)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.name)
@@ -704,6 +758,7 @@ struct ExercisePickerView: View {
                         Image(systemName: "info.circle").foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("How to perform this exercise")
                 }
                 Button {
                     HapticManager.impact(.light)
@@ -711,7 +766,7 @@ struct ExercisePickerView: View {
                 } label: {
                     Image(systemName: isFav ? "star.fill" : "star")
                         .foregroundStyle(isFav ? .yellow : .secondary)
-                        .font(.system(size: 16))
+                        .font(.callout)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isFav ? "Remove from favorites" : "Add to favorites")
@@ -747,18 +802,14 @@ struct ExercisePickerView: View {
     }
 
     private func confirmPick(row: Row, machine: EquipmentRecord?) {
-        var picked = PickedExercise(id: row.id, name: row.name)
-        if let m = machine {
-            picked.equipmentId        = m.equipmentId
-            picked.equipmentDedupeKey = m.dedupeKey
-            picked.equipmentBrandName = m.brandName
-            picked.isGenericExercise  = false
-        }
-        onPickSingle?(picked)
-        dismiss()
+        commit(pickedExercise(row: row, machine: machine), machine: machine)
     }
 
     private func confirmMultiPick(row: Row, machine: EquipmentRecord?) {
+        commit(pickedExercise(row: row, machine: machine), machine: machine)
+    }
+
+    private func pickedExercise(row: Row, machine: EquipmentRecord?) -> PickedExercise {
         var picked = PickedExercise(id: row.id, name: row.name)
         if let m = machine {
             picked.equipmentId        = m.equipmentId
@@ -766,8 +817,7 @@ struct ExercisePickerView: View {
             picked.equipmentBrandName = m.brandName
             picked.isGenericExercise  = false
         }
-        selectedIDs.insert(picked.id)
-        selectedItems.append(picked)
+        return picked
     }
 
     private var multiSelectFooter: some View {
@@ -798,7 +848,7 @@ struct ExercisePickerView: View {
     private func emptyState(icon: String, title: String, subtitle: String) -> some View {
         VStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 36))
+                .font(.largeTitle)
                 .foregroundStyle(.secondary)
             Text(title).font(.subheadline).foregroundStyle(.secondary)
             Text(subtitle).font(.caption).foregroundStyle(.secondary)
