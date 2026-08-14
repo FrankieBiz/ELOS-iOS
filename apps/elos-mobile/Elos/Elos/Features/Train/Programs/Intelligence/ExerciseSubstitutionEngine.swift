@@ -15,4 +15,58 @@ enum ExerciseSubstitutionEngine {
         let key = MuscleTaxonomy.normalize(name)
         return candidates.first { MuscleTaxonomy.normalize($0.name) == key }
     }
+
+    /// Movement patterns specific enough that sharing one is a real signal. `isolation` is a
+    /// generic bucket covering unrelated muscles (a leg extension and a bicep curl are both
+    /// "isolation") — matching on it tells you nothing, so it's deliberately excluded.
+    private static let specificPatterns: Set<String> = ["squat", "hinge", "push", "pull", "carry", "rotation"]
+
+    /// Scores one candidate against the source being swapped out. Returns the total score and the
+    /// plain-language reason fragments that fired, in priority order. Internal (not private) so
+    /// tests can verify scoring in isolation rather than reverse-engineering it from ranked output.
+    static func scoreCandidate(source: ExerciseCandidate, candidate: ExerciseCandidate) -> (score: Int, reasons: [String]) {
+        var score = 0
+        var reasons: [String] = []
+
+        // Muscle tiers are mutually exclusive — a candidate earns exactly one.
+        if MuscleTaxonomy.normalize(source.primaryMuscle) == MuscleTaxonomy.normalize(candidate.primaryMuscle) {
+            score += 3
+            reasons.append("Same primary muscle (\(candidate.primaryMuscle))")
+        } else if let sFine = MuscleTaxonomy.fine(forMuscle: source.primaryMuscle),
+                  let cFine = MuscleTaxonomy.fine(forMuscle: candidate.primaryMuscle),
+                  sFine == cFine {
+            score += 2
+            reasons.append("Trains the same muscle (\(cFine.displayName.lowercased()))")
+        } else if let sGroup = MuscleTaxonomy.group(forMuscle: source.primaryMuscle),
+                  let cGroup = MuscleTaxonomy.group(forMuscle: candidate.primaryMuscle),
+                  sGroup == cGroup {
+            score += 1
+            reasons.append("Same muscle group (\(cGroup.displayName))")
+        }
+
+        let patternsMatch = source.movementPattern == candidate.movementPattern
+        if patternsMatch && specificPatterns.contains(candidate.movementPattern.lowercased()) {
+            score += 1
+            reasons.append("Same \(candidate.movementPattern) pattern")
+        }
+
+        let sourceSecondary = Set(source.secondaryMuscles.map(MuscleTaxonomy.normalize))
+        let candidateSecondary = Set(candidate.secondaryMuscles.map(MuscleTaxonomy.normalize))
+        if !sourceSecondary.isDisjoint(with: candidateSecondary) {
+            score += 1
+            reasons.append("Overlapping secondary muscles")
+        }
+
+        // Only rewards CROSS-pattern compound similarity (e.g. squat vs. hinge). When patterns
+        // are identical, the point above already captured that — awarding both double-counts
+        // one signal as two.
+        if !patternsMatch,
+           MuscleTaxonomy.isCompound(movementPattern: source.movementPattern),
+           MuscleTaxonomy.isCompound(movementPattern: candidate.movementPattern) {
+            score += 1
+            reasons.append("Similar compound movement")
+        }
+
+        return (score, reasons)
+    }
 }
