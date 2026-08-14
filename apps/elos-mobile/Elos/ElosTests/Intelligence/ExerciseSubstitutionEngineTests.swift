@@ -55,4 +55,42 @@ struct ExerciseSubstitutionEngineTests {
         let (score, _) = ExerciseSubstitutionEngine.scoreCandidate(source: Self.legExtension, candidate: Self.legCurl)
         #expect(score == 1)
     }
+
+    @Test func barbellSquatUnavailablePrefersEquipmentMatchedQuadCompounds() {
+        let equipment = EquipmentPreference(posture: .custom, customTypes: ["dumbbell", "machine"])
+        let all = [Self.squat, Self.goblet, Self.legExtension, Self.legCurl, Self.rdl]
+        let results = ExerciseSubstitutionEngine.suggest(for: Self.squat, candidates: all, equipment: equipment)
+        let names = results.map(\.name)
+        #expect(names.first == "Goblet Squat")
+        #expect(!names.contains("Leg Curl"))          // unrelated muscle+pattern, score 1, excluded
+        #expect(!names.contains("Romanian Deadlift"))  // uses barbell, hard-filtered by equipment
+    }
+
+    @Test func legExtensionAndLegCurlNeverSuggestEachOther() {
+        let results = ExerciseSubstitutionEngine.suggest(for: Self.legExtension, candidates: [Self.legCurl], equipment: .fullGym)
+        #expect(results.isEmpty)
+    }
+
+    @Test func tiesBreakAlphabeticallyByName() {
+        let zebra = ExerciseCandidate(id: "z", name: "Zebra Press", primaryMuscle: "quads",
+            secondaryMuscles: [], equipment: "machine", movementPattern: "squat", isCustom: false)
+        let apple = ExerciseCandidate(id: "a", name: "Apple Squat", primaryMuscle: "quads",
+            secondaryMuscles: [], equipment: "machine", movementPattern: "squat", isCustom: false)
+        let results = ExerciseSubstitutionEngine.suggest(for: Self.squat, candidates: [zebra, apple], equipment: .fullGym)
+        #expect(results.map(\.name) == ["Apple Squat", "Zebra Press"])
+    }
+
+    @Test func sourceExcludedFromItsOwnSuggestions() {
+        let results = ExerciseSubstitutionEngine.suggest(for: Self.squat, candidates: [Self.squat, Self.goblet], equipment: .fullGym)
+        #expect(!results.map(\.name).contains("Barbell Back Squat"))
+    }
+
+    @Test func limitCapsResultCount() {
+        let many = (0..<10).map { i in
+            ExerciseCandidate(id: "m\(i)", name: "Quad Move \(i)", primaryMuscle: "quads",
+                secondaryMuscles: [], equipment: "machine", movementPattern: "squat", isCustom: false)
+        }
+        let results = ExerciseSubstitutionEngine.suggest(for: Self.squat, candidates: many, equipment: .fullGym, limit: 5)
+        #expect(results.count == 5)
+    }
 }

@@ -69,4 +69,27 @@ enum ExerciseSubstitutionEngine {
 
         return (score, reasons)
     }
+
+    static func suggest(
+        for source: ExerciseCandidate,
+        candidates: [ExerciseCandidate],
+        equipment: EquipmentPreference,
+        limit: Int = 5
+    ) -> [SubstitutionSuggestion] {
+        let scored: [(candidate: ExerciseCandidate, score: Int, reason: String)] = candidates
+            .filter { $0.id != source.id }
+            .filter { equipment.isAvailable(equipment: $0.equipment) }
+            .compactMap { candidate in
+                let (score, reasons) = scoreCandidate(source: source, candidate: candidate)
+                guard score >= 2 else { return nil }
+                return (candidate, score, reasons.joined(separator: " · "))
+            }
+            .sorted { lhs, rhs in
+                lhs.score != rhs.score ? lhs.score > rhs.score : lhs.candidate.name < rhs.candidate.name
+            }
+
+        return scored.prefix(limit).map {
+            SubstitutionSuggestion(id: $0.candidate.id, name: $0.candidate.name, score: $0.score, reason: $0.reason)
+        }
+    }
 }
