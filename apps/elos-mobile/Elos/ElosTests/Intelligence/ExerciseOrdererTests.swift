@@ -86,4 +86,32 @@ struct ExerciseOrdererTests {
         let ordered = ExerciseOrderer.order(day, catalog: catalog, priority: .back)
         #expect(ordered.map(\.id) == ["multi", "curl"])
     }
+
+    // MARK: orderedIndices — the permutation `FixOperation.reorderDay` needs
+
+    @Test func orderedIndicesProducesTheSameResultAsOrder() {
+        let day = [DayExercise(id: "fly", name: "Cable Fly"),
+                   DayExercise(id: "pushdown", name: "Tricep Pushdown"),
+                   DayExercise(id: "bench", name: "Bench Press")]
+        let viaIndices = ExerciseOrderer.orderedIndices(day, catalog: catalog).map { day[$0] }
+        let viaOrder = ExerciseOrderer.order(day, catalog: catalog)
+        #expect(viaIndices.map(\.id) == viaOrder.map(\.id))
+    }
+
+    @Test func orderedIndicesIsABijection() {
+        let day = [DayExercise(id: "fly", name: "Cable Fly"),
+                   DayExercise(id: "bench", name: "Bench Press"),
+                   DayExercise(id: "pushdown", name: "Tricep Pushdown")]
+        let indices = ExerciseOrderer.orderedIndices(day, catalog: catalog)
+        #expect(Set(indices) == Set(0..<day.count))
+    }
+
+    @Test func orderedIndicesWithPriorityMatchesOrderWithPriority() {
+        let day = [DayExercise(id: "curl", name: "Bicep Curl"),
+                   DayExercise(id: "pushdown", name: "Tricep Pushdown"),
+                   DayExercise(id: "bench", name: "Bench Press")]
+        let viaIndices = ExerciseOrderer.orderedIndices(day, catalog: catalog, priority: .arms).map { day[$0] }
+        let viaOrder = ExerciseOrderer.order(day, catalog: catalog, priority: .arms)
+        #expect(viaIndices.map(\.id) == viaOrder.map(\.id))
+    }
 }
