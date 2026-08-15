@@ -230,10 +230,10 @@ struct ProgramsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 6) {
                     Image(systemName: "person.3.fill")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(.footnote, weight: .semibold))
                         .foregroundStyle(Color.cyan)
                     Text("Community")
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.system(.callout, weight: .bold))
                     Text("\(communityVM.splits.count)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -278,10 +278,10 @@ struct ProgramsView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(.footnote, weight: .semibold))
                     .foregroundStyle(color)
                 Text(title)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(.callout, weight: .bold))
                 Text("\(splits.count)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -300,6 +300,7 @@ struct ProgramsView: View {
                             SplitLibraryCard(
                                 split: split,
                                 isFavorite: vm.favoriteSplitKeys.contains(split.id),
+                                showsCategory: false,
                                 onFavoriteTap: { vm.toggleFavorite(split.id) }
                             )
                         }
@@ -318,7 +319,7 @@ struct ProgramsView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("My Splits")
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(.callout, weight: .bold))
                 Spacer()
                 Button { showCreateSplit = true } label: {
                     HStack(spacing: 4) {
@@ -470,7 +471,11 @@ struct UserSplitDetailView: View {
     let split: UserSplitRecord
 
     @Query private var splitDays: [UserSplitDayRecord]
+    @Query(sort: \ExerciseDefinitionRecord.name) private var exerciseDefs: [ExerciseDefinitionRecord]
+    @Query private var profiles: [UserProfileRecord]
     @State private var showEdit = false
+    @State private var showFullReport = false
+    @State private var selectedDaySummary: SplitDaySummary? = nil
 
     init(split: UserSplitRecord) {
         self.split = split
@@ -479,6 +484,42 @@ struct UserSplitDetailView: View {
             filter: #Predicate<UserSplitDayRecord> { $0.splitID == id },
             sort: \.orderIndex
         )
+    }
+
+    private var sortedDays: [UserSplitDayRecord] { splitDays.sorted { $0.orderIndex < $1.orderIndex } }
+    private var exerciseCatalog: [ExerciseCandidate] { exerciseDefs.map(ExerciseCandidate.init(record:)) }
+    private var guidanceLevel: GuidanceLevel { GuidanceLevel(trainingExperience: profiles.first?.trainingExperience ?? "") }
+
+    /// `UserSplitRecord.intent` is nil for a split saved before intents existed — same fallback
+    /// `CreateSplitView.onAppear` uses when seeding its own `@State` intent.
+    private var splitIntent: TrainingIntent {
+        split.intent ?? TrainingIntent(profile: TrainingProfile(record: profiles.first))
+    }
+
+    /// Same construction as `CreateSplitView.scoringProfile` — dropping `volumeOverrides` here
+    /// would make the Volume Targets screen silently stop affecting this split's score.
+    private var scoringProfile: TrainingProfile {
+        TrainingProfile(goal: splitIntent.goal,
+                        experience: TrainingProfile(record: profiles.first).experience,
+                        volumeOverrides: vm.volumeOverrides)
+    }
+
+    private var qualityReport: QualityReport {
+        SavedSplitScoring.report(days: sortedDays,
+                                 templateExercises: { vm.fetchTemplateExercises(templateID: $0) },
+                                 catalog: exerciseCatalog,
+                                 profile: scoringProfile,
+                                 intent: splitIntent)
+    }
+
+    /// Also the definition of "populated days" for the panel's gate — a day only appears here
+    /// once it actually resolves to exercises, matching `CreateSplitView`'s own gate.
+    private var daySummaries: [SplitDaySummary] {
+        SavedSplitScoring.daySummaries(days: sortedDays,
+                                       templateExercises: { vm.fetchTemplateExercises(templateID: $0) },
+                                       catalog: exerciseCatalog,
+                                       profile: scoringProfile,
+                                       splitGoal: splitIntent.goal)
     }
 
     var body: some View {
@@ -501,13 +542,18 @@ struct UserSplitDetailView: View {
                     }
                 }
             }
+
+            if vm.showQualityRater {
+                qualityPanelSection
+            }
+
             if !splitDays.isEmpty {
                 let arrays = weeklyTargetArrays(from: splitDays)
                 Section {
                     MuscleGroupPanelWeekly(
                         dayTemplateIDs: arrays.templateIDs,
                         dayIsRest: arrays.isRest,
-                        dayExerciseNames: arrays.exerciseNames
+                        dayExercises: arrays.exercises
                     )
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     .listRowBackground(Color.clear)
@@ -535,33 +581,80 @@ struct UserSplitDetailView: View {
             CreateSplitView(editSplit: split, editDays: splitDays) { showEdit = false }
                 .environmentObject(vm)
         }
+        .sheet(isPresented: $showFullReport) {
+            SplitQualityReportView(
+                report: qualityReport,
+                days: daySummaries,
+                onSelectDay: { selectedDaySummary = $0 })
+        }
+        .sheet(item: $selectedDaySummary) { day in
+            DayQualityReportView(dayName: day.name, report: day.report)
+        }
+    }
+
+    // MARK: - Quality panel
+
+    @ViewBuilder private var qualityPanelSection: some View {
+        // Same gate as the builder — a half-built week reads as nagging, not coaching.
+        if daySummaries.count >= 2 && qualityReport.isScored {
+            Section {
+                TemplateQualityPanel(report: qualityReport, guidance: guidanceLevel,
+                                     title: "Split Quality", scope: .weeklySplit,
+                                     onSeeFullReport: { showFullReport = true })
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
+            }
+        }
     }
 
     private func weeklyTargetArrays(from days: [UserSplitDayRecord]) -> (
-        templateIDs: [String], isRest: [Bool], exerciseNames: [[String]]
+        templateIDs: [String], isRest: [Bool], exercises: [[DayExercise]]
     ) {
         var templateIDs = Array(repeating: "", count: 7)
         var isRest = Array(repeating: false, count: 7)
-        var exerciseNames = Array(repeating: [String](), count: 7)
+        var exercises = Array(repeating: [DayExercise](), count: 7)
         for day in days.sorted(by: { $0.orderIndex < $1.orderIndex }) where day.orderIndex < 7 {
             templateIDs[day.orderIndex] = day.templateID
             isRest[day.orderIndex] = day.isRest
             let exs = (try? JSONDecoder().decode([DayExercise].self,
                        from: Data(day.exercisesJSON.utf8))) ?? []
-            exerciseNames[day.orderIndex] = exs.map { $0.name }
+            exercises[day.orderIndex] = exs
         }
-        return (templateIDs, isRest, exerciseNames)
+        return (templateIDs, isRest, exercises)
+    }
+
+    /// The day's own report, if it resolves to any exercises — a rest day or a day that hasn't
+    /// been built out yet has none, and the row stays non-interactive for "look at this."
+    private func summary(for day: UserSplitDayRecord) -> SplitDaySummary? {
+        daySummaries.first { $0.id == day.orderIndex }
     }
 
     private func dayRow(_ day: UserSplitDayRecord) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(day.dayLabel)
-                    .font(.caption).foregroundStyle(.secondary)
-                Text(day.isRest ? "Rest" : (day.dayName.isEmpty ? day.dayLabel : day.dayName))
-                    .font(.subheadline).fontWeight(.semibold)
-                    .foregroundStyle(day.isRest ? .secondary : .primary)
+        let daySummary = summary(for: day)
+
+        return HStack(spacing: 12) {
+            Button {
+                guard let daySummary else { return }
+                selectedDaySummary = daySummary
+            } label: {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(day.dayLabel)
+                            .font(.caption).foregroundStyle(.secondary)
+                        Text(day.isRest ? "Rest" : (day.dayName.isEmpty ? day.dayLabel : day.dayName))
+                            .font(.subheadline).fontWeight(.semibold)
+                            .foregroundStyle(day.isRest ? .secondary : .primary)
+                    }
+                    if let score = daySummary?.score {
+                        Text("\(score)")
+                            .font(.system(.subheadline, weight: .bold))
+                            .foregroundStyle(QualityPalette.color(forScore: score))
+                    }
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .disabled(daySummary == nil)
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if !day.isRest {
@@ -580,5 +673,7 @@ struct UserSplitDetailView: View {
             }
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(daySummary != nil ? "Double tap to view this day's coverage" : "")
     }
 }
