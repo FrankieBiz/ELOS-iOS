@@ -580,12 +580,18 @@ struct TemplateBuilderView: View {
                     withAnimation(.elosEmphasis) {
                         for ex in picked {
                             if !exercises.contains(where: { $0.exerciseID == ex.id || $0.exerciseName == ex.name }) {
+                                // Movement-pattern-aware defaults, matching CreateSplitView's manual
+                                // add — a squat should get 4x5-8 here too, not a flat 3x8-10.
+                                let pattern = exerciseCatalog.first { $0.id == ex.id }?.movementPattern ?? ""
+                                let def = SetRepDefaults.defaults(forMovementPattern: pattern)
                                 exercises.append(TemplateExerciseEntry(
                                     exerciseID:         ex.id,
                                     exerciseName:       ex.name,
                                     equipmentId:        ex.equipmentId,
                                     equipmentDedupeKey: ex.equipmentDedupeKey,
                                     equipmentBrandName: ex.equipmentBrandName,
+                                    targetSets:         def.sets,
+                                    targetReps:         def.reps,
                                     muscleTargets:      ex.muscleTargets
                                 ))
                             }
