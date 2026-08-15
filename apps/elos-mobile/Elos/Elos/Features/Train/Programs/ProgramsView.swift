@@ -5,6 +5,8 @@ struct ProgramsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \UserSplitRecord.createdAt, order: .reverse) private var userSplits: [UserSplitRecord]
     @Query private var allSplitDays: [UserSplitDayRecord]
+    @Query(sort: \ExerciseDefinitionRecord.name) private var exerciseDefs: [ExerciseDefinitionRecord]
+    @Query private var profiles: [UserProfileRecord]
     @EnvironmentObject var vm: AppViewModel
     @EnvironmentObject var feedVM: FeedViewModel
 
@@ -340,13 +342,18 @@ struct ProgramsView: View {
                     .font(.subheadline).foregroundStyle(.secondary)
                     .padding(.horizontal, 16).padding(.bottom, 16)
             } else {
+                // Computed once for the whole list — TemplateQualityEngine.score is cheap but
+                // not free, and calling it per row inside the ForEach would re-run it on every
+                // render instead of once per split, the exact mistake the engine's own doc
+                // comment warns callers against.
+                let scores = mySplitsScores
                 VStack(spacing: 8) {
                     ForEach(userSplits) { split in
                         Button {
                             if split.isActive { selectedSplit = split }
                             else { requestActivate(split) }
                         } label: {
-                            mySplitRow(split)
+                            mySplitRow(split, score: scores[split.id])
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
@@ -399,7 +406,27 @@ struct ProgramsView: View {
         .padding(.top, 8)
     }
 
-    private func mySplitRow(_ split: UserSplitRecord) -> some View {
+    private var exerciseCatalog: [ExerciseCandidate] { exerciseDefs.map(ExerciseCandidate.init(record:)) }
+
+    /// One score per split, computed once for the whole "My Splits" list rather than per row.
+    /// Omits a split entirely when it doesn't have enough built out to score — same gate
+    /// `SavedSplitScoring`'s callers already use elsewhere (`report.isScored`).
+    private var mySplitsScores: [String: Int] {
+        Dictionary(uniqueKeysWithValues: userSplits.compactMap { split -> (String, Int)? in
+            let days = daysFor(split: split)
+            let intent = split.intent ?? TrainingIntent(profile: TrainingProfile(record: profiles.first))
+            let profile = TrainingProfile(goal: intent.goal,
+                                          experience: TrainingProfile(record: profiles.first).experience,
+                                          volumeOverrides: vm.volumeOverrides)
+            let report = SavedSplitScoring.report(days: days,
+                                                  templateExercises: { vm.fetchTemplateExercises(templateID: $0) },
+                                                  catalog: exerciseCatalog, profile: profile, intent: intent)
+            guard report.isScored else { return nil }
+            return (split.id, report.overall)
+        })
+    }
+
+    private func mySplitRow(_ split: UserSplitRecord, score: Int?) -> some View {
         let days = daysFor(split: split)
         let isActive = split.isActive
         let descriptor = SplitDescriptor.describe(dayRecords: days)
@@ -413,6 +440,12 @@ struct ProgramsView: View {
                 SplitPatternStrip(descriptor: descriptor, compact: true)
             }
             Spacer()
+            if let score {
+                Text("\(score)")
+                    .font(.system(.subheadline, weight: .bold))
+                    .foregroundStyle(QualityPalette.color(forScore: score))
+                    .padding(.trailing, 2)
+            }
             if isActive {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.tint)
             } else {
