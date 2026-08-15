@@ -20,6 +20,8 @@ struct SplitQualityReportView: View {
     let report: QualityReport
     let days: [SplitDaySummary]
     var onTapTip: ((QualityTip) -> Void)? = nil
+    /// When set, an auto-fixable tip opens the fix preview instead of `onTapTip`'s usual behavior.
+    var onAutoFix: ((QualityTip) -> Void)? = nil
     var onTapMuscle: ((MuscleVolumeBar) -> Void)? = nil
     var onSelectDay: ((SplitDaySummary) -> Void)? = nil
 
@@ -263,7 +265,7 @@ struct SplitQualityReportView: View {
                 VStack(spacing: 0) {
                     ForEach(Array(report.tips.enumerated()), id: \.element.id) { i, tip in
                         if i > 0 { Divider().padding(.vertical, 9) }
-                        TipRow(tip: tip, onTap: onTapTip)
+                        TipRow(tip: tip, onTap: onTapTip, onAutoFix: onAutoFix)
                     }
                 }
             }
@@ -333,12 +335,17 @@ struct SplitQualityReportView: View {
 struct TipRow: View {
     let tip: QualityTip
     var onTap: ((QualityTip) -> Void)? = nil
+    /// When set and the tip is auto-fixable, tapping opens the fix preview instead of `onTap`'s
+    /// usual behavior — one tap target per row, no competing second button in a small row.
+    var onAutoFix: ((QualityTip) -> Void)? = nil
 
-    private var canTap: Bool { tip.action.isActionable && onTap != nil }
+    private var isAutoFixable: Bool { onAutoFix != nil && QualityFixEngine.canFix(tip) }
+    private var canTap: Bool { isAutoFixable || (tip.action.isActionable && onTap != nil) }
 
     var body: some View {
         Button {
-            if canTap { onTap?(tip) }
+            if isAutoFixable { onAutoFix?(tip) }
+            else if canTap { onTap?(tip) }
         } label: {
             HStack(alignment: .top, spacing: 9) {
                 Image(systemName: QualityPalette.icon(for: tip.severity))

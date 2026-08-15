@@ -250,6 +250,8 @@ struct TemplateBuilderView: View {
     @State private var intent = TrainingIntent.default
     /// Muscle bias handed to the picker when a suggestion says "add hamstrings".
     @State private var pickerBias: DayContext = .empty
+    /// The auto-fix preview currently open, if any.
+    @State private var pendingFix: FixProposal? = nil
 
     private var canSave: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty && !exercises.isEmpty
@@ -262,6 +264,7 @@ struct TemplateBuilderView: View {
     // MARK: - Quality coach
 
     private var exerciseCatalog: [ExerciseCandidate] { exerciseDefs.map { ExerciseCandidate(record: $0) } }
+    private var equipmentPreference: EquipmentPreference { profiles.first?.equipmentPreference ?? .fullGym }
     private var trainingProfile: TrainingProfile {
         TrainingProfile(record: profiles.first, volumeOverrides: vm.volumeOverrides)
     }
@@ -311,6 +314,55 @@ struct TemplateBuilderView: View {
             break
         case .noAction:
             break
+        }
+    }
+
+    // MARK: - Auto-fix
+
+    private func currentContext() -> QualityFixEngine.Context {
+        QualityFixEngine.Context(
+            days: [exercises.map(\.scored)], dayNames: [name],
+            dayIsRest: [false], dayExcludedMuscles: [[]],
+            scope: .singleSession, profile: scoringProfile, intent: intent, catalog: exerciseCatalog,
+            personalization: PersonalizationProvider(signals: .init()),
+            equipmentPreference: equipmentPreference)
+    }
+
+    private func startAutoFix(for tip: QualityTip) {
+        if let proposal = QualityFixEngine.propose(for: tip, context: currentContext()) {
+            pendingFix = proposal
+        } else {
+            handle(tip: tip)
+        }
+    }
+
+    /// Applies fix operations directly in `TemplateExerciseEntry` terms — never through a
+    /// `ScoredExercise` round-trip, which would silently drop `equipmentDedupeKey`/
+    /// `equipmentBrandName`/`targetRPE` (fields `ScoredExercise` has no field for at all).
+    private func apply(_ operations: [FixOperation]) {
+        withAnimation(.elosEmphasis) {
+            for op in operations {
+                switch op {
+                case .insertExercise(let spec):
+                    guard spec.dayIndex == 0 else { continue }
+                    let insertAt = min(max(0, spec.insertAt), exercises.count)
+                    let entry = TemplateExerciseEntry(exerciseID: spec.candidate.id,
+                                                      exerciseName: spec.candidate.name,
+                                                      targetSets: spec.sets, targetReps: spec.reps)
+                    exercises.insert(entry, at: insertAt)
+                case .reorderDay(let dayIndex, let permutation):
+                    guard dayIndex == 0, permutation.count == exercises.count,
+                          Set(permutation) == Set(0..<exercises.count) else { continue }
+                    let current = exercises
+                    exercises = permutation.map { current[$0] }
+                case .setReps(let dayIndex, let exerciseIndex, let reps):
+                    guard dayIndex == 0, exercises.indices.contains(exerciseIndex) else { continue }
+                    exercises[exerciseIndex].targetReps = reps
+                case .setRest(let dayIndex, let exerciseIndex, let seconds):
+                    guard dayIndex == 0, exercises.indices.contains(exerciseIndex) else { continue }
+                    exercises[exerciseIndex].restSeconds = seconds
+                }
+            }
         }
     }
 
@@ -403,7 +455,8 @@ struct TemplateBuilderView: View {
                                     TemplateQualityPanel(report: report, guidance: guidanceLevel,
                                                          title: "Template Quality",
                                                          scope: .singleSession,
-                                                         onTapTip: { handle(tip: $0) })
+                                                         onTapTip: { handle(tip: $0) },
+                                                         onAutoFix: { startAutoFix(for: $0) })
                                 }
                                 MuscleCoverageBars(
                                     report: report.volume,
@@ -540,6 +593,16 @@ struct TemplateBuilderView: View {
                     }
                     showAddExercise = false
                 }, dayContext: pickerBias)
+            }
+            .sheet(item: $pendingFix) { proposal in
+                QualityFixPreviewSheet(
+                    proposal: proposal,
+                    onConfirm: { apply($0) },
+                    onDeny: {},
+                    onTryAnother: { candidate in
+                        QualityFixEngine.propose(for: proposal.tip, context: currentContext(), using: candidate)
+                    },
+                    onChooseManually: { handle(tip: proposal.tip) })
             }
             .alert("Discard Changes?", isPresented: $showDiscardAlert) {
                 Button("Discard", role: .destructive) { dismiss() }

@@ -14,6 +14,8 @@ struct TemplateQualityPanel: View {
     var scope: QualityScope = .singleSession
     /// Optional follow-up when an actionable tip is tapped (e.g. open the Add-Exercise sheet).
     var onTapTip: ((QualityTip) -> Void)? = nil
+    /// When set, an auto-fixable tip opens the fix preview instead of `onTapTip`'s usual behavior.
+    var onAutoFix: ((QualityTip) -> Void)? = nil
     /// When set, shows a "See full report" row (the split builder's bigger screen).
     var onSeeFullReport: (() -> Void)? = nil
 
@@ -40,7 +42,7 @@ struct TemplateQualityPanel: View {
 
     private var header: some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.2)) { userExpanded = !isExpanded }
+            withAnimation(.elosQuick) { userExpanded = !isExpanded }
         } label: {
             HStack(spacing: 12) {
                 QualityScoreRing(score: report.overall)
@@ -84,7 +86,7 @@ struct TemplateQualityPanel: View {
             let shown = showAllTips ? report.tips : Array(report.tips.prefix(3))
             VStack(alignment: .leading, spacing: 8) {
                 Divider().padding(.vertical, 1)
-                ForEach(shown) { tip in TipRow(tip: tip, onTap: onTapTip) }
+                ForEach(shown) { tip in TipRow(tip: tip, onTap: onTapTip, onAutoFix: onAutoFix) }
                 if report.tips.count > 3 {
                     Button {
                         withAnimation { showAllTips.toggle() }

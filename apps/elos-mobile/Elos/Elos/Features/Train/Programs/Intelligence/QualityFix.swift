@@ -63,7 +63,7 @@ extension FixOperation {
 /// What the preview renders and what Confirm applies. Built by `QualityFixEngine.propose`, which
 /// has already simulated `operations` and re-scored — this struct is the frozen result of that
 /// work, never recomputed by the UI.
-struct FixProposal: Equatable {
+struct FixProposal: Equatable, Identifiable {
     let tip: QualityTip
     let operations: [FixOperation]
     let summary: FixSummary
@@ -75,6 +75,9 @@ struct FixProposal: Equatable {
     let resolvesTip: Bool
     /// Ranked #2/#3 candidates for an insert fix, for "use a different exercise". Empty otherwise.
     let alternates: [ExerciseCandidate]
+
+    /// For `.sheet(item:)` — exactly one proposal is ever shown at a time, scoped to one tip.
+    var id: String { tip.id }
 
     var scoreDelta: Int { after.overall - before.overall }
 

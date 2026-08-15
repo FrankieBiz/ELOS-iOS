@@ -49,6 +49,8 @@ struct CreateSplitView: View {
     @State private var skipMusclesDay: SkipMusclesDay? = nil
     /// The day whose own report is open, from tapping a "BY DAY" row in the full report.
     @State private var selectedDaySummary: SplitDaySummary? = nil
+    /// The auto-fix preview currently open, if any.
+    @State private var pendingFix: FixProposal? = nil
 
     private struct MuscleEdit: Identifiable {
         let dayIndex: Int
@@ -231,6 +233,10 @@ struct CreateSplitView: View {
                         showFullReport = false
                         handle(tip: tip)
                     },
+                    onAutoFix: { tip in
+                        showFullReport = false
+                        startAutoFix(for: tip)
+                    },
                     onTapMuscle: { bar in
                         showFullReport = false
                         let payload = bar.fine?.rawValue ?? bar.group.rawValue
@@ -241,6 +247,16 @@ struct CreateSplitView: View {
             }
             .sheet(item: $selectedDaySummary) { day in
                 DayQualityReportView(dayName: day.name, report: day.report)
+            }
+            .sheet(item: $pendingFix) { proposal in
+                QualityFixPreviewSheet(
+                    proposal: proposal,
+                    onConfirm: { apply($0) },
+                    onDeny: {},
+                    onTryAnother: { candidate in
+                        QualityFixEngine.propose(for: proposal.tip, context: currentContext(), using: candidate)
+                    },
+                    onChooseManually: { handle(tip: proposal.tip) })
             }
             .confirmationDialog("Discard this split?", isPresented: $showDiscardConfirm, titleVisibility: .visible) {
                 Button("Discard", role: .destructive) { onSave() }
@@ -284,6 +300,7 @@ struct CreateSplitView: View {
                 TemplateQualityPanel(report: report, guidance: guidanceLevel, title: "Split Quality",
                                      scope: .weeklySplit,
                                      onTapTip: { handle(tip: $0) },
+                                     onAutoFix: { startAutoFix(for: $0) },
                                      onSeeFullReport: { showFullReport = true })
             }
             .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
@@ -342,6 +359,59 @@ struct CreateSplitView: View {
     private func firstOpenDayIndex() -> Int {
         let candidates = (0..<min(7, dayExercises.count)).filter { !dayIsRest[$0] }
         return candidates.min { dayExercises[$0].count < dayExercises[$1].count } ?? 0
+    }
+
+    // MARK: - Auto-fix
+
+    private func currentContext() -> QualityFixEngine.Context {
+        QualityFixEngine.Context(
+            days: dayExercises.map { $0.map(ScoredExercise.init(day:)) },
+            dayNames: dayNames, dayIsRest: dayIsRest, dayExcludedMuscles: dayExcludedMuscles,
+            scope: .weeklySplit, profile: scoringProfile, intent: intent, catalog: exerciseCatalog,
+            personalization: PersonalizationProvider(signals: .init()),
+            equipmentPreference: equipmentPreference)
+    }
+
+    private func startAutoFix(for tip: QualityTip) {
+        if let proposal = QualityFixEngine.propose(for: tip, context: currentContext()) {
+            pendingFix = proposal
+        } else {
+            // No eligible day / no candidate / nothing worth offering — fall back to the manual path.
+            handle(tip: tip)
+        }
+    }
+
+    /// Applies fix operations directly in `DayExercise` terms — never by converting a pre-existing
+    /// element through `ScoredExercise` and back, which would silently drop `equipmentDedupeKey`/
+    /// `equipmentBrandName` (fields `ScoredExercise` doesn't carry at all).
+    private func apply(_ operations: [FixOperation]) {
+        withAnimation(.elosEmphasis) {
+            for op in operations {
+                switch op {
+                case .insertExercise(let spec):
+                    guard dayExercises.indices.contains(spec.dayIndex) else { continue }
+                    let insertAt = min(max(0, spec.insertAt), dayExercises[spec.dayIndex].count)
+                    let new = DayExercise(id: spec.candidate.id, name: spec.candidate.name,
+                                         sets: spec.sets, reps: spec.reps)
+                    dayExercises[spec.dayIndex].insert(new, at: insertAt)
+                case .reorderDay(let dayIndex, let permutation):
+                    guard dayExercises.indices.contains(dayIndex) else { continue }
+                    let day = dayExercises[dayIndex]
+                    guard permutation.count == day.count,
+                          Set(permutation) == Set(0..<day.count) else { continue }
+                    dayExercises[dayIndex] = permutation.map { day[$0] }
+                case .setReps(let dayIndex, let exerciseIndex, let reps):
+                    guard dayExercises.indices.contains(dayIndex),
+                          dayExercises[dayIndex].indices.contains(exerciseIndex) else { continue }
+                    dayExercises[dayIndex][exerciseIndex].reps = reps
+                case .setRest:
+                    // DayExercise has no rest field, and rr-rest only fires at single-session
+                    // scope on exercises with non-nil rest — a split-sourced day always has
+                    // restSeconds nil, so this case is unreachable here. Intentional no-op.
+                    continue
+                }
+            }
+        }
     }
 
     /// The exercise a pending muscle-edit points at, or nil if the row has since gone.
