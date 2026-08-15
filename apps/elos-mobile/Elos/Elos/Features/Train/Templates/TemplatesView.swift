@@ -120,6 +120,8 @@ class TemplatesViewModel: ObservableObject {
                     }
                     templateExercises.removeValue(forKey: oldID)
                     templateExercises[response.id] = exs
+
+                    TemplateIDRepointing.repointDays(from: oldID, to: response.id, context: context)
                 }
             } catch {
                 // Still safe locally; retried on the next load.
@@ -154,7 +156,8 @@ class TemplatesViewModel: ObservableObject {
                 targetRPE: ex.targetRPE, restSeconds: ex.restSeconds,
                 notes: ex.notes,
                 equipmentId: ex.equipmentId, equipmentDedupeKey: ex.equipmentDedupeKey,
-                equipmentBrandName: ex.equipmentBrandName
+                equipmentBrandName: ex.equipmentBrandName,
+                muscleTargetsJSON: ex.muscleTargets?.jsonString ?? ""
             )
             context.insert(exRecord)
             exRecords.append(exRecord)
@@ -226,7 +229,8 @@ class TemplatesViewModel: ObservableObject {
                 targetRPE: ex.targetRPE, restSeconds: ex.restSeconds,
                 notes: ex.notes,
                 equipmentId: ex.equipmentId, equipmentDedupeKey: ex.equipmentDedupeKey,
-                equipmentBrandName: ex.equipmentBrandName
+                equipmentBrandName: ex.equipmentBrandName,
+                muscleTargetsJSON: ex.muscleTargets?.jsonString ?? ""
             )
             context.insert(exRecord)
             newRecords.append(exRecord)
@@ -347,13 +351,26 @@ struct TemplatesView: View {
     @EnvironmentObject var trainVM: TrainViewModel
     @StateObject private var templVM: TemplatesViewModel
 
-    @State private var showBuilder = false
-    @State private var builderIsEditMode = false
-    @State private var builderInitialName = ""
-    @State private var builderInitialEntries: [TemplateExerciseEntry] = []
-    @State private var editingTemplateID: String? = nil
-    /// The edited template's saved focus + goal, so reopening it restores what was chosen.
-    @State private var builderInitialIntent: TrainingIntent? = nil
+    /// Everything the builder sheet needs, in one value.
+    ///
+    /// This used to be six separate `@State` properties plus a `showBuilder` bool driving
+    /// `.sheet(isPresented:)`. That races: SwiftUI evaluates the sheet's content in the same update
+    /// that flips the bool, so the *first* presentation after launch was built from the default
+    /// values — tapping Edit on a template opened a blank "New Template" with no name and no
+    /// exercises, and because `editingTemplateID` was stale-nil, saving created a second template
+    /// instead of editing the original. It appeared to work from the second open onward, which is
+    /// what made it easy to miss. `.sheet(item:)` builds the sheet from the payload itself, so the
+    /// values can't lag behind the presentation.
+    private struct BuilderConfig: Identifiable {
+        let id = UUID()
+        let name: String
+        let entries: [TemplateExerciseEntry]
+        let intent: TrainingIntent?
+        let isEditMode: Bool
+        /// Non-nil = save edits back to this template; nil = create a new one.
+        let editingTemplateID: String?
+    }
+    @State private var builderConfig: BuilderConfig? = nil
     @State private var sharingTemplateID: String? = nil
     @State private var shareURL: URL? = nil
     @State private var shareError: String? = nil
@@ -377,20 +394,22 @@ struct TemplatesView: View {
                                 isSharing: sharingTemplateID == tmpl.id,
                                 onStart: { startSession(from: tmpl) },
                                 onEdit: {
-                                    builderIsEditMode = true
-                                    builderInitialName = tmpl.name
-                                    builderInitialEntries = entries(for: tmpl.id)
-                                    builderInitialIntent = tmpl.intent
-                                    editingTemplateID = tmpl.id
-                                    showBuilder = true
+                                    builderConfig = BuilderConfig(
+                                        name: tmpl.name,
+                                        entries: entries(for: tmpl.id),
+                                        intent: tmpl.intent,
+                                        isEditMode: true,
+                                        editingTemplateID: tmpl.id
+                                    )
                                 },
                                 onDuplicate: {
-                                    builderIsEditMode = false
-                                    builderInitialName = "Copy of \(tmpl.name)"
-                                    builderInitialEntries = entries(for: tmpl.id)
-                                    builderInitialIntent = tmpl.intent
-                                    editingTemplateID = nil
-                                    showBuilder = true
+                                    builderConfig = BuilderConfig(
+                                        name: "Copy of \(tmpl.name)",
+                                        entries: entries(for: tmpl.id),
+                                        intent: tmpl.intent,
+                                        isEditMode: false,
+                                        editingTemplateID: nil
+                                    )
                                 },
                                 onShare: { shareTemplate(tmpl) },
                                 onDelete: { templatePendingDelete = tmpl }
@@ -413,17 +432,16 @@ struct TemplatesView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        builderIsEditMode = false
-                        builderInitialName = ""
-                        builderInitialEntries = []
-                        builderInitialIntent = nil
-                        editingTemplateID = nil
-                        showBuilder = true
+                        builderConfig = BuilderConfig(
+                            name: "", entries: [], intent: nil,
+                            isEditMode: false, editingTemplateID: nil
+                        )
                     } label: {
                         Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 22))
+                            .font(.title2)
                             .foregroundStyle(Color.tint)
                     }
+                    .accessibilityLabel("New template")
                 }
             }
             .sheet(isPresented: Binding(
@@ -464,15 +482,14 @@ struct TemplatesView: View {
             } message: { tmpl in
                 Text("Delete \"\(tmpl.name)\"? This can't be undone.")
             }
-            .sheet(isPresented: $showBuilder) {
-                let editID = editingTemplateID
+            .sheet(item: $builderConfig) { config in
                 TemplateBuilderView(
-                    initialName: builderInitialName,
-                    initialEntries: builderInitialEntries,
-                    isEditMode: builderIsEditMode,
-                    initialIntent: builderInitialIntent
+                    initialName: config.name,
+                    initialEntries: config.entries,
+                    isEditMode: config.isEditMode,
+                    initialIntent: config.intent
                 ) { name, exs, intent in
-                    if let id = editID {
+                    if let id = config.editingTemplateID {
                         templVM.editTemplate(id: id, name: name, exercises: exs, ownerID: vm.currentUserID, intent: intent)
                     } else {
                         templVM.createTemplate(name: name, exercises: exs, ownerID: vm.currentUserID, intent: intent)
@@ -490,26 +507,24 @@ struct TemplatesView: View {
                     .fill(Color.tint.opacity(0.1))
                     .frame(width: 80, height: 80)
                 Image(systemName: "list.bullet.clipboard")
-                    .font(.system(size: 32, weight: .medium))
+                    .font(.system(.title, weight: .medium))
                     .foregroundStyle(Color.tint)
             }
             VStack(spacing: 6) {
                 Text("No Templates Yet")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.system(.title3, weight: .bold))
                 Text("Save your favourite workouts\nto start in one tap.")
                     .font(.subheadline).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
             Button {
-                builderIsEditMode = false
-                builderInitialName = ""
-                builderInitialEntries = []
-                        builderInitialIntent = nil
-                editingTemplateID = nil
-                showBuilder = true
+                builderConfig = BuilderConfig(
+                    name: "", entries: [], intent: nil,
+                    isEditMode: false, editingTemplateID: nil
+                )
             } label: {
                 Label("Create Template", systemImage: "plus")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(.subheadline, weight: .semibold))
             }
             .elosPrimaryButton()
             .frame(width: 200)
@@ -531,7 +546,8 @@ struct TemplatesView: View {
                     targetReps:         ex.targetReps,
                     targetRPE:          ex.targetRPE,
                     restSeconds:        ex.restSeconds,
-                    notes:              ex.notes
+                    notes:              ex.notes,
+                    muscleTargets:      ex.muscleTargets
                 )
             }
     }
@@ -558,20 +574,9 @@ struct TemplatesView: View {
     }
 
     private func startSession(from template: WorkoutTemplateRecord) {
-        let exercises = templVM.templateExercises[template.id] ?? []
-        vm.exercises = exercises.sorted { $0.orderIndex < $1.orderIndex }.map { ex in
-            Exercise(
-                name: ex.exerciseName,
-                primaryMuscle: "",
-                secondaryMuscles: [],
-                setsLabel: "\(ex.targetSets)×\(ex.targetReps)",
-                lastBest: "",
-                sets: (0..<ex.targetSets).map { _ in
-                    WorkSet(weight: "", reps: ex.targetReps.components(separatedBy: "-").first ?? "",
-                            rpe: ex.targetRPE > 0 ? String(Int(ex.targetRPE)) : "")
-                }
-            )
-        }
+        let exercises = (templVM.templateExercises[template.id] ?? [])
+            .sorted { $0.orderIndex < $1.orderIndex }
+        vm.exercises = vm.exercises(fromTemplateExercises: exercises)
         vm.showingSession = true
     }
 }
@@ -588,6 +593,8 @@ private struct TemplateRow: View {
     let onShare: () -> Void
     let onDelete: () -> Void
 
+    @Environment(\.modelContext) private var modelContext
+
     private var estimatedMinutes: Int {
         exercises.reduce(0) { $0 + ($1.targetSets * ($1.restSeconds + 45)) } / 60
     }
@@ -595,7 +602,12 @@ private struct TemplateRow: View {
     private var topMuscles: [(label: String, color: Color)] {
         var counts: [String: Int] = [:]
         for ex in exercises {
-            if let label = resolveMuscleLabelHeuristic(for: ex.exerciseName) {
+            // Same resolution the coverage bars use, so a template's card and its builder agree.
+            let targets = resolvedMuscleTargets(
+                exerciseID: ex.exerciseID, name: ex.exerciseName,
+                equipmentId: ex.equipmentId, override: ex.muscleTargets,
+                candidate: candidate(forID: ex.exerciseID, in: modelContext))
+            if let label = muscleLabel(for: targets) {
                 counts[label, default: 0] += ex.targetSets
             }
         }
@@ -604,63 +616,79 @@ private struct TemplateRow: View {
             .map { ($0.key, muscleGroupColor(for: $0.key)) }
     }
 
+    private var templateName: some View {
+        Text(template.name)
+            .font(.system(.headline, weight: .bold))
+            .lineLimit(2)
+    }
+
+    private var startButton: some View {
+        Button(action: onStart) {
+            // Explicit `titleAndIcon`: left to choose, SwiftUI collapsed this to icon-only inside the
+            // card and the capsule rendered as a bare orange circle with no "Start" on it.
+            Label("Start", systemImage: "play.fill")
+                .labelStyle(.titleAndIcon)
+                .font(.system(.footnote, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 13).padding(.vertical, 7)
+                .background(Color.tint, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Top row: name + start button
-            HStack(alignment: .top) {
-                Text(template.name)
-                    .font(.system(size: 17, weight: .bold))
-                    .lineLimit(1)
-                Spacer()
-                Button(action: onStart) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "play.fill").font(.system(size: 11))
-                        Text("Start").font(.system(size: 13, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 13).padding(.vertical, 7)
-                    .background(Color.tint)
-                    .clipShape(Capsule())
+        // Every size here was a fixed literal, so the card stayed at its default size while the
+        // "Templates" title above it grew — the sheet looked like two different apps stacked.
+        VStack(alignment: .leading, spacing: Space.s + 2) {
+            // Top row: name + start button. Wraps rather than squeezing the name, since "Start" is
+            // the one control on the card.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: Space.s) {
+                    templateName
+                    Spacer(minLength: 0)
+                    startButton
                 }
-                .buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: Space.s) {
+                    templateName
+                    startButton
+                }
             }
 
             // Exercise preview
             if !exercises.isEmpty {
                 Text(exercises.prefix(3).map { $0.exerciseName }.joined(separator: "  ·  ") +
                      (exercises.count > 3 ? "  +\(exercises.count - 3) more" : ""))
-                    .font(.system(size: 12))
+                    .font(.elosMicro)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
             }
 
             // Muscle dots + stats
-            HStack(spacing: 8) {
+            HStack(spacing: Space.s) {
                 HStack(spacing: 4) {
                     ForEach(topMuscles, id: \.label) { m in
                         Circle().fill(m.color).frame(width: 8, height: 8)
                     }
                 }
-                Spacer()
-                HStack(spacing: 4) {
-                    Image(systemName: "dumbbell.fill")
-                        .font(.system(size: 10))
-                    Text("\(exercises.count) exercise\(exercises.count == 1 ? "" : "s")")
-                        .font(.system(size: 12))
-                }
-                .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Label("\(exercises.count) exercise\(exercises.count == 1 ? "" : "s")",
+                      systemImage: "dumbbell.fill")
+                    .font(.elosMicro)
+                    .foregroundStyle(.secondary)
+                    .labelStyle(.titleAndIcon)
 
                 if !exercises.isEmpty {
-                    Text("·").foregroundStyle(.secondary).font(.system(size: 12))
-                    HStack(spacing: 4) {
-                        Image(systemName: "clock").font(.system(size: 10))
-                        Text("~\(estimatedMinutes) min").font(.system(size: 12))
-                    }
-                    .foregroundStyle(.secondary)
+                    Label("~\(estimatedMinutes) min", systemImage: "clock")
+                        .font(.elosMicro)
+                        .foregroundStyle(.secondary)
+                        .labelStyle(.titleAndIcon)
                 }
             }
+            // Dots-plus-two-stats in one row cannot reflow; cap the growth rather than overflow.
+            .elosDenseLayout()
         }
-        .padding(16)
+        .padding(Space.card)
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .contentShape(RoundedRectangle(cornerRadius: 16))
