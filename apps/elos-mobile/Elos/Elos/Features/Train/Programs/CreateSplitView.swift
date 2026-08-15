@@ -629,52 +629,38 @@ struct CreateSplitView: View {
         templates.first { $0.id == id }?.name ?? "Template"
     }
 
+    /// A day the lifter never touched — no exercises, no template, no name — is a rest day, not a
+    /// training day with nothing in it. `dayIsRest` starts all-false, so without this a 2-day
+    /// split saved seven *training* days and pinned all seven into the schedule: the split card
+    /// said "2 Days" while the week strip showed five more days labelled "Train", and "Start
+    /// Today's Workout" on one of them opened an empty session. A day that was given a name is
+    /// left alone — that's a deliberate placeholder the lifter still intends to fill.
+    private func isEffectivelyRest(_ i: Int) -> Bool {
+        SplitDayPersistence.isEffectivelyRest(i, dayIsRest: dayIsRest, dayExercises: dayExercises,
+                                              dayTemplateIDs: dayTemplateIDs, dayNames: dayNames)
+    }
+
     private func saveSplit() {
         let trimmed = splitName.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
 
-        let encoder = JSONEncoder()
         let indexToWeekday = [2, 3, 4, 5, 6, 7, 1]
 
-        // A day the lifter never touched — no exercises, no template, no name — is a rest day, not a
-        // training day with nothing in it. `dayIsRest` starts all-false, so without this a 2-day
-        // split saved seven *training* days and pinned all seven into the schedule: the split card
-        // said "2 Days" while the week strip showed five more days labelled "Train", and "Start
-        // Today's Workout" on one of them opened an empty session. A day that was given a name is
-        // left alone — that's a deliberate placeholder the lifter still intends to fill.
-        func isEffectivelyRest(_ i: Int) -> Bool {
-            dayIsRest[i] || (dayExercises[i].isEmpty
-                             && dayTemplateIDs[i].isEmpty
-                             && dayNames[i].trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-
-        func buildDays(for splitID: String) {
-            for (i, label) in dayLabels.enumerated() {
-                let exData = try? encoder.encode(dayExercises[i])
-                let exJSON = exData.flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
-                let rest = isEffectivelyRest(i)
-                let day = UserSplitDayRecord(
-                    splitID: splitID,
-                    orderIndex: i,
-                    dayLabel: label,
-                    dayName: rest ? "Rest" : (dayNames[i].isEmpty ? label : dayNames[i]),
-                    templateID: rest ? "" : dayTemplateIDs[i],
-                    isRest: rest,
-                    exercisesJSON: rest ? "[]" : exJSON
-                )
-                day.excludedMuscles = rest ? [] : dayExcludedMuscles[i]
-                modelContext.insert(day)
-            }
+        func upsertDays(for splitID: String, existing: [UserSplitDayRecord]) {
+            SplitDayPersistence.upsertDays(
+                splitID: splitID, dayLabels: dayLabels, dayNames: dayNames,
+                dayTemplateIDs: dayTemplateIDs, dayIsRest: dayIsRest,
+                dayExercises: dayExercises, dayExcludedMuscles: dayExcludedMuscles,
+                existing: existing, modelContext: modelContext)
         }
 
         if let existing = editSplit {
-            // Edit mode — update in place then push to server
+            // Edit mode — update in place, then push to server.
             existing.name = trimmed
             existing.pinnedWeekdays = (0..<7).filter { !isEffectivelyRest($0) }.map { indexToWeekday[$0] }
             existing.intent = intent
             existing.syncPending = true
-            for day in editDays { modelContext.delete(day) }
-            buildDays(for: existing.id)
+            upsertDays(for: existing.id, existing: editDays)
             try? modelContext.save()
             vm.loadActiveSplit()
             let record = existing
@@ -692,7 +678,7 @@ struct CreateSplitView: View {
             split.intent = intent
             split.syncPending = true
             modelContext.insert(split)
-            buildDays(for: split.id)
+            upsertDays(for: split.id, existing: [])
             try? modelContext.save()
             let record = split
             // Only "Customize & Subscribe" (entered with a `template`) implies replacing the active
