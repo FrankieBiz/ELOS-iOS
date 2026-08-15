@@ -28,6 +28,20 @@ struct InsertSpec: Equatable {
 }
 
 extension FixOperation {
+    /// Every case carries a day index; each stores it differently (buried in `InsertSpec` for
+    /// insert, a direct associated value for the rest), so this is the one place that unifies
+    /// access rather than every caller re-deriving it per case.
+    var dayIndex: Int {
+        switch self {
+        case .insertExercise(let spec): return spec.dayIndex
+        case .reorderDay(let dayIndex, _): return dayIndex
+        case .setReps(let dayIndex, _, _): return dayIndex
+        case .setRest(let dayIndex, _, _): return dayIndex
+        }
+    }
+}
+
+extension FixOperation {
     /// Pure `[[ScoredExercise]] -> [[ScoredExercise]]`. Out-of-range indices or a non-bijective
     /// permutation return the input unchanged rather than crashing or corrupting state — a stale
     /// preview re-applied after the plan changed underneath it must fail safe.

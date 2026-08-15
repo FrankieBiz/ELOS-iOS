@@ -465,6 +465,13 @@ struct ProgramsView: View {
 
 // MARK: - User Split Detail
 
+/// Wraps a plain string for `.alert(item:)`, which needs `Identifiable`.
+private struct IdentifiableString: Identifiable {
+    let value: String
+    var id: String { value }
+    init(_ value: String) { self.value = value }
+}
+
 struct UserSplitDetailView: View {
     @EnvironmentObject var vm: AppViewModel
     @Environment(\.modelContext) private var modelContext
@@ -476,6 +483,8 @@ struct UserSplitDetailView: View {
     @State private var showEdit = false
     @State private var showFullReport = false
     @State private var selectedDaySummary: SplitDaySummary? = nil
+    @State private var pendingFix: FixProposal? = nil
+    @State private var declinedFixMessage: IdentifiableString? = nil
 
     init(split: UserSplitRecord) {
         self.split = split
@@ -489,6 +498,7 @@ struct UserSplitDetailView: View {
     private var sortedDays: [UserSplitDayRecord] { splitDays.sorted { $0.orderIndex < $1.orderIndex } }
     private var exerciseCatalog: [ExerciseCandidate] { exerciseDefs.map(ExerciseCandidate.init(record:)) }
     private var guidanceLevel: GuidanceLevel { GuidanceLevel(trainingExperience: profiles.first?.trainingExperience ?? "") }
+    private var equipmentPreference: EquipmentPreference { profiles.first?.equipmentPreference ?? .fullGym }
 
     /// `UserSplitRecord.intent` is nil for a split saved before intents existed — same fallback
     /// `CreateSplitView.onAppear` uses when seeding its own `@State` intent.
@@ -585,10 +595,30 @@ struct UserSplitDetailView: View {
             SplitQualityReportView(
                 report: qualityReport,
                 days: daySummaries,
+                onAutoFix: { tip in
+                    showFullReport = false
+                    startAutoFix(for: tip)
+                },
                 onSelectDay: { selectedDaySummary = $0 })
         }
         .sheet(item: $selectedDaySummary) { day in
             DayQualityReportView(dayName: day.name, report: day.report)
+        }
+        .sheet(item: $pendingFix) { proposal in
+            QualityFixPreviewSheet(
+                proposal: proposal,
+                onConfirm: { apply($0) },
+                onDeny: {},
+                onTryAnother: { candidate in
+                    QualityFixEngine.propose(for: proposal.tip, context: currentContext(), using: candidate)
+                },
+                // No manual-add UI in this read-mostly view (that's what Edit is for) — route
+                // there instead of a dead button. The sheet already dismissed itself before this
+                // runs (its own Button calls `dismiss()` then `onChooseManually()`).
+                onChooseManually: { showEdit = true })
+        }
+        .alert(item: $declinedFixMessage) { item in
+            Alert(title: Text("Can't auto-fix this"), message: Text(item.value))
         }
     }
 
@@ -600,9 +630,94 @@ struct UserSplitDetailView: View {
             Section {
                 TemplateQualityPanel(report: qualityReport, guidance: guidanceLevel,
                                      title: "Split Quality", scope: .weeklySplit,
+                                     onAutoFix: { startAutoFix(for: $0) },
                                      onSeeFullReport: { showFullReport = true })
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     .listRowBackground(Color.clear)
+            }
+        }
+    }
+
+    // MARK: - Auto-fix
+    //
+    // Unlike the builder, there is no Save button here — Confirm writes straight to SwiftData.
+    // There is also no manual-add UI in this view (that's what Edit is for), so a fix that can't
+    // be auto-applied is declined outright rather than falling back to a manual path.
+
+    private func currentContext() -> QualityFixEngine.Context {
+        QualityFixEngine.Context(
+            days: sortedDays.map { SavedSplitScoring.dayExercises(for: $0) { vm.fetchTemplateExercises(templateID: $0) } .map(ScoredExercise.init(day:)) },
+            dayNames: sortedDays.map(\.dayName),
+            dayIsRest: sortedDays.map(\.isRest),
+            dayExcludedMuscles: sortedDays.map(\.excludedMuscles),
+            scope: .weeklySplit, profile: scoringProfile, intent: splitIntent, catalog: exerciseCatalog,
+            personalization: PersonalizationProvider(signals: .init()),
+            equipmentPreference: equipmentPreference)
+    }
+
+    private func startAutoFix(for tip: QualityTip) {
+        guard let proposal = QualityFixEngine.propose(for: tip, context: currentContext()) else {
+            // No eligible day / no candidate / nothing worth offering. There's no manual
+            // fallback in this view (unlike the builder), so this is simply a dead end here —
+            // the tip stays visible as information; fixing it means opening Edit.
+            return
+        }
+        // "Template-backed" per SavedSplitScoring.isTemplateBacked, not a bare `!templateID.isEmpty`
+        // check — a day can carry both a templateID and its own exercisesJSON, and ad-hoc wins.
+        let touchedTemplateBackedDay = proposal.operations
+            .map(\.dayIndex)
+            .contains { sortedDays.indices.contains($0) && SavedSplitScoring.isTemplateBacked(sortedDays[$0]) }
+        guard !touchedTemplateBackedDay else {
+            declinedFixMessage = IdentifiableString(
+                "This day's exercises come from a shared template. Edit the split to change them.")
+            return
+        }
+        pendingFix = proposal
+    }
+
+    /// Writes fix operations straight into the affected days' `exercisesJSON` — there is no
+    /// `@State` copy to mutate and no Save button, so this IS the save. Operations are grouped by
+    /// day so each day's exercises are decoded, mutated, and re-encoded exactly once.
+    private func apply(_ operations: [FixOperation]) {
+        let byDay = Dictionary(grouping: operations, by: \.dayIndex)
+        for (dayIndex, ops) in byDay {
+            guard sortedDays.indices.contains(dayIndex) else { continue }
+            let day = sortedDays[dayIndex]
+            guard !SavedSplitScoring.isTemplateBacked(day) else { continue }
+            var exercises = SavedSplitScoring.dayExercises(for: day) { vm.fetchTemplateExercises(templateID: $0) }
+            for op in ops {
+                switch op {
+                case .insertExercise(let spec):
+                    let insertAt = min(max(0, spec.insertAt), exercises.count)
+                    let new = DayExercise(id: spec.candidate.id, name: spec.candidate.name,
+                                         sets: spec.sets, reps: spec.reps)
+                    exercises.insert(new, at: insertAt)
+                case .reorderDay(_, let permutation):
+                    guard permutation.count == exercises.count,
+                          Set(permutation) == Set(0..<exercises.count) else { continue }
+                    exercises = permutation.map { exercises[$0] }
+                case .setReps(_, let exerciseIndex, let reps):
+                    guard exercises.indices.contains(exerciseIndex) else { continue }
+                    exercises[exerciseIndex].reps = reps
+                case .setRest:
+                    // DayExercise has no rest field, and rr-rest only fires at single-session
+                    // scope on exercises with non-nil rest — a split day always has restSeconds
+                    // nil, so this case is unreachable here. Intentional no-op.
+                    continue
+                }
+            }
+            guard let data = try? JSONEncoder().encode(exercises),
+                  let json = String(data: data, encoding: .utf8) else { continue }
+            day.exercisesJSON = json
+        }
+        split.syncPending = true
+        try? modelContext.save()
+        let record = split
+        Task.detached {
+            if !record.serverID.isEmpty {
+                await vm.updateSplitOnServer(serverID: record.serverID, record: record)
+            } else {
+                await vm.pushSplitToServer(record)
             }
         }
     }
