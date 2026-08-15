@@ -67,7 +67,16 @@ struct DayVariantSheet: View {
             TextField("Name", text: $renameText)
             Button("Save") {
                 guard let variant = renamingVariant, !renameText.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-                DayVariants.renameVariant(id: variant.id, to: renameText.trimmingCharacters(in: .whitespaces), day: day)
+                // Rename against THIS sheet's already-seeded `variantSet`, not a fresh
+                // `DayVariants.set(for:)` lookup — a day with no variants yet shows one phantom
+                // variant seeded only in memory, and `DayVariants.renameVariant` no-ops when
+                // `variantsJSON` is still empty. Applying the edited set is what actually
+                // persists that phantom variant for the first time.
+                var updated = variantSet
+                if let i = updated.variants.firstIndex(where: { $0.id == variant.id }) {
+                    updated.variants[i].name = renameText.trimmingCharacters(in: .whitespaces)
+                }
+                DayVariants.apply(updated, to: day)
                 try? modelContext.save()
                 variantSet = DayVariants.seeded(for: day, defaultName: defaultVariantName)
                 renamingVariant = nil
