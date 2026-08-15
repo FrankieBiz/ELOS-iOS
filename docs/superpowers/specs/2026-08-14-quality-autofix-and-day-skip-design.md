@@ -442,8 +442,25 @@ Note the tip only exists for muscles with `direct > 0` — `VolumeScorer` skips 
 entirely (`:17-18`), which is `BalanceScorer`'s job instead. So the shortfall path never sees a
 zero-direct muscle.
 
-If one exercise cannot close the gap, the proposal is still offered with `resolvesTip: false` and
-an honest caveat. It is not silently inflated to 14 sets.
+If one exercise cannot close the gap, it is not silently inflated past the cap. What happens next
+depends on whether the capped dose crosses into a different scored status bucket:
+
+- **`VolumeScorer.weekly` grades a muscle by status bucket** (`.under`/`.light`/`.productive`/…),
+  each a fixed quality value, **not a continuous fraction of distance to target** — discovered
+  empirically while implementing this (§ below), not assumed. A capped dose that stays within the
+  same bucket (still `.under`, or still `.light`) moves the score by exactly zero, because the
+  bucket — not the raw set count — is what's scored.
+- So a dose fix that crosses a bucket boundary (e.g. `.under` → `.light`) both raises the score
+  *and* clears the exact tip it targeted — the tip id itself encodes the bucket
+  (`vol-low-*` only exists while `.under`), so crossing out of that bucket is a real, verifiable
+  success, not a partial one.
+- A dose fix that **cannot** cross a boundary even at the cap provides zero measured benefit by
+  the engine's own reckoning, so `propose` suppresses it (`nil`) rather than offering a fix with no
+  real effect — the honest-caveat framing this section originally described turned out not to be
+  reachable for this tip family once the actual scoring shape was implemented against; suppression
+  is the more honest behavior anyway. See `QualityFixEngineTests.doseFixThatCannotHelpAtAllIsSuppressed`
+  and `.doseFixThatCrossesAStatusBucketResolvesAndImproves` for both sides, confirmed against the
+  real engine via the swiftc harness.
 
 ## 2.4 Orchestration — `Intelligence/QualityFixEngine.swift`
 
@@ -593,7 +610,8 @@ reverted alone if it surprises anyone.
 | No eligible day (all rest, or all veto the muscle) | No auto-fix offered; falls back to manual tap |
 | Equipment filter empties the candidate pool | Relax to unfiltered pool, surface a caveat |
 | No candidate at all trains that muscle | No auto-fix offered; falls back to manual |
-| One exercise can't close a dose gap | Offered with `resolvesTip: false` + honest caveat |
+| Capped dose crosses into a better status bucket | Offered; `resolvesTip: true` (the id encodes the bucket) |
+| Capped dose can't cross a status bucket at all | Suppressed (`nil`) — zero measured benefit, confirmed empirically |
 | Fix clears the tip but lowers overall | Offered; delta shown in red; user's call |
 | Fix neither clears the tip nor helps | Suppressed entirely (`propose` returns `nil`) |
 | Plan changed while the sheet is open | Indices re-validated on Confirm; abort with no change |
@@ -621,8 +639,9 @@ filter over-constrains; pattern filter for `.addPattern`; alternates are distinc
 **`QualityFixEngineTests`** — the load-bearing property: **for every fixture tip the engine claims
 to fix, applying the proposal genuinely clears that `(id, action)` in the after-report.** Plus:
 `sel-order` on a second day still counts as resolved; a reorder proposal touches only its own day;
-a dose fix that can't close the gap reports `resolvesTip: false`; `propose` returns `nil` for the
-no-help case; Tier 2 retune moves `rr-reps` out of the tip list.
+a dose fix that crosses a status bucket resolves and improves the score; a dose fix that can't
+cross any bucket even at the cap is suppressed (`nil`) rather than offered; `propose` returns `nil`
+for the no-candidate case; Tier 2 retune moves `rr-reps`/`rr-rest` out of the tip list.
 
 **`TemplateQualityEngineTests`** — the two replacement tests from §1.4, plus: a day toggled to Rest
 while still holding exercises does not vote in the intersection; a `dayExclusions` array shorter
