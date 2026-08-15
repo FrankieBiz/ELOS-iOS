@@ -54,6 +54,16 @@ struct BalanceScorerTests {
         #expect(d.tips.contains { $0.id == "bal-noham" })
     }
 
+    /// Every sibling "you're not training this group" check already guards on `excludedMuscles`
+    /// (see the three tests below this one) — `bal-noham` didn't, so excluding hamstrings still
+    /// nagged "add a hinge to balance the knee."
+    @Test func excludingHamstringsSuppressesTheNoHamstringTip() {
+        let d = score([[QualityFixtures.sx("squat", sets: 12)]],
+                      scope: .weeklySplit, dayNames: [""],
+                      excludedMuscles: [.hamstrings])
+        #expect(!d.tips.contains { $0.id == "bal-noham" })
+    }
+
     /// Hip thrusts train the hamstrings only secondarily, so "no *direct* hamstring work" is still
     /// the right call — and the wording must say so, to match what the bar shows.
     @Test func hipThrustAloneStillCountsAsNoDirectHamstringWork() {

@@ -49,7 +49,7 @@ enum BalanceScorer {
         // Antagonist: quads vs hamstrings (posterior chain is the commonly-neglected side)
         let quadSets = volume.directSets(for: .quads)
         let hamSets  = volume.directSets(for: .hamstrings)
-        if quadSets > 0 && hamSets == 0 {
+        if quadSets > 0 && hamSets == 0 && !excludedMuscles.contains(.hamstrings) {
             penalties += 0.18
             tips.append(QualityTip(
                 id: "bal-noham", dimension: .balance, severity: .warn,
