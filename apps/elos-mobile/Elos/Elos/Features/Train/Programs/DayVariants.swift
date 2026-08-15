@@ -125,12 +125,13 @@ enum DayVariants {
         apply(vs, to: day)
     }
 
-    /// Called after `syncSplitsFromServer` overwrites a day's wire fields from the server. The
-    /// **wire fields win** — a remote edit is real and must never be clobbered by a stale local
-    /// variant cache on the next switch-away. This only updates the active variant's stored copy
-    /// to match what the server just wrote; it never re-projects, since the wire fields are
-    /// already correct.
-    static func reconcileAfterRemoteUpdate(day: UserSplitDayRecord) {
+    /// Called whenever something OTHER than this type just changed a day's wire fields directly —
+    /// `syncSplitsFromServer` overwriting them from the server, or the split builder saving edited
+    /// exercises straight into `exercisesJSON`. Either way, **the wire fields win**: they just
+    /// changed for a real reason and must never be clobbered by a stale variant cache on the next
+    /// switch-away. This only updates the active variant's stored copy to match what's now on the
+    /// day; it never re-projects, since the wire fields are already correct.
+    static func syncActiveVariantToWireFields(day: UserSplitDayRecord) {
         guard var vs = set(for: day), let i = vs.variants.firstIndex(where: { $0.id == vs.activeID }) else { return }
         vs.variants[i].exercises = currentExercises(of: day)
         vs.variants[i].templateID = day.templateID

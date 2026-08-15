@@ -90,6 +90,30 @@ struct SplitEditPreservesDayDataTests {
         #expect(rows.contains { $0.orderIndex == 1 && $0.isRest })
     }
 
+    @Test @MainActor func editingADayWithAnActiveVariantKeepsTheVariantCacheInSync() {
+        let context = makeContext()
+        let day = UserSplitDayRecord(splitID: "split-1", orderIndex: 0, dayLabel: "Monday",
+                                     dayName: "Push", exercisesJSON: "[]")
+        let original = DayVariant(name: "Fairless",
+                                  exercises: [DayExercise(id: "bench", name: "Bench Press", sets: 3)])
+        DayVariants.apply(DayVariantSet(activeID: original.id, variants: [original]), to: day)
+        context.insert(day)
+        try? context.save()
+
+        // The builder edits the day's exercises directly (adds a set) and saves — exactly what
+        // saveSplit does today, now routed through upsertDays.
+        SplitDayPersistence.upsertDays(
+            splitID: "split-1", dayLabels: ["Monday"], dayNames: ["Push"],
+            dayTemplateIDs: [""], dayIsRest: [false],
+            dayExercises: [[DayExercise(id: "bench", name: "Bench Press", sets: 5)]],
+            dayExcludedMuscles: [[]], existing: [day], modelContext: context)
+
+        // If the variant cache went stale here, switching away and back to "Fairless" would
+        // silently revert this edit back to 3 sets.
+        let vs = DayVariants.set(for: day)
+        #expect(vs?.variants.first { $0.id == original.id }?.exercises.first?.sets == 5)
+    }
+
     @Test @MainActor func strayRowsBeyondTheDayCountAreRemoved() {
         let context = makeContext()
         let stray = UserSplitDayRecord(splitID: "split-1", orderIndex: 9, dayLabel: "Stray")

@@ -58,7 +58,7 @@ struct DayVariantsTests {
 
         // Simulate syncSplitsFromServer overwriting the wire fields with a real remote edit.
         d.exercisesJSON = encoded([DayExercise(id: "bench", name: "Bench Press", sets: 8)])
-        DayVariants.reconcileAfterRemoteUpdate(day: d)
+        DayVariants.syncActiveVariantToWireFields(day: d)
 
         // The variant's cached copy must now agree with the server, not the pre-sync value —
         // otherwise switching away and back would silently revert the remote edit.

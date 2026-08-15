@@ -1343,7 +1343,7 @@ class AppViewModel: ObservableObject {
                                     // copy in line with what the server actually holds, rather
                                     // than letting the next switch-away silently overwrite this
                                     // real edit with a stale one.
-                                    DayVariants.reconcileAfterRemoteUpdate(day: localDay)
+                                    DayVariants.syncActiveVariantToWireFields(day: localDay)
                                 }
                             }
                         } else {

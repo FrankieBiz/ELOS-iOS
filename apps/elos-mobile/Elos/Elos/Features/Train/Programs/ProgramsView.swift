@@ -513,11 +513,13 @@ struct UserSplitDetailView: View {
     @Query private var splitDays: [UserSplitDayRecord]
     @Query(sort: \ExerciseDefinitionRecord.name) private var exerciseDefs: [ExerciseDefinitionRecord]
     @Query private var profiles: [UserProfileRecord]
+    @Query(sort: \GymRecord.createdAt) private var gyms: [GymRecord]
     @State private var showEdit = false
     @State private var showFullReport = false
     @State private var selectedDaySummary: SplitDaySummary? = nil
     @State private var pendingFix: FixProposal? = nil
     @State private var declinedFixMessage: IdentifiableString? = nil
+    @State private var variantSheetDay: UserSplitDayRecord? = nil
 
     init(split: UserSplitRecord) {
         self.split = split
@@ -653,6 +655,12 @@ struct UserSplitDetailView: View {
         .alert(item: $declinedFixMessage) { item in
             Alert(title: Text("Can't auto-fix this"), message: Text(item.value))
         }
+        .sheet(item: $variantSheetDay) { day in
+            DayVariantSheet(day: day,
+                           defaultVariantName: day.dayName.isEmpty ? day.dayLabel : day.dayName,
+                           gyms: gyms,
+                           onStartEditingNewVersion: { showEdit = true })
+        }
     }
 
     // MARK: - Quality panel
@@ -777,8 +785,17 @@ struct UserSplitDetailView: View {
         daySummaries.first { $0.id == day.orderIndex }
     }
 
+    /// The active variant's name, only when the day genuinely has more than one — a day with
+    /// zero or one variant shows no chip at all, so the common case (no gym-splitting) reads
+    /// exactly as it did before this feature existed.
+    private func activeVariantName(for day: UserSplitDayRecord) -> String? {
+        guard let vs = DayVariants.set(for: day), vs.variants.count > 1 else { return nil }
+        return vs.variants.first { $0.id == vs.activeID }?.name
+    }
+
     private func dayRow(_ day: UserSplitDayRecord) -> some View {
         let daySummary = summary(for: day)
+        let variantName = day.isRest ? nil : activeVariantName(for: day)
 
         return HStack(spacing: 12) {
             Button {
@@ -805,6 +822,25 @@ struct UserSplitDetailView: View {
             .disabled(daySummary == nil)
             .frame(maxWidth: .infinity, alignment: .leading)
 
+            if let variantName {
+                Button {
+                    variantSheetDay = day
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "building.2").font(.caption2)
+                        Text(variantName).font(.caption2).fontWeight(.semibold).lineLimit(1)
+                    }
+                    .foregroundStyle(Color.tint)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color.tint.opacity(0.1))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Day version")
+                .accessibilityValue(variantName)
+                .accessibilityHint("Double tap to switch or manage versions")
+            }
+
             if !day.isRest {
                 Button {
                     vm.prepareExercises(for: day)
@@ -823,5 +859,17 @@ struct UserSplitDetailView: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityHint(daySummary != nil ? "Double tap to view this day's coverage" : "")
+        .swipeActions(edge: .leading) {
+            // Available regardless of today's variant count — this is also how a day gets its
+            // FIRST additional version; the chip above only appears once there are already two.
+            if !day.isRest {
+                Button {
+                    variantSheetDay = day
+                } label: {
+                    Label("Versions", systemImage: "building.2")
+                }
+                .tint(Color.tint)
+            }
+        }
     }
 }

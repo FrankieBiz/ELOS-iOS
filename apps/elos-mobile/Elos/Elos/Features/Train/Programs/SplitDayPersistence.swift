@@ -58,7 +58,11 @@ enum SplitDayPersistence {
                 day.isRest = rest
                 day.exercisesJSON = json
                 day.excludedMuscles = exclusions
-                // variantsJSON deliberately untouched — the builder doesn't own it.
+                // The builder just wrote new wire fields for this day, same as a remote sync
+                // would — if it has an active variant, that variant's cached copy must catch up,
+                // or the next switch-away silently reverts this edit back to whatever the
+                // variant's stale content was.
+                DayVariants.syncActiveVariantToWireFields(day: day)
             } else {
                 let day = UserSplitDayRecord(
                     splitID: splitID, orderIndex: i, dayLabel: label,
