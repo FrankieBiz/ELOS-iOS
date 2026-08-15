@@ -42,13 +42,42 @@ enum TemplateQualityEngine {
                       scope: QualityScope,
                       profile: TrainingProfile,
                       catalog: [ExerciseCandidate],
-                      intent: TrainingIntent? = nil) -> QualityReport {
+                      intent: TrainingIntent? = nil,
+                      dayExclusions: [Set<FineMuscle>] = [],
+                      dayIsRest: [Bool] = []) -> QualityReport {
+        // A day that actually contributes training. Not `!dayIsRest[i]` alone — a day toggled to
+        // Rest in the split builder keeps its exercises in state (and keeps being scored), so
+        // `!isEmpty` matters too. Out-of-range `i` reads as non-rest, matching `dayIsRest`'s own
+        // "shorter array means no opinion" default elsewhere.
+        func isTrainingDay(_ i: Int) -> Bool {
+            !(i < dayIsRest.count && dayIsRest[i]) && !days[i].isEmpty
+        }
+        // A day index with no corresponding `dayExclusions` entry votes as an empty exclusion set
+        // (killing the intersection) rather than being skipped — a caller passing a short array
+        // must not be able to widen the weekly exclusion by omission.
+        func exclusions(_ i: Int) -> Set<FineMuscle> {
+            i < dayExclusions.count ? dayExclusions[i] : []
+        }
+        // A muscle the lifter has skipped on *every* day they actually train is skipped for the
+        // week — there is no remaining day that disagrees. Only training days vote: folding a
+        // rest/empty day's implicit empty exclusion set into the intersection would zero it out
+        // and disable the rule entirely.
+        let weeklyExclusions: Set<FineMuscle> = {
+            guard scope == .weeklySplit else { return [] }
+            let voting = days.indices.filter(isTrainingDay)
+            guard let first = voting.first else { return [] }
+            return voting.dropFirst().reduce(exclusions(first)) { $0.intersection(exclusions($1)) }
+        }()
+
         // Day-scoped exclusions only apply at the scope a single day actually has — this makes D1
-        // (a day-level "skip this muscle" never affects a split's weekly score) an engine-level
-        // guarantee rather than something every call site has to remember to withhold. The *global*
-        // exclusion set (`profile.volumeOverrides.excludedMuscles`) is not scope-gated.
+        // (a day-level "skip this muscle" never affects a split's weekly score, UNLESS every
+        // active day agrees, see `weeklyExclusions` above) an engine-level guarantee rather than
+        // something every call site has to remember to withhold. The *global* exclusion set
+        // (`profile.volumeOverrides.excludedMuscles`) is not scope-gated.
         let dayScopedExclusions: Set<FineMuscle> = scope == .singleSession ? (intent?.excludedMuscles ?? []) : []
-        let excludedMuscles = profile.volumeOverrides.excludedMuscles.union(dayScopedExclusions)
+        let excludedMuscles = profile.volumeOverrides.excludedMuscles
+            .union(dayScopedExclusions)
+            .union(weeklyExclusions)
         var effectiveOverrides = profile.volumeOverrides
         effectiveOverrides.excludedMuscles = excludedMuscles
         let profile = TrainingProfile(goal: profile.goal, experience: profile.experience,

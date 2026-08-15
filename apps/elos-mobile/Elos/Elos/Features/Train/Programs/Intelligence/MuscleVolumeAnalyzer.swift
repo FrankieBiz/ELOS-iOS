@@ -67,6 +67,11 @@ struct MuscleVolumeBar: Identifiable, Equatable {
     let isExpected: Bool
     /// Prehab/indirect muscles (rotator cuff, forearms) — never flagged as a gap.
     let isOptional: Bool
+    /// Muted by the lifter's own choice (global, day-scoped, or skipped on every training day),
+    /// as opposed to `isOptional`'s science-driven mute (rotator cuff, forearms). Distinct on
+    /// purpose: the coverage bars render the two differently, so "you told me to skip this" never
+    /// reads the same as "this one's just lower-priority by design."
+    let isExcluded: Bool
     let children: [MuscleVolumeBar]
     /// Group rows only: how many expected children are on target, out of how many.
     let inRangeCount: Int
@@ -129,8 +134,7 @@ enum MuscleVolumeAnalyzer {
         }
 
         let expected = expectedMuscles(scope: scope, intent: intent, dayNames: dayNames,
-                                       trained: Set(creditByFine.keys),
-                                       resolvedDays: resolvedDays, catalog: catalog)
+                                       trained: Set(creditByFine.keys))
 
         let bars = MuscleGroup.allCases.map { group in
             groupRow(group, creditByFine: creditByFine, expected: expected,
@@ -148,16 +152,19 @@ enum MuscleVolumeAnalyzer {
     /// credit rather than the sum, so one exercise can't inflate a muscle by naming it twice.
     /// Direct work supersedes indirect entirely for the same slot.
     static func credits(_ r: ResolvedExercise) -> [FineMuscle: MuscleCredit] {
-        guard let c = r.candidate else { return [:] }
         let sets = Double(r.exercise.sets)
         guard sets > 0 else { return [:] }
 
+        // Reads `r.targets`, not the catalog directly, so a machine-backed or lifter-corrected
+        // exercise earns credit on exactly the muscles the builder says it trains.
+        let targets = r.targets
+        guard !targets.isEmpty else { return [:] }
+
         var out: [FineMuscle: MuscleCredit] = [:]
-        if let primary = MuscleTaxonomy.fine(forMuscle: c.primaryMuscle) {
+        for primary in targets.primary {
             out[primary] = MuscleCredit(direct: sets, indirect: 0)
         }
-        for s in c.secondaryMuscles {
-            guard let f = MuscleTaxonomy.fine(forMuscle: s) else { continue }
+        for f in targets.secondary {
             guard out[f]?.direct ?? 0 == 0 else { continue }   // already trained directly here
             let indirect = sets * TrainingScience.secondaryCredit
             out[f] = MuscleCredit(direct: 0, indirect: max(out[f]?.indirect ?? 0, indirect))
@@ -174,9 +181,7 @@ enum MuscleVolumeAnalyzer {
     static func expectedMuscles(scope: QualityScope,
                                 intent: TrainingIntent?,
                                 dayNames: [String],
-                                trained: Set<FineMuscle>,
-                                resolvedDays: [[ResolvedExercise]],
-                                catalog: [ExerciseCandidate]) -> Set<FineMuscle> {
+                                trained: Set<FineMuscle>) -> Set<FineMuscle> {
         switch scope {
         case .weeklySplit:
             return Set(FineMuscle.allCases.filter {
@@ -184,9 +189,7 @@ enum MuscleVolumeAnalyzer {
             })
 
         case .singleSession:
-            let focus = intent?.focus ?? inferredArchetype(dayNames: dayNames,
-                                                           resolvedDays: resolvedDays,
-                                                           catalog: catalog)
+            let focus = intent?.focus ?? inferredArchetype(dayNames: dayNames)
             guard let focus else { return trained }
             let fromFocus = MuscleTaxonomy.targetMuscles(forArchetype: focus)
                 .compactMap { MuscleTaxonomy.fine(forMuscle: $0) }
@@ -195,15 +198,13 @@ enum MuscleVolumeAnalyzer {
         }
     }
 
-    private static func inferredArchetype(dayNames: [String],
-                                          resolvedDays: [[ResolvedExercise]],
-                                          catalog: [ExerciseCandidate]) -> SplitArchetype? {
-        let added = resolvedDays.flatMap { $0 }.map {
-            DayExercise(id: $0.exercise.id, name: $0.exercise.name,
-                        sets: $0.exercise.sets, reps: $0.exercise.repsText)
-        }
-        return DayContextInferrer.infer(dayName: dayNames.first ?? "",
-                                        added: added, catalog: catalog).archetype
+    /// `DayContextInferrer.infer` derives `archetype` from the **day name alone** — the exercises it's
+    /// handed only affect `targetMuscles`/`addedTargets`. So the previous version of this helper mapped
+    /// every exercise into a throwaway `DayExercise` array and re-resolved the whole catalog (two
+    /// dictionaries over every definition) on each scoring pass, then used none of it. Scoring runs on
+    /// every keystroke in the builder, and this happened three times per pass across the analyzers.
+    private static func inferredArchetype(dayNames: [String]) -> SplitArchetype? {
+        MuscleTaxonomy.archetype(forDayName: dayNames.first ?? "")
     }
 
     // MARK: Row construction
@@ -221,6 +222,12 @@ enum MuscleVolumeAnalyzer {
         let expectedChildren = childBars.filter { $0.isExpected }
         let inRange = expectedChildren.filter { $0.status.isOnTarget }.count
 
+        // A group is excluded when every child is — the weekly `expectedMuscles` table can't see
+        // exclusions at all (it's built from a fresh, override-free profile, see
+        // `expectedMuscles` below), so `expectedChildren` stays non-empty even when every child is
+        // excluded and this can't be inferred from that set; it must be checked directly.
+        let isExcluded = childBars.allSatisfy(\.isExcluded)
+
         // A single-child group (chest, glutes, core) *is* its child — mirror it, and expose no
         // children so the UI doesn't offer a chevron revealing a duplicate row. These are also the
         // only group rows with a meaningful band, so keep it.
@@ -228,7 +235,7 @@ enum MuscleVolumeAnalyzer {
             return MuscleVolumeBar(
                 fine: nil, group: group, credit: only.credit, band: only.band, fill: only.fill,
                 directFill: only.directFill, status: only.status, isExpected: only.isExpected,
-                isOptional: only.isOptional, children: [],
+                isOptional: only.isOptional, isExcluded: isExcluded, children: [],
                 inRangeCount: inRange, expectedCount: expectedChildren.count)
         }
 
@@ -238,18 +245,41 @@ enum MuscleVolumeAnalyzer {
             return MuscleVolumeBar(
                 fine: nil, group: group, credit: totalCredit, band: nil, fill: 0, directFill: 0,
                 status: totalCredit.total > 0 ? .productive : .untrained,
-                isExpected: false, isOptional: false, children: childBars,
+                isExpected: false, isOptional: false, isExcluded: isExcluded, children: childBars,
                 inRangeCount: 0, expectedCount: 0)
         }
 
-        let n = Double(expectedChildren.count)
-        let meanFill = expectedChildren.reduce(0.0) { $0 + $1.fill } / n
-        let meanDirectFill = expectedChildren.reduce(0.0) { $0 + $1.directFill } / n
         let worst = expectedChildren.max { $0.status.severity < $1.status.severity }!.status
 
+        // The group's band is the sum of its expected children's bands, and the bar is filled against
+        // that sum.
+        //
+        // This row used to carry `band: nil` and a *mean* of its children's fills while its number was
+        // their *total* — the bar and the number measured different quantities, so "Back 23" could draw
+        // a half-empty bar and there was no denominator to explain it. Summing was previously rejected
+        // as meaningless, but a per-group weekly total is now a first-class concept: it's exactly what
+        // `VolumeOverrides.groupWeeklyTarget` lets the lifter set, and `TrainingScience` distributes it
+        // back across children in these same proportions. So the sum is the number the lifter is
+        // actually aiming at, and the row can finally read "23/28".
+        //
+        // `status` still rolls up to the worst child, deliberately: a group can hit its total while one
+        // muscle inside it sits at zero, and that is worth flagging in colour. The chevron then names
+        // which child is at fault.
+        let summed = expectedChildren.compactMap(\.band).reduce(into: (mev: 0.0, low: 0.0, high: 0.0, mrv: 0.0)) {
+            $0.mev += $1.mev; $0.low += $1.targetLow; $0.high += $1.targetHigh; $0.mrv += $1.mrv
+        }
+        let groupBand: TrainingScience.VolumeBand? = summed.high > 0
+            ? TrainingScience.VolumeBand(mev: summed.mev, targetLow: summed.low,
+                                         targetHigh: summed.high, mrv: summed.mrv)
+            : nil
+
+        let fillValue = groupBand.map { fill(sets: totalCredit.total, band: $0) } ?? 0
+        let directFillValue = groupBand.map { fill(sets: totalCredit.direct, band: $0) } ?? 0
+
         return MuscleVolumeBar(
-            fine: nil, group: group, credit: totalCredit, band: nil, fill: meanFill,
-            directFill: meanDirectFill, status: worst, isExpected: true, isOptional: false,
+            fine: nil, group: group, credit: totalCredit, band: groupBand, fill: fillValue,
+            directFill: directFillValue, status: worst, isExpected: true, isOptional: false,
+            isExcluded: isExcluded,
             children: childBars, inRangeCount: inRange, expectedCount: expectedChildren.count)
     }
 
@@ -260,8 +290,8 @@ enum MuscleVolumeAnalyzer {
                                 profile: TrainingProfile) -> MuscleVolumeBar {
         let band: TrainingScience.VolumeBand = {
             switch scope {
-            case .weeklySplit:   return TrainingScience.weeklyBand(for: fine, experience: profile.experience)
-            case .singleSession: return TrainingScience.sessionBand(for: fine)
+            case .weeklySplit:   return TrainingScience.weeklyBand(for: fine, profile: profile)
+            case .singleSession: return TrainingScience.sessionBand(for: fine, profile: profile)
             }
         }()
 
@@ -270,8 +300,9 @@ enum MuscleVolumeAnalyzer {
             fill: fill(sets: credit.total, band: band),
             directFill: fill(sets: credit.direct, band: band),
             status: status(sets: credit.total, band: band),
-            isExpected: isExpected, isOptional: band.isOptional, children: [],
-            inRangeCount: 0, expectedCount: 0)
+            isExpected: isExpected, isOptional: band.isOptional,
+            isExcluded: profile.volumeOverrides.excludedMuscles.contains(fine),
+            children: [], inRangeCount: 0, expectedCount: 0)
     }
 
     // MARK: Fill & status

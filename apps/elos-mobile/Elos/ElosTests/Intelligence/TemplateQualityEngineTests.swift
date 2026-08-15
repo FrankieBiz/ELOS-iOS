@@ -167,4 +167,73 @@ struct TemplateQualityEngineTests {
             profile: excludedProfile, catalog: QualityFixtures.catalog)
         #expect(withoutExclusion.overall != withExclusion.overall)
     }
+
+    // MARK: Weekly intersection of per-day skips
+
+    private func lowerBackBar(_ r: QualityReport) -> MuscleVolumeBar? {
+        r.volume.bars.flatMap { $0.children.isEmpty ? [$0] : $0.children }.first { $0.fine == .lowerBack }
+    }
+
+    @Test func muscleExcludedOnEveryActiveDayIsExcludedWeekly() {
+        // Two active (non-rest, non-empty) days, both excluding lowerBack. No day trains it.
+        let days: [[ScoredExercise]] = [
+            [QualityFixtures.sx("bench", sets: 4), QualityFixtures.sx("row", sets: 4)],
+            [QualityFixtures.sx("squat", sets: 4), QualityFixtures.sx("legpress", sets: 4)],
+        ]
+        let dayExclusions: [Set<FineMuscle>] = [[.lowerBack], [.lowerBack]]
+        let report = TemplateQualityEngine.score(
+            days: days, dayNames: ["Day1", "Day2"], scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: nil, dayExclusions: dayExclusions, dayIsRest: [false, false])
+        #expect(lowerBackBar(report)?.isExcluded == true)
+    }
+
+    @Test func dayScopedExclusionOnSomeDaysDoesNotAffectWeeklySplitScore() {
+        // Same shape, but only ONE of two active days excludes it — the other still expects it.
+        let days: [[ScoredExercise]] = [
+            [QualityFixtures.sx("bench", sets: 4), QualityFixtures.sx("row", sets: 4)],
+            [QualityFixtures.sx("squat", sets: 4), QualityFixtures.sx("legpress", sets: 4)],
+        ]
+        let withoutAny = TemplateQualityEngine.score(
+            days: days, dayNames: ["Day1", "Day2"], scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: nil, dayExclusions: [[], []], dayIsRest: [false, false])
+        let withPartial = TemplateQualityEngine.score(
+            days: days, dayNames: ["Day1", "Day2"], scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: nil, dayExclusions: [[.lowerBack], []], dayIsRest: [false, false])
+        #expect(withoutAny.overall == withPartial.overall)
+        #expect(lowerBackBar(withPartial)?.isExcluded == false)
+    }
+
+    @Test func restToggledDayHoldingExercisesDoesNotVoteInTheIntersection() {
+        // dayIsRest[1] == true but days[1] is non-empty (CreateSplitView's "toggle rest, keep
+        // exercises" case) — it must not count as a training day, so only days[0] votes.
+        let days: [[ScoredExercise]] = [
+            [QualityFixtures.sx("bench", sets: 4)],
+            [QualityFixtures.sx("squat", sets: 4)],   // leftover exercises on a "rest" day
+        ]
+        let report = TemplateQualityEngine.score(
+            days: days, dayNames: ["Day1", "RestDay"], scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: nil, dayExclusions: [[.lowerBack], []], dayIsRest: [false, true])
+        // days[1] excludes nothing and would kill the intersection if it voted; since it's
+        // correctly excluded from voting, only days[0]'s exclusion (lowerBack) stands.
+        #expect(lowerBackBar(report)?.isExcluded == true)
+    }
+
+    @Test func shortDayExclusionsArrayCannotWidenTheWeeklyExclusion() {
+        // dayExclusions has only 1 entry for 2 active days. The missing index must vote as
+        // "no exclusion" (killing the intersection), not be skipped (which would let one day's
+        // skip stand in unchallenged).
+        let days: [[ScoredExercise]] = [
+            [QualityFixtures.sx("bench", sets: 4)],
+            [QualityFixtures.sx("squat", sets: 4)],
+        ]
+        let report = TemplateQualityEngine.score(
+            days: days, dayNames: ["Day1", "Day2"], scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: nil, dayExclusions: [[.lowerBack]], dayIsRest: [false, false])
+        #expect(lowerBackBar(report)?.isExcluded == false)
+    }
 }
