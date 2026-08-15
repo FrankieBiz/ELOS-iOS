@@ -125,6 +125,11 @@ struct SettingsView: View {
                             }
                         }
                     }
+                    NavigationLink {
+                        GymsView().environmentObject(vm)
+                    } label: {
+                        Label("Gyms", systemImage: "building.2")
+                    }
                     Toggle(isOn: $vm.showQualityRater) {
                         Label("Show Quality Rating", systemImage: "gauge.medium")
                     }

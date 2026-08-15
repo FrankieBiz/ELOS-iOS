@@ -47,6 +47,7 @@ struct ElosApp: App {
             LeaderboardEntryRecord.self,
             UserSplitRecord.self,
             UserSplitDayRecord.self,
+            GymRecord.self,
             ScheduleEventRecord.self,
             CourseRecord.self,
         ])
@@ -100,7 +101,7 @@ struct ElosApp: App {
             if let error = launchError {
                 VStack(spacing: 20) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 48))
+                        .font(.largeTitle)
                         .foregroundStyle(.red)
                     Text("Something went wrong")
                         .font(.title2).fontWeight(.bold)

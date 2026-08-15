@@ -130,6 +130,13 @@ class AppViewModel: ObservableObject {
         didSet { UserDefaults.standard.set(showQualityRater, forKey: "elos.showQualityRater") }
     }
 
+    /// Which gym's day-variants are currently active. Empty = no gym selected — every day just
+    /// shows its default/original version, exactly like before this feature existed. Local-only,
+    /// same as `volumeOverrides`: nothing about which gym you're at needs to sync across devices.
+    @Published var activeGymID: String = UserDefaults.standard.string(forKey: "elos.activeGymID") ?? "" {
+        didSet { UserDefaults.standard.set(activeGymID, forKey: "elos.activeGymID") }
+    }
+
     // MARK: - Init
     init(context: ModelContext) {
         self.context = context

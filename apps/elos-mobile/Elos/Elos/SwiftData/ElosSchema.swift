@@ -686,6 +686,29 @@ final class UserSplitDayRecord {
     }
 }
 
+/// A place the lifter trains — "Fairless", "Warminster". Local-only, no backend table, same call
+/// `EquipmentPreference`/`VolumeOverrides` already make: nothing here needs to sync across devices
+/// today, and adding that later is a deliberate contract change, not a silent add-on. `id` is what
+/// `DayVariant.gymID` and `WorkoutSessionRecord.gymID` reference; a variant whose gym has since
+/// been deleted falls back to its own stored `name` rather than becoming unreadable.
+@Model
+final class GymRecord {
+    var id: String
+    var ownerID: String
+    var name: String
+    var createdAt: Date
+    var lastUsedAt: Date?
+
+    init(id: String = UUID().uuidString, ownerID: String, name: String,
+         createdAt: Date = Date(), lastUsedAt: Date? = nil) {
+        self.id = id
+        self.ownerID = ownerID
+        self.name = name
+        self.createdAt = createdAt
+        self.lastUsedAt = lastUsedAt
+    }
+}
+
 @Model
 final class SavedLibraryWorkoutRecord {
     var id: String
