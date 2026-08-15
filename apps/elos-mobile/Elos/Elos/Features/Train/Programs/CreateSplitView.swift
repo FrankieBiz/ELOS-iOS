@@ -47,6 +47,8 @@ struct CreateSplitView: View {
     /// Which exercise's muscle check-off is open, if any.
     @State private var muscleEdit: MuscleEdit? = nil
     @State private var skipMusclesDay: SkipMusclesDay? = nil
+    /// The day whose own report is open, from tapping a "BY DAY" row in the full report.
+    @State private var selectedDaySummary: SplitDaySummary? = nil
 
     private struct MuscleEdit: Identifiable {
         let dayIndex: Int
@@ -197,6 +199,7 @@ struct CreateSplitView: View {
                                 // for a day whose exercises it no longer actually determines.
                                 dayTemplateIDs[i] = ""
                             }
+                            return true
                         },
                         dayContext: biasedContext(dayIndex: i)
                     )
@@ -233,7 +236,11 @@ struct CreateSplitView: View {
                         let payload = bar.fine?.rawValue ?? bar.group.rawValue
                         pendingBiasMuscles = MuscleTaxonomy.targetMuscles(forPayload: payload)
                         activePicker = .exercise(dayIndex: firstOpenDayIndex())
-                    })
+                    },
+                    onSelectDay: { selectedDaySummary = $0 })
+            }
+            .sheet(item: $selectedDaySummary) { day in
+                DayQualityReportView(dayName: day.name, report: day.report)
             }
             .confirmationDialog("Discard this split?", isPresented: $showDiscardConfirm, titleVisibility: .visible) {
                 Button("Discard", role: .destructive) { onSave() }
@@ -252,7 +259,9 @@ struct CreateSplitView: View {
                                     scope: .weeklySplit,
                                     profile: scoringProfile,
                                     catalog: exerciseCatalog,
-                                    intent: intent)
+                                    intent: intent,
+                                    dayExclusions: dayExcludedMuscles,
+                                    dayIsRest: dayIsRest)
     }
 
     /// The selected goal overrides the saved profile's, so the goal chip actually moves the rep/rest
@@ -301,7 +310,8 @@ struct CreateSplitView: View {
                 name: dayNames[i].isEmpty ? dayLabels[i] : dayNames[i],
                 exerciseCount: day.count,
                 sets: day.reduce(0) { $0 + $1.sets },
-                score: r.isScored ? r.overall : nil)
+                score: r.isScored ? r.overall : nil,
+                report: r)
         }
     }
 

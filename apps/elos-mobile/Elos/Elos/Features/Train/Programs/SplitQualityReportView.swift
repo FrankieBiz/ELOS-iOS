@@ -8,6 +8,10 @@ struct SplitDaySummary: Identifiable {
     let exerciseCount: Int
     let sets: Int
     let score: Int?        // nil when the day has too little to score
+    /// This day's own single-session report — already computed by `daySummaries` for `score`
+    /// above; kept in full so tapping a row can open the day's own coverage bars, which is where
+    /// a day-scoped "Skip muscles" choice is actually visible.
+    let report: QualityReport
 }
 
 /// The full weekly report — the "bigger screen". Answers, in order: how good is this week, is every
@@ -17,6 +21,7 @@ struct SplitQualityReportView: View {
     let days: [SplitDaySummary]
     var onTapTip: ((QualityTip) -> Void)? = nil
     var onTapMuscle: ((MuscleVolumeBar) -> Void)? = nil
+    var onSelectDay: ((SplitDaySummary) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -82,6 +87,7 @@ struct SplitQualityReportView: View {
         case .selection: return "Weakest link is exercise choice and order."
         case .repRest:   return "Weakest link is your rep ranges and rest times."
         case .frequency: return "Weakest link is frequency — too much lands on single days."
+        case .fatigue:   return "Weakest link is session length and exercise order."
         }
     }
 
@@ -273,28 +279,41 @@ struct SplitQualityReportView: View {
             VStack(spacing: 0) {
                 ForEach(Array(days.enumerated()), id: \.element.id) { i, day in
                     if i > 0 { Divider().padding(.vertical, 8) }
-                    HStack(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(day.name.isEmpty ? "Day \(day.id + 1)" : day.name)
-                                .font(.system(.subheadline, weight: .semibold))
-                                .lineLimit(1)
-                            Text("\(day.exerciseCount) exercise\(day.exerciseCount == 1 ? "" : "s") · \(day.sets) sets")
-                                .font(.elosMicro).foregroundStyle(.secondary)
+                    Button {
+                        onSelectDay?(day)
+                    } label: {
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(day.name.isEmpty ? "Day \(day.id + 1)" : day.name)
+                                    .font(.system(.subheadline, weight: .semibold))
+                                    .lineLimit(1)
+                                Text("\(day.exerciseCount) exercise\(day.exerciseCount == 1 ? "" : "s") · \(day.sets) sets")
+                                    .font(.elosMicro).foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 0)
+                            if let s = day.score {
+                                Text("\(s)")
+                                    .font(.elosNumeric(.subheadline, weight: .bold))
+                                    .foregroundStyle(QualityPalette.color(forScore: s))
+                            } else {
+                                Text("—").font(.system(.subheadline, weight: .semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            if onSelectDay != nil {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(.caption2, weight: .semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
-                        Spacer(minLength: 0)
-                        if let s = day.score {
-                            Text("\(s)")
-                                .font(.elosNumeric(.subheadline, weight: .bold))
-                                .foregroundStyle(QualityPalette.color(forScore: s))
-                        } else {
-                            Text("—").font(.system(.subheadline, weight: .semibold))
-                                .foregroundStyle(.tertiary)
-                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .disabled(onSelectDay == nil)
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel(day.name.isEmpty ? "Day \(day.id + 1)" : day.name)
                     .accessibilityValue(day.score.map { "\($0) out of 100, \(day.exerciseCount) exercises, \(day.sets) sets" }
-                                        ?? "not scored, \(day.exerciseCount) exercises")
+                                        ?? "not scored, \(day.exerciseCount.pluralized("exercise"))")
+                    .accessibilityAddTraits(onSelectDay != nil ? .isButton : [])
                 }
             }
         }
