@@ -138,6 +138,13 @@ enum DayVariants {
         persist(vs, to: day)
     }
 
+    /// Read-only: which variant this day would switch to for `gymID`, without mutating anything —
+    /// the gym switcher's preview needs to show what's about to change before committing to it.
+    /// `nil` means the day has no version for that gym and would be left exactly as it is.
+    static func previewVariant(forGym gymID: String, day: UserSplitDayRecord) -> DayVariant? {
+        set(for: day)?.variants.first { $0.gymID == gymID }
+    }
+
     // MARK: - Private
 
     private static func currentExercises(of day: UserSplitDayRecord) -> [DayExercise] {
