@@ -154,13 +154,20 @@ final class WorkoutSessionRecord {
     var draftJSON: String = ""
     /// True once this finished session has been written to Apple Health (dedup for backfill/export).
     var exportedToHealth: Bool = false
+    /// Which gym `AppViewModel.activeGymID` was set to when this session started — "" for a
+    /// session logged before gyms existed, or pulled from the server (a gym is local-only and
+    /// never syncs, so a session rehydrated from another device has no way to know). Local-only,
+    /// same defaulted-column trick as `draftJSON`/`exportedToHealth`. Purely a soft input to
+    /// Phase 3's learned-equipment index — nothing scoped to a session's own gym is load-bearing.
+    var gymID: String = ""
 
     init(id: String = UUID().uuidString, ownerID: String,
          startedAt: Date = Date(), finishedAt: Date? = nil,
          sessionRPE: Int = 0, notes: String = "",
          templateID: String = "", totalVolume: Double = 0,
          serverID: String = "", syncPending: Bool = false,
-         draftJSON: String = "", exportedToHealth: Bool = false) {
+         draftJSON: String = "", exportedToHealth: Bool = false,
+         gymID: String = "") {
         self.id          = id
         self.ownerID     = ownerID
         self.startedAt   = startedAt
@@ -173,6 +180,7 @@ final class WorkoutSessionRecord {
         self.syncPending = syncPending
         self.draftJSON   = draftJSON
         self.exportedToHealth = exportedToHealth
+        self.gymID       = gymID
     }
 }
 

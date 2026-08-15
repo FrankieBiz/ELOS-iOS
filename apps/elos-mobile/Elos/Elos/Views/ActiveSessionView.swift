@@ -13,6 +13,12 @@ struct ActiveSessionView: View {
     @State private var restTotalSeconds  = 0
     @State private var restActive        = false
     @State private var restPaused        = false
+    /// Wall-clock anchor for the countdown, mirroring how `elapsedSeconds` derives from `startedAt`
+    /// instead of a decrementing counter — a `Timer.publish` tick doesn't fire while backgrounded, so
+    /// counting down by 1 each tick left the on-screen bar wrong (too high) after any real background
+    /// time, even though the real local notification fired correctly. `nil` while not actively counting
+    /// down (idle or paused); resynced to `restSeconds` every time rest starts, resumes, or is adjusted.
+    @State private var restEndsAt: Date?
     @State private var activeExerciseId: UUID?
     @State private var showFinishAlert   = false
     @State private var showRPEPrompt     = false
@@ -75,9 +81,10 @@ struct ActiveSessionView: View {
         .safeAreaInset(edge: .bottom) { bottomBar }
         .onReceive(sessionTimer) { _ in
             now = Date()   // drives the wall-clock elapsed display (survives backgrounding)
-            if restActive && !restPaused && restSeconds > 0 {
-                restSeconds -= 1
-                if restSeconds == 0 { restDidComplete() }
+            if restActive && !restPaused, let endsAt = restEndsAt {
+                let remaining = max(0, Int(ceil(endsAt.timeIntervalSince(now))))
+                if remaining != restSeconds { restSeconds = remaining }
+                if remaining == 0 { restDidComplete() }
             }
         }
         .alert("Finish Workout?", isPresented: $showFinishAlert) {
@@ -99,10 +106,23 @@ struct ActiveSessionView: View {
         }
         .sheet(isPresented: $showExercisePicker) {
             ExercisePickerView(onPickSingle: { picked in
+                // Logged sets are keyed by (session, exercise name, set index) — not by the exercise's
+                // own instance id — so two exercises sharing a name in one session would make the
+                // un-log/edit path ambiguous between them. Block the duplicate instead of corrupting data.
+                if vm.exercises.contains(where: { $0.name == picked.name }) {
+                    showExercisePicker = false
+                    vm.showError("\(picked.name) is already in this workout.")
+                    return true
+                }
+                // Resolve through the shared chain so an exercise added mid-workout is attributed the
+                // same way one loaded from the template is — including a movement chosen in the picker.
+                let targets = vm.resolveTargets(exerciseID: picked.id, name: picked.name,
+                                                equipmentId: picked.equipmentId,
+                                                override: picked.muscleTargets)
                 let newEx = Exercise(
                     name: picked.name,
-                    primaryMuscle: "",
-                    secondaryMuscles: [],
+                    primaryMuscle: targets.catalogPrimary ?? "",
+                    secondaryMuscles: targets.catalogSecondaries,
                     setsLabel: "3×10",
                     lastBest: "",
                     sets: (0..<3).map { _ in WorkSet(weight: "", reps: "10", rpe: "") },
@@ -110,16 +130,18 @@ struct ActiveSessionView: View {
                     equipmentDedupeKey: picked.equipmentDedupeKey,
                     equipmentBrandName: picked.equipmentBrandName,
                     isGenericExercise: picked.isGenericExercise,
-                    supportsAddedWeight: ExerciseCatalog.weightableBodyweightExercises.contains(picked.name)
+                    supportsAddedWeight: ExerciseCatalog.weightableBodyweightExercises.contains(picked.name),
+                    muscleTargets: targets.isEmpty ? nil : targets
                 )
                 vm.exercises.append(newEx)
                 showExercisePicker = false
                 withAnimation { activeExerciseId = newEx.id }
+                return true
             })
         }
         .onAppear {
             activeExerciseId = vm.exercises.first?.id
-            trainVM.startSession(ownerID: vm.currentUserID)
+            trainVM.startSession(ownerID: vm.currentUserID, gymID: vm.activeGymID)
         }
         .onDisappear {
             // Leaving the session (finish or back) must clear any pending rest alert.
@@ -173,7 +195,13 @@ struct ActiveSessionView: View {
             Text(sessionTitle).font(.headline).lineLimit(1)
             Spacer()
 
-            Button { showFinishAlert = true } label: {
+            Button {
+                let anyDone = vm.exercises.flatMap(\.sets).contains(where: \.done)
+                if anyDone { showFinishAlert = true } else {
+                    trainVM.finishSession(sessionRPE: 0, ownerID: vm.currentUserID)
+                    vm.showingSession = false
+                }
+            } label: {
                 Text("Finish").font(.subheadline).fontWeight(.semibold).foregroundStyle(Color.bad)
             }
             .buttonStyle(.plain)
@@ -308,6 +336,7 @@ struct ActiveSessionView: View {
         if restSeconds == 0 {
             skipRest()
         } else {
+            restEndsAt = Date().addingTimeInterval(TimeInterval(restSeconds))
             NotificationManager.scheduleRestTimer(seconds: restSeconds)
         }
     }
@@ -316,15 +345,20 @@ struct ActiveSessionView: View {
         restActive = false
         restSeconds = 0
         restPaused = false
+        restEndsAt = nil
         NotificationManager.cancelRestTimer()
     }
 
-    /// Pause must also halt the real OS alert, not just the on-screen bar.
+    /// Pause must also halt the real OS alert, not just the on-screen bar. Clearing `restEndsAt`
+    /// freezes the wall-clock derivation at whatever `restSeconds` currently reads; resuming re-anchors
+    /// from "now" so the paused duration is never counted against the countdown.
     private func togglePause() {
         restPaused.toggle()
         if restPaused {
+            restEndsAt = nil
             NotificationManager.cancelRestTimer()
         } else if restSeconds > 0 {
+            restEndsAt = Date().addingTimeInterval(TimeInterval(restSeconds))
             NotificationManager.scheduleRestTimer(seconds: restSeconds)
         }
     }
@@ -332,6 +366,7 @@ struct ActiveSessionView: View {
     /// Fired the instant the countdown reaches zero — the old banner just vanished silently.
     private func restDidComplete() {
         restActive = false
+        restEndsAt = nil
         HapticManager.success()
         AudioServicesPlaySystemSound(1057)   // "Tink" — a gentle in-app rest-done cue
     }
@@ -343,7 +378,7 @@ struct ActiveSessionView: View {
         if let eIdx = vm.exercises.firstIndex(where: { $0.id == u.exerciseID }),
            let sIdx = vm.exercises[eIdx].sets.firstIndex(where: { $0.id == u.setID }),
            vm.exercises[eIdx].sets[sIdx].done {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+            withAnimation(.elosEmphasis) {
                 vm.toggleSet(exerciseIndex: eIdx, setIndex: sIdx)
             }
             trainVM.unlogCompletedSet(exerciseName: u.exerciseName, setIndex: u.loggedSetIndex, ownerID: vm.currentUserID)
@@ -402,12 +437,17 @@ struct ActiveSessionView: View {
                                     vm.showError("Enter reps before completing this set.")
                                     return
                                 }
-                                let weightVal = max(0, Double(ex.sets[sIdx].weight) ?? 0)
+                                let weightText = ex.sets[sIdx].weight
+                                guard weightText.isEmpty || Double(weightText) != nil else {
+                                    vm.showError("Weight isn't a number.")
+                                    return
+                                }
+                                let weightVal = max(0, Double(weightText) ?? 0)
                                 let weightKg = vm.weightUnit.toKg(weightVal)
                                 let rpe = min(10, max(0, Double(ex.sets[sIdx].rpe) ?? 0))
                                 let rest = ex.restSeconds > 0 ? ex.restSeconds : 90
 
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+                                withAnimation(.elosEmphasis) {
                                     vm.toggleSet(exerciseIndex: eIdx, setIndex: sIdx)
                                 }
                                 HapticManager.impact(.medium)
@@ -421,12 +461,14 @@ struct ActiveSessionView: View {
                                     ownerID: vm.currentUserID,
                                     equipmentId: ex.equipmentId,
                                     equipmentDedupeKey: ex.equipmentDedupeKey,
-                                    equipmentBrandName: ex.equipmentBrandName
+                                    equipmentBrandName: ex.equipmentBrandName,
+                                    muscleTargets: ex.resolvedTargets
                                 )
                                 restSeconds = rest
                                 restTotalSeconds = rest
                                 restActive  = true
                                 restPaused  = false
+                                restEndsAt  = Date().addingTimeInterval(TimeInterval(rest))
                                 activeExerciseId = ex.id
 
                                 // Brief undo window for an accidental tap. Capture identities,
@@ -445,7 +487,7 @@ struct ActiveSessionView: View {
                                     if undoInfo?.id == info.id { withAnimation { undoInfo = nil } }
                                 }
                             } else {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+                                withAnimation(.elosEmphasis) {
                                     vm.toggleSet(exerciseIndex: eIdx, setIndex: sIdx)
                                 }
                                 trainVM.unlogCompletedSet(
@@ -473,7 +515,8 @@ struct ActiveSessionView: View {
                                 newRPE: rpe,
                                 ownerID: vm.currentUserID
                             )
-                        }
+                        },
+                        allExerciseNames: vm.exercises.map(\.name)
                     )
                 }
             }
@@ -509,7 +552,7 @@ struct ActiveSessionView: View {
     private var emptyExercisesPrompt: some View {
         VStack(spacing: Space.m) {
             Image(systemName: "dumbbell.fill")
-                .font(.system(size: 32))
+                .font(.title)
                 .foregroundStyle(.tertiary)
             Text("No exercises yet")
                 .font(.elosHeadline)
@@ -564,7 +607,7 @@ private struct SessionRPESheet: View {
             .padding(.top, 28)
 
             Text("\(rpe)")
-                .font(.system(size: 56, weight: .bold, design: .rounded).monospacedDigit())
+                .font(.elosNumeric(.largeTitle, weight: .bold))
                 .foregroundStyle(Color.tint)
 
             Slider(value: Binding(get: { Double(rpe) }, set: { rpe = Int($0) }),
@@ -583,7 +626,7 @@ private struct SessionRPESheet: View {
                 onConfirm()
             } label: {
                 Text("Save & Finish")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(.callout, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
