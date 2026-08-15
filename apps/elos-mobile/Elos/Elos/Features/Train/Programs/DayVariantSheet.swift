@@ -16,6 +16,8 @@ struct DayVariantSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Query private var allSets: [ExerciseSetRecord]
+    @Query private var allSessions: [WorkoutSessionRecord]
 
     @State private var variantSet: DayVariantSet
     @State private var renamingVariant: DayVariant? = nil
@@ -74,6 +76,23 @@ struct DayVariantSheet: View {
         }
     }
 
+    private var sessionGymByID: [String: String] {
+        Dictionary(uniqueKeysWithValues: allSessions.map { ($0.id, $0.gymID) })
+    }
+
+    /// A quiet, non-blocking note — never a warning that stops anything — for when a variant uses
+    /// equipment that's never been logged at its own gym. Stays silent if nothing's been logged at
+    /// that gym at all yet: an empty inventory means "unknown," not "this gym has nothing," and
+    /// flagging every exercise on day one would just be noise.
+    private func unloggedEquipmentNote(for variant: DayVariant) -> String? {
+        guard let gymID = variant.gymID else { return nil }
+        let inventory = GymEquipmentIndex.loggedDedupeKeys(gymID: gymID, sets: allSets, sessionGymByID: sessionGymByID)
+        guard !inventory.isEmpty else { return nil }
+        let unlogged = variant.exercises.compactMap(\.equipmentDedupeKey).filter { !inventory.contains($0) }
+        guard !unlogged.isEmpty else { return nil }
+        return "Uses equipment you haven't logged at this gym yet"
+    }
+
     @ViewBuilder private func variantRow(_ variant: DayVariant) -> some View {
         let isActive = variant.id == variantSet.activeID
         HStack {
@@ -81,6 +100,9 @@ struct DayVariantSheet: View {
                 Text(variant.name).font(.subheadline).fontWeight(.semibold)
                 if let gymID = variant.gymID, let gym = gyms.first(where: { $0.id == gymID }) {
                     Text(gym.name).font(.elosCaption).foregroundStyle(.secondary)
+                }
+                if let note = unloggedEquipmentNote(for: variant) {
+                    Text(note).font(.elosMicro).foregroundStyle(.secondary)
                 }
             }
             Spacer()
