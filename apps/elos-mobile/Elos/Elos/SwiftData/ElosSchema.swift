@@ -655,6 +655,12 @@ final class UserSplitDayRecord {
     /// lightweight-migration trick as `WorkoutTemplateRecord.intentJSON`. Defaulted so existing rows
     /// pick up the new column with no exclusions.
     var excludedMusclesJSON: String = ""
+    /// Alternate versions of this day for different gyms — "Leg Day @ Fairless" vs "@ Warminster"
+    /// — as JSON. Local-only, same trick. `dayName`/`templateID`/`exercisesJSON`/`isRest` above
+    /// stay the single source of truth for everything that already reads them (session start,
+    /// sync, scoring); this column only ever describes the *other* versions plus which one is
+    /// active. See `DayVariants` — every mutation goes through it, never this string directly.
+    var variantsJSON: String = ""
 
     var excludedMuscles: Set<FineMuscle> {
         get {

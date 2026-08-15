@@ -1338,6 +1338,12 @@ class AppViewModel: ObservableObject {
                                     localDay.isRest = remoteDay.is_rest
                                     localDay.templateID = remoteDay.template_id
                                     localDay.exercisesJSON = remoteDay.exercises_json
+                                    // The wire fields just changed under this day's active
+                                    // variant (if it has any) — bring the variant's own cached
+                                    // copy in line with what the server actually holds, rather
+                                    // than letting the next switch-away silently overwrite this
+                                    // real edit with a stale one.
+                                    DayVariants.reconcileAfterRemoteUpdate(day: localDay)
                                 }
                             }
                         } else {
