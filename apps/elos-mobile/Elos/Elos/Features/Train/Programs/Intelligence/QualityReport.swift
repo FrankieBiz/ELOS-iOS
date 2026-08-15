@@ -3,7 +3,7 @@ import Foundation
 /// The scored dimensions of a workout's quality. `frequency` applies to a week only — a single
 /// session has no frequency to judge, so it carries zero weight at `.singleSession` scope.
 enum QualityDimension: String, CaseIterable {
-    case volume, balance, selection, repRest, frequency
+    case volume, balance, selection, repRest, frequency, fatigue
 
     var label: String {
         switch self {
@@ -12,6 +12,7 @@ enum QualityDimension: String, CaseIterable {
         case .selection: return "Selection"
         case .repRest:   return "Reps & rest"
         case .frequency: return "Frequency"
+        case .fatigue:   return "Fatigue & order"
         }
     }
 
@@ -54,6 +55,12 @@ enum TipAction: Equatable {
     /// Re-sort a day compounds-first. Carries the day index because at weekly scope there is no
     /// implicit "the day" — the split builder needs to know *which* day to reorder.
     case reorder(dayIndex: Int)
+    /// Rewrite out-of-range rep targets to the goal's range. A pure numeric edit — no exercise
+    /// choice involved, which is what makes it auto-fixable at all.
+    case retuneReps
+    /// Rewrite out-of-range rest targets to the goal's range. Single-session scope only — split
+    /// days don't capture rest.
+    case retuneRest
     case noAction
 
     var isActionable: Bool { self != .noAction }

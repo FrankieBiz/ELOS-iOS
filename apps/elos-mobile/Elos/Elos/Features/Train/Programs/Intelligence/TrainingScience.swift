@@ -61,6 +61,13 @@ enum TrainingScience {
     static let sessionTotalLow   = 9    // total working sets — very short below this
     static let sessionTotalHigh  = 30   // total working sets — too long above this
 
+    // MARK: Auto-fix
+
+    /// Cap on how many sets a single auto-added exercise can carry, even when the shortfall to a
+    /// muscle's weekly minimum is larger. An honest partial fix with a caveat beats silently
+    /// inflating one exercise to an unrealistic set count.
+    static let maxAutoFixSetsPerExercise = 5
+
     // MARK: Balance
 
     static let pushPullRatioLimit  = 1.5

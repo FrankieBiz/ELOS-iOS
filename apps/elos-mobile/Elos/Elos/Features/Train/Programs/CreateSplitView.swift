@@ -330,6 +330,9 @@ struct CreateSplitView: View {
                 dayExercises[dayIndex] = ExerciseOrderer.order(dayExercises[dayIndex],
                                                               catalog: exerciseCatalog)
             }
+        case .retuneReps, .retuneRest:
+            // Auto-fix only for now (Task 11) — no manual affordance for a rep/rest retune yet.
+            break
         case .noAction:
             break
         }
