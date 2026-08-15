@@ -26,7 +26,10 @@ enum FixDayChooser {
         // auto-adding a muscle the lifter told this day to skip is exactly the bug the day-scoped
         // skip feature exists to prevent.
         let eligible = dayExercises.indices.filter { i in
-            guard !dayIsRest[i] else { return false }
+            // Bounds-safe like `dayExcludedMuscles` below: a caller passing a shorter `dayIsRest`
+            // shouldn't crash, and reading it as "not rest" is the same safe default `isTrainingDay`
+            // uses in TemplateQualityEngine.
+            guard !(i < dayIsRest.count && dayIsRest[i]) else { return false }
             let excluded = i < dayExcludedMuscles.count ? dayExcludedMuscles[i] : []
             return !targets.allSatisfy { excluded.contains($0) }
         }
