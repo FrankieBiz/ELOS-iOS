@@ -140,16 +140,21 @@ struct MuscleBarRow: View {
     /// "1/1 muscles in range" look like the same measurement. Colour and the goal line carry the
     /// group's verdict; expanding it names the muscle at fault.
     private var valueText: String {
+        // A muscle the lifter excluded must never just read as a plain zero or vanish — that's
+        // indistinguishable from a real gap, and for the new weekly intersection specifically
+        // (a muscle skipped on every training day) it can be flat wrong mid-build. Muting always
+        // stays visible and explained, ahead of the science-driven `isOptional` case below.
+        if bar.isExcluded { return "Skipped" }
         let sets = VolumeScorer.setsText(bar.sets)
         guard let band = bar.band else { return sets }
         return "\(sets)/\(VolumeScorer.setsText(band.targetLow))"
     }
 
     private var accessibilityValue: String {
-        let sets = VolumeScorer.setsText(bar.sets)
-        if bar.isOptional { return "\(sets) sets, optional" }
-        if !bar.isExpected { return "\(sets) sets, not part of this focus" }
-        var s = "\(sets) sets"
+        if bar.isExcluded { return "Excluded from coverage" }
+        if bar.isOptional { return "\(bar.sets.pluralized("set")), optional" }
+        if !bar.isExpected { return "\(bar.sets.pluralized("set")), not part of this focus" }
+        var s = bar.sets.pluralized("set")
         if let band = bar.band {
             s += ", target \(VolumeScorer.setsText(band.targetLow)) to \(VolumeScorer.setsText(band.targetHigh))"
         } else if bar.expectedCount > 0 {
@@ -206,7 +211,7 @@ struct MuscleCoverageBars: View {
             // Button also gets focus, press feedback and VoiceOver activation for free.
             Button {
                 guard bar.isExpandable else { onTapMuscle?(bar); return }
-                withAnimation(.easeInOut(duration: 0.22)) {
+                withAnimation(.elosStandard) {
                     if isOpen { expanded.remove(bar.id) } else { expanded.insert(bar.id) }
                 }
             } label: {
