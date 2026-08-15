@@ -848,6 +848,11 @@ struct UserSplitDetailView: View {
             guard let data = try? JSONEncoder().encode(exercises),
                   let json = String(data: data, encoding: .utf8) else { continue }
             day.exercisesJSON = json
+            // Same reasoning as SplitDayPersistence.upsertDays: this just wrote a new wire field
+            // for the day, same as a builder save or a remote sync would — if it has an active
+            // variant, that variant's cached copy must catch up or the next switch-away silently
+            // reverts this fix.
+            DayVariants.syncActiveVariantToWireFields(day: day)
         }
         split.syncPending = true
         try? modelContext.save()
