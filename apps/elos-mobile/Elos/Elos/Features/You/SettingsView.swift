@@ -97,7 +97,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Training") {
+                Section {
                     Button {
                         HapticManager.impact(.light)
                         showingBodyMetrics = true
@@ -134,6 +134,13 @@ struct SettingsView: View {
                         Label("Show Quality Rating", systemImage: "gauge.medium")
                     }
                     .tint(Color.tint)
+                } header: {
+                    Text("Training")
+                } footer: {
+                    // Gyms tracks WHERE you train, not WHAT equipment you generally have — that's a
+                    // separate setting, cross-linked here so checking one screen surfaces the other.
+                    Text("General equipment access is set in Edit Profile.")
+                        .font(.elosMicro)
                 }
 
                 Section("Canvas LMS") {
