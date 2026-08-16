@@ -89,42 +89,13 @@ class TemplatesViewModel: ObservableObject {
                 continue
             }
 
-            let exs = exerciseRecords(for: record.id)
-            let body = CreateTemplateRequest(
-                name: record.name,
-                exercises: exs.enumerated().map { idx, ex in
-                    TemplateExerciseRequest(
-                        exercise_id: ex.exerciseID,
-                        exercise_name: ex.exerciseName,
-                        order_index: idx,
-                        target_sets: ex.targetSets,
-                        target_reps: ex.targetReps,
-                        target_rpe: ex.targetRPE > 0 ? ex.targetRPE : nil,
-                        rest_seconds: ex.restSeconds,
-                        notes: ex.notes.isEmpty ? nil : ex.notes,
-                        equipment_id: ex.equipmentId,
-                        equipment_dedupe_key: ex.equipmentDedupeKey,
-                        equipment_brand_name: ex.equipmentBrandName
-                    )
-                }
-            )
-            do {
-                let response = try await ApiClient.shared.post("/templates", body: body) as TemplateDetailResponse
-                let oldID = record.id
-                record.serverConfirmed = true
-                if oldID != response.id {
-                    record.id = response.id
-                    for (idx, ex) in exs.enumerated() {
-                        ex.templateID = response.id
-                        if idx < response.exercises.count { ex.id = response.exercises[idx].id }
-                    }
-                    templateExercises.removeValue(forKey: oldID)
-                    templateExercises[response.id] = exs
-
-                    TemplateIDRepointing.repointDays(from: oldID, to: response.id, context: context)
-                }
-            } catch {
-                // Still safe locally; retried on the next load.
+            // Routes through TemplateSync's `inFlight` guard so this sweep can never double-POST a
+            // template that Discover's addToMyPlan (or the launch retry loop) is already pushing.
+            let oldID = record.id
+            await TemplateSync.pushIfNeeded(record, context: context)
+            if record.serverConfirmed && oldID != record.id {
+                templateExercises.removeValue(forKey: oldID)
+                templateExercises[record.id] = exerciseRecords(for: record.id)
             }
         }
         try? context.save()
@@ -166,40 +137,17 @@ class TemplatesViewModel: ObservableObject {
         templates.insert(record, at: 0)
         templateExercises[localID] = exRecords
 
+        // Routes through TemplateSync's `inFlight` guard — without this, a `reconcileUnconfirmed`
+        // sweep triggered by the Templates tab reappearing mid-create could find this same
+        // still-unconfirmed record and double-POST it.
         Task {
-            let body = CreateTemplateRequest(
-                name: name,
-                exercises: exercises.enumerated().map { idx, ex in
-                    TemplateExerciseRequest(
-                        exercise_id: ex.exerciseID,
-                        exercise_name: ex.exerciseName,
-                        order_index: idx,
-                        target_sets: ex.targetSets,
-                        target_reps: ex.targetReps,
-                        target_rpe: ex.targetRPE > 0 ? ex.targetRPE : nil,
-                        rest_seconds: ex.restSeconds,
-                        notes: ex.notes.isEmpty ? nil : ex.notes,
-                        equipment_id: ex.equipmentId,
-                        equipment_dedupe_key: ex.equipmentDedupeKey,
-                        equipment_brand_name: ex.equipmentBrandName
-                    )
-                }
-            )
-            do {
-                let response = try await ApiClient.shared.post("/templates", body: body) as TemplateDetailResponse
-                let serverID = response.id
-                record.serverConfirmed = true
-                if localID != serverID {
-                    record.id = serverID
-                    for (idx, ex) in exRecords.enumerated() {
-                        ex.templateID = serverID
-                        if idx < response.exercises.count { ex.id = response.exercises[idx].id }
-                    }
+            await TemplateSync.pushIfNeeded(record, context: context)
+            if record.serverConfirmed {
+                if localID != record.id {
                     templateExercises.removeValue(forKey: localID)
-                    templateExercises[serverID] = exRecords
+                    templateExercises[record.id] = exRecords
                 }
-                try? context.save()
-            } catch {
+            } else {
                 syncError = "Couldn't save \"\(name)\" to the cloud. It's saved on this device — reopen it to retry syncing."
             }
         }
@@ -318,7 +266,9 @@ struct TemplateExerciseResponse: Decodable {
     let equipment_brand_name: String?
 }
 
-private struct CreateTemplateRequest: Encodable {
+// Not `private` — `TemplateSync.pushIfNeeded` (Features/Train/Templates/TemplateSync.swift)
+// reuses this exact wire shape to push a template outside this file's own reconcile sweep.
+struct CreateTemplateRequest: Encodable {
     let name: String
     let exercises: [TemplateExerciseRequest]
 }
@@ -328,7 +278,7 @@ private struct UpdateTemplateRequest: Encodable {
     let exercises: [TemplateExerciseRequest]
 }
 
-private struct TemplateExerciseRequest: Encodable {
+struct TemplateExerciseRequest: Encodable {
     let exercise_id: String?
     let exercise_name: String
     let order_index: Int

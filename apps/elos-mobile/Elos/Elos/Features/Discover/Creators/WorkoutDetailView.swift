@@ -301,6 +301,9 @@ final class WorkoutDetailViewModel: ObservableObject {
 
         let split = UserSplitRecord(ownerID: ownerID, name: w.title)
         context.insert(split)
+        // Matches CreateSplitView.saveSplit(): pending from the moment it's created, so a
+        // failed/offline push is retried on next launch instead of the split silently vanishing.
+        split.syncPending = true
         let indexToWeekday = [2, 3, 4, 5, 6, 7, 1]   // same convention as CreateSplitView.saveSplit()
         split.pinnedWeekdays = (0..<7).filter { !dayIsRest[$0] }.map { indexToWeekday[$0] }
         SplitDayPersistence.upsertDays(
@@ -318,6 +321,7 @@ final class WorkoutDetailViewModel: ObservableObject {
         isAddingToPlan = true
         Task {
             defer { isAddingToPlan = false }
+            await TemplateSync.pushPendingTemplates(forSplit: split, context: context)
             await vm.pushSplitToServer(split)
             addedToPlan = true
         }

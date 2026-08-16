@@ -101,4 +101,61 @@ struct WorkoutDetailAddToPlanTests {
 
         #expect(split?.isActive == false, "matches the existing 'blank Create Split just adds to My Splits' convention")
     }
+
+    // A split built here used to never set `syncPending`, unlike CreateSplitView.saveSplit() — so a
+    // push that failed or never ran (offline) left the split permanently unsynced with no retry path,
+    // while the UI still reported success once `addedToPlan` was set.
+    @Test @MainActor func theBuiltSplitIsMarkedSyncPendingSoAFailedPushIsRetried() {
+        let context = makeContext()
+        let vm = WorkoutDetailViewModel()
+        vm.workout = sampleWorkout(dayCount: 2)
+
+        let split = vm.buildLocalSplit(ownerID: "u1", context: context)
+
+        #expect(split?.syncPending == true)
+    }
+
+    // The new templates created alongside the split used to rely entirely on
+    // TemplatesViewModel.reconcileUnconfirmed to ever reach the server — which only runs when the
+    // user opens the Templates tab. `TemplateSync.pendingTemplates` is what lets a split push (from
+    // Discover's addToMyPlan, or the launch-time retry loop) push them immediately instead.
+    @Test @MainActor func pendingTemplatesReturnsEveryUnconfirmedTemplateThisSplitsDaysUse() {
+        let context = makeContext()
+        let vm = WorkoutDetailViewModel()
+        vm.workout = sampleWorkout(dayCount: 3)
+        guard let split = vm.buildLocalSplit(ownerID: "u1", context: context) else {
+            Issue.record("split should have been built")
+            return
+        }
+
+        let pending = TemplateSync.pendingTemplates(forSplit: split, context: context)
+
+        #expect(pending.count == 3)
+        #expect(pending.allSatisfy { !$0.serverConfirmed })
+    }
+
+    @Test @MainActor func pendingTemplatesIgnoresTemplatesAlreadyConfirmed() {
+        let context = makeContext()
+        let vm = WorkoutDetailViewModel()
+        vm.workout = sampleWorkout(dayCount: 1)
+        guard let split = vm.buildLocalSplit(ownerID: "u1", context: context) else {
+            Issue.record("split should have been built")
+            return
+        }
+        let templates = (try? context.fetch(FetchDescriptor<WorkoutTemplateRecord>())) ?? []
+        templates.first?.serverConfirmed = true
+
+        let pending = TemplateSync.pendingTemplates(forSplit: split, context: context)
+
+        #expect(pending.isEmpty)
+    }
+
+    @Test @MainActor func pendingTemplatesReturnsEmptyForARestOnlyProgram() {
+        let context = makeContext()
+
+        let pending = TemplateSync.pendingTemplates(
+            forSplit: UserSplitRecord(ownerID: "u1", name: "Empty"), context: context)
+
+        #expect(pending.isEmpty)
+    }
 }

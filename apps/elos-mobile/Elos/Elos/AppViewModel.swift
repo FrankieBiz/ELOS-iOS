@@ -1398,11 +1398,14 @@ class AppViewModel: ObservableObject {
                 loadActiveSplit()
             }
 
-            // Push locally-created splits (this user's) not yet on the server
+            // Push locally-created splits (this user's) not yet on the server. Their days may still
+            // reference not-yet-confirmed templates (e.g. an offline Discover import) — push those
+            // first so the split carries corrected server template ids instead of dangling local ones.
             let allLocal = (try? context.fetch(
                 FetchDescriptor<UserSplitRecord>(predicate: #Predicate { $0.ownerID == uid })
             )) ?? []
             for record in allLocal where record.syncPending && record.serverID.isEmpty {
+                await TemplateSync.pushPendingTemplates(forSplit: record, context: context)
                 await pushSplitToServer(record)
             }
 
