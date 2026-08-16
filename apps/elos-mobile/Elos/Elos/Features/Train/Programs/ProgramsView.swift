@@ -888,17 +888,9 @@ struct UserSplitDetailView: View {
         daySummaries.first { $0.id == day.orderIndex }
     }
 
-    /// The active variant's name, only when the day genuinely has more than one — a day with
-    /// zero or one variant shows no chip at all, so the common case (no gym-splitting) reads
-    /// exactly as it did before this feature existed.
-    private func activeVariantName(for day: UserSplitDayRecord) -> String? {
-        guard let vs = DayVariants.set(for: day), vs.variants.count > 1 else { return nil }
-        return vs.variants.first { $0.id == vs.activeID }?.name
-    }
-
     private func dayRow(_ day: UserSplitDayRecord) -> some View {
         let daySummary = summary(for: day)
-        let variantName = day.isRest ? nil : activeVariantName(for: day)
+        let variantName = day.isRest ? nil : DayVariants.activeVariantName(for: day)
 
         return HStack(spacing: 12) {
             Button {

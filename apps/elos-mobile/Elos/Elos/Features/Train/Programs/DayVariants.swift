@@ -138,6 +138,14 @@ enum DayVariants {
         persist(vs, to: day)
     }
 
+    /// The active variant's name, only when the day genuinely has more than one — a day with zero
+    /// or one variant returns nil, so the common case (no gym-splitting) shows nothing extra
+    /// anywhere this is used (the split detail view's day-row chip, Today/Plan's schedule copy).
+    static func activeVariantName(for day: UserSplitDayRecord) -> String? {
+        guard let vs = set(for: day), vs.variants.count > 1 else { return nil }
+        return vs.variants.first { $0.id == vs.activeID }?.name
+    }
+
     /// Read-only: which variant this day would switch to for `gymID`, without mutating anything —
     /// the gym switcher's preview needs to show what's about to change before committing to it.
     /// `nil` means the day has no version for that gym and would be left exactly as it is.

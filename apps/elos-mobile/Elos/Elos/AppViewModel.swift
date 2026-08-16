@@ -1046,7 +1046,13 @@ class AppViewModel: ObservableObject {
 
         // 4. Gym day: determine if this calendar date has a gym day (accounting for skips + exam pushes)
         if let gymDay = gymDay(for: date), !gymDay.isRest {
-            let gymTitle = gymDay.dayName.isEmpty ? "Workout" : gymDay.dayName
+            var gymTitle = gymDay.dayName.isEmpty ? "Workout" : gymDay.dayName
+            // Switching gyms silently changes what this day actually is (a different variant's
+            // exercises); say so here rather than leaving zero confirmation that the right version
+            // loaded — feeds both Today's schedule and Plan's timeline, which both read this title.
+            if let variant = DayVariants.activeVariantName(for: gymDay) {
+                gymTitle += " · \(variant)"
+            }
             rows.append(ScheduleRow(time: "15:30", title: gymTitle,
                                     moduleType: "gym", durationMinutes: 60, isDone: false))
         }

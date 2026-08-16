@@ -58,7 +58,59 @@ struct PlanView: View {
             dayPicker
             scheduleTimeline
             loadSummaryCard
+            thisWeekCard
         }
+    }
+
+    /// A rest day's timeline is legitimately short — one line, one card — which used to leave the
+    /// rest of the tab a bare black void below it. Real, already-available data instead of padding:
+    /// how much training and schoolwork actually lands this week, glanceable without switching tabs.
+    private var thisWeekCard: some View {
+        let workoutDays = vm.weekLoadMap(daysAhead: 7).filter { $0.loadType == "gym" }.count
+        let dueThisWeek = vm.assignments.filter { assign -> Bool in
+            guard !assign.done else { return false }
+            let daysUntil = Formatters.daysFromToday(toISODay: assign.due)
+            return daysUntil >= 0 && daysUntil <= 6
+        }.count
+        let nextExam = vm.exams.filter { $0.daysAway >= 0 && $0.daysAway <= 7 }
+            .min(by: { $0.daysAway < $1.daysAway })
+
+        return VStack(alignment: .leading, spacing: 0) {
+            Text("This Week").elosSectionLabel()
+                .padding(.horizontal, Space.gutter)
+                .padding(.top, Space.l)
+                .padding(.bottom, Space.m)
+
+            Divider()
+
+            weekStatRow(icon: "dumbbell.fill", tint: .good,
+                        text: workoutDays == 0 ? "No workouts scheduled" : "\(workoutDays) workout\(workoutDays == 1 ? "" : "s") scheduled")
+            Divider().padding(.leading, 44)
+
+            weekStatRow(icon: "doc.text.fill", tint: .tint,
+                        text: dueThisWeek == 0 ? "Nothing due" : "\(dueThisWeek) assignment\(dueThisWeek == 1 ? "" : "s") due")
+
+            if let exam = nextExam {
+                Divider().padding(.leading, 44)
+                weekStatRow(icon: "exclamationmark.triangle.fill", tint: .warn,
+                            text: "\(exam.title) in \(exam.daysAway) day\(exam.daysAway == 1 ? "" : "s")")
+            }
+        }
+        .elosCard()
+    }
+
+    private func weekStatRow(icon: String, tint: Color, text: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.callout)
+                .foregroundStyle(tint)
+                .frame(width: 20)
+            Text(text)
+                .font(.subheadline)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Space.gutter)
+        .padding(.vertical, 12)
     }
 
     private var dayPicker: some View {
@@ -77,7 +129,7 @@ struct PlanView: View {
                     let isSelected = selectedDayOffset == offset
 
                     Button {
-                        withAnimation(.snappy(duration: 0.22)) { selectedDayOffset = offset }
+                        withAnimation(.elosStandard) { selectedDayOffset = offset }
                     } label: {
                         VStack(spacing: 3) {
                             Text(letter)
@@ -116,7 +168,7 @@ struct PlanView: View {
             if rows.isEmpty {
                 VStack(spacing: Space.s) {
                     Image(systemName: "calendar")
-                        .font(.system(size: 26))
+                        .font(.title)
                         .foregroundStyle(.tertiary)
                     Text("Nothing scheduled")
                         .font(.elosHeadline).foregroundStyle(.secondary)
@@ -132,7 +184,7 @@ struct PlanView: View {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
                         HStack(spacing: 12) {
                             Text(row.time == "—" ? "  —  " : row.time)
-                                .font(.system(size: 12, weight: .regular, design: .rounded).monospacedDigit())
+                                .font(.elosNumeric(.caption, weight: .regular))
                                 .foregroundStyle(.secondary)
                                 .frame(width: 44, alignment: .leading)
                             ModuleBarView(color: moduleColor(for: row.moduleType), opacity: row.isDone ? 0.5 : 1)
@@ -143,7 +195,7 @@ struct PlanView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             if row.durationMinutes > 0 {
                                 Text("\(row.durationMinutes)m")
-                                    .font(.system(size: 11, design: .rounded).monospacedDigit())
+                                    .font(.elosNumeric(.caption, weight: .bold))
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -163,9 +215,22 @@ struct PlanView: View {
 
         let detail: String = {
             if hasExam {
-                return "Gym shifted — exam detected. Split advances to next available day."
+                if vm.isOrdinalRotationSplit {
+                    // This is the one scheduling path that actually holds the rotation index back,
+                    // so the workout genuinely lands on a later date instead of being dropped.
+                    return "Gym shifted — exam detected. Split advances to next available day."
+                }
+                if let sd = vm.scheduledGymDayIgnoringExam(for: selectedDate), !sd.isRest {
+                    // Fixed-weekday splits have no "next available day" to push into — be honest
+                    // that the day is cleared rather than claiming a reschedule that isn't happening.
+                    let name = sd.dayName.isEmpty ? "Training" : sd.dayName
+                    return "Exam today — \(name) is cleared. No makeup needed."
+                }
+                return "Exam today."
             } else if let gd = gymDay, !gd.isRest {
-                return "Training day: \(gd.dayName.isEmpty ? "Workout" : gd.dayName). Tap Start in the Train tab when ready."
+                let name = gd.dayName.isEmpty ? "Workout" : gd.dayName
+                let variantSuffix = DayVariants.activeVariantName(for: gd).map { " (\($0))" } ?? ""
+                return "Training day: \(name)\(variantSuffix). Tap Start in the Train tab when ready."
             } else if vm.activeSplit == nil {
                 return "No active split. Set one in Programs to see dynamic gym scheduling."
             } else {
@@ -209,7 +274,7 @@ struct PlanView: View {
                 ForEach(AssignFilter.allCases, id: \.self) { f in
                     let isSelected = assignFilter == f
                     Button {
-                        withAnimation(.snappy(duration: 0.2)) { assignFilter = f }
+                        withAnimation(.elosQuick) { assignFilter = f }
                     } label: {
                         Text(f.rawValue)
                             .font(.system(.footnote, weight: .semibold))
@@ -234,7 +299,7 @@ struct PlanView: View {
             if filtered.isEmpty {
                 VStack(spacing: Space.s) {
                     Image(systemName: assignFilter == .done ? "tray" : "checkmark.circle")
-                        .font(.system(size: 26)).foregroundStyle(.tertiary)
+                        .font(.title).foregroundStyle(.tertiary)
                     Text(assignFilter == .done ? "No completed assignments" : "All caught up")
                         .font(.elosHeadline).foregroundStyle(.secondary)
                 }
@@ -279,7 +344,7 @@ struct PlanView: View {
             if vm.exams.isEmpty {
                 VStack(spacing: Space.s) {
                     Image(systemName: "graduationcap")
-                        .font(.system(size: 26)).foregroundStyle(.tertiary)
+                        .font(.title).foregroundStyle(.tertiary)
                     Text("No upcoming exams")
                         .font(.elosHeadline).foregroundStyle(.secondary)
                 }
@@ -331,8 +396,7 @@ struct PlanView: View {
     }
 
     private func dayString(_ date: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: date)
+        Formatters.isoDay.string(from: date)
     }
 
     private func examDateString(_ exam: Exam) -> String { exam.date }
@@ -354,7 +418,7 @@ private struct CoursesTabView: View {
         VStack(spacing: 12) {
             if ownerCourses.isEmpty {
                 VStack(spacing: 12) {
-                    Image(systemName: "books.vertical").font(.system(size: 32)).foregroundStyle(.secondary)
+                    Image(systemName: "books.vertical").font(.title).foregroundStyle(.secondary)
                     Text("No courses synced yet")
                         .font(.subheadline).fontWeight(.semibold).foregroundStyle(.secondary)
                     Text("Sync Canvas in Settings to import your courses and schedule.")
@@ -437,7 +501,7 @@ private struct PlanAssignmentRow: View {
                     Circle().stroke(assign.done ? Color.good : Color.secondary.opacity(0.3), lineWidth: 1.5).frame(width: 24, height: 24)
                     if assign.done {
                         Circle().fill(Color.good).frame(width: 24, height: 24)
-                        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                        Image(systemName: "checkmark").font(.system(.caption2, weight: .bold)).foregroundStyle(.white)
                     }
                 }
                 VStack(alignment: .leading, spacing: 2) {
@@ -462,6 +526,10 @@ private struct PlanAssignmentRow: View {
 // MARK: - Exam Card
 
 private struct ExamCard: View {
+    /// The days-away number is the card's hero. `.largeTitle` is 34pt, which visibly shrank it from the
+    /// authored 42 — pin the size and scale it instead, so Dynamic Type works without redesigning the card.
+    @ScaledMetric(relativeTo: .largeTitle) private var countdownSize: CGFloat = 42
+
     let exam: Exam
 
     private var urgencyColor: Color {
@@ -472,14 +540,14 @@ private struct ExamCard: View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(exam.subject).font(.caption).foregroundStyle(.secondary)
-                Text(exam.title).font(.system(size: 17, weight: .semibold))
+                Text(exam.title).font(.system(.callout, weight: .semibold))
                 Text(DateDisplay.friendly(exam.date)).font(.caption).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(spacing: 0) {
                 Text("\(exam.daysAway)")
-                    .font(.system(size: 42, weight: .bold, design: .rounded).monospacedDigit())
+                    .font(.system(size: countdownSize, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(urgencyColor)
                 Text("days").font(.caption).foregroundStyle(.secondary)
             }
@@ -499,14 +567,6 @@ private struct AddAssignmentSheet: View {
     @State private var subject = ""
     @State private var hasDueDate = false
     @State private var dueDate = Date()
-
-    private static let isoDay: DateFormatter = {
-        let f = DateFormatter()
-        f.calendar = Calendar(identifier: .gregorian)
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
 
     var body: some View {
         NavigationStack {
@@ -528,7 +588,7 @@ private struct AddAssignmentSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
                         guard !name.isEmpty else { return }
-                        let due = hasDueDate ? Self.isoDay.string(from: dueDate) : "—"
+                        let due = hasDueDate ? Formatters.isoDay.string(from: dueDate) : "—"
                         onAdd(name, subject.isEmpty ? "General" : subject, due)
                         dismiss()
                     }
