@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 // MARK: - Schedule data model (local to Today)
 private struct ScheduleRow: Identifiable {
@@ -16,6 +17,10 @@ private struct ScheduleRow: Identifiable {
 // MARK: - Main View
 struct TodayView: View {
     @EnvironmentObject var vm: AppViewModel
+    @EnvironmentObject var trainingContext: TrainingContext
+    // Existence check only (not the switching logic itself, which GymSwitcherControl owns) — needed
+    // so an empty gym list doesn't leave a blank padded card floating in the middle of the screen.
+    @Query private var gyms: [GymRecord]
 
     var body: some View {
         ScrollView(.vertical) {
@@ -23,6 +28,14 @@ struct TodayView: View {
                 headerSection
                 if let hint = vm.healthSnapshot.recoveryHint {
                     recoveryHintCard(hint)
+                }
+                if let split = vm.activeSplit, !gyms.isEmpty {
+                    // Reachable from the screen actually opened every day, instead of three taps
+                    // deep into a specific split's detail view — switching gyms changes what
+                    // today's workout actually is, and this used to be undiscoverable from here.
+                    GymSwitcherControl(split: split)
+                        .padding(Space.card)
+                        .elosCard()
                 }
                 DailyBriefCard()
                 habitsSection
@@ -91,9 +104,10 @@ struct TodayView: View {
                     .elosSectionLabel()
                 Spacer()
                 if !vm.habits.isEmpty {
-                    SmallRingView(
+                    ProgressRing(
                         progress: Double(vm.doneHabits) / Double(vm.habits.count),
                         color: .mHabits,
+                        lineWidth: 3,
                         size: 28
                     )
                     .accessibilityLabel("\(vm.doneHabits) of \(vm.habits.count) habits done")
@@ -186,6 +200,7 @@ struct TodayView: View {
                         ScheduleRowView(row: row) {
                             if row.isCTA {
                                 vm.prepareExercisesForToday()
+                                trainingContext.startSession(activeSplit: vm.activeSplit)
                                 vm.showingSession = true
                             }
                         }
@@ -298,19 +313,21 @@ struct TodayView: View {
     }
 
     private var gymVolCard: some View {
-        // "this session" read as a live figure even with no workout in progress, where it's just 0.
-        // Name what the number actually is in each case.
+        // Three states, because the number means something different in each. Previously it showed only
+        // the live draft, so it read "0 — tap to train" right after you'd finished a workout.
         StatCard(color: .mGym, label: "GYM VOL",
                  value: gymVolString,
-                 sub: vm.sessionVolumeKg > 0
-                      ? "\(vm.weightUnit.label) this session"
-                      : "\(vm.weightUnit.label) — tap to train") {
+                 sub: {
+                     if vm.sessionVolumeKg > 0 { return "\(vm.weightUnit.label) this session" }
+                     if vm.todayVolumeKg > 0   { return "\(vm.weightUnit.label) today" }
+                     return "\(vm.weightUnit.label) — tap to train"
+                 }()) {
             vm.selectedTab = .train
         }
     }
 
     private var gymVolString: String {
-        let vol = vm.weightUnit.fromKg(vm.sessionVolumeKg)
+        let vol = vm.weightUnit.fromKg(vm.todayVolumeKg)
         if vol >= 1000 { return String(format: "%.1fk", vol / 1000) }
         return String(format: "%.0f", vol)
     }
@@ -438,16 +455,16 @@ private struct HabitPillView: View {
                     if habit.done {
                         Circle().fill(Color.tint).frame(width: 22, height: 22)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(.caption2, weight: .bold))
                             .foregroundStyle(.white)
                     }
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(habit.label)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(.footnote, weight: .medium))
                         .foregroundStyle(.primary)
                     Text("\(habit.streak)d streak")
-                        .font(.system(size: 11, weight: .regular, design: .rounded).monospacedDigit())
+                        .font(.elosNumeric(.caption, weight: .regular))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -457,7 +474,7 @@ private struct HabitPillView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .shadow(color: .black.opacity(0.04), radius: 3, y: 1)
             .scaleEffect(pressed ? 0.96 : 1)
-            .animation(.easeOut(duration: 0.1), value: pressed)
+            .animation(.elosPress, value: pressed)
         }
         .buttonStyle(.plain)
         .simultaneousGesture(
@@ -477,7 +494,7 @@ private struct ScheduleRowView: View {
         Button(action: onTap) {
             HStack(spacing: 12) {
                 Text(row.time)
-                    .font(.system(size: 13, weight: .regular, design: .rounded).monospacedDigit())
+                    .font(.elosNumeric(.footnote, weight: .regular))
                     .foregroundStyle(.secondary)
                     .frame(width: 44, alignment: .leading)
 
@@ -498,7 +515,7 @@ private struct ScheduleRowView: View {
 
                 if row.duration != "—" {
                     Text(row.duration)
-                        .font(.system(size: 12, weight: .regular, design: .rounded).monospacedDigit())
+                        .font(.elosNumeric(.caption, weight: .regular))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -525,7 +542,7 @@ private struct AssignmentRow: View {
                         .frame(width: 24, height: 24)
                     if assign.done {
                         Circle().fill(Color.good).frame(width: 24, height: 24)
-                        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                        Image(systemName: "checkmark").font(.system(.caption2, weight: .bold)).foregroundStyle(.white)
                     }
                 }
 
@@ -550,21 +567,3 @@ private struct AssignmentRow: View {
     }
 }
 
-// MARK: - Small Ring
-private struct SmallRingView: View {
-    let progress: Double
-    let color: Color
-    let size: CGFloat
-
-    var body: some View {
-        ZStack {
-            Circle().stroke(color.opacity(0.15), lineWidth: 3)
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(.easeInOut(duration: 0.6), value: progress)
-        }
-        .frame(width: size, height: size)
-    }
-}
