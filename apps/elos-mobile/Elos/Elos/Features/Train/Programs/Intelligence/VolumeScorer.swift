@@ -27,7 +27,7 @@ enum VolumeScorer {
             return weekly(graded, profile: profile)
         case .singleSession:
             let total = volume.creditByFine.values.reduce(0.0) { $0 + $1.direct }
-            return session(graded, totalDirectSets: total)
+            return session(graded, totalDirectSets: total, profile: profile)
         }
     }
 
@@ -41,8 +41,8 @@ enum VolumeScorer {
                              scope: QualityScope,
                              profile: TrainingProfile) -> TrainingScience.VolumeBand {
         switch scope {
-        case .weeklySplit:   return TrainingScience.weeklyBand(for: m, experience: profile.experience)
-        case .singleSession: return TrainingScience.sessionBand(for: m)
+        case .weeklySplit:   return TrainingScience.weeklyBand(for: m, profile: profile)
+        case .singleSession: return TrainingScience.sessionBand(for: m, profile: profile)
         }
     }
 
@@ -65,7 +65,7 @@ enum VolumeScorer {
 
         // Ascending by volume so the most-neglected muscle's advice is generated first.
         for (muscle, credit) in graded.sorted(by: { $0.value.total < $1.value.total }) {
-            let lm = TrainingScience.weeklyBand(for: muscle, experience: profile.experience)
+            let lm = TrainingScience.weeklyBand(for: muscle, profile: profile)
             let sets = credit.total
             let name = muscle.displayName
             let setsStr = setsText(sets)
@@ -122,12 +122,13 @@ enum VolumeScorer {
     // MARK: Session
 
     private static func session(_ graded: [FineMuscle: MuscleCredit],
-                                totalDirectSets: Double) -> DimensionScore {
+                                totalDirectSets: Double,
+                                profile: TrainingProfile) -> DimensionScore {
         var qualities: [Double] = []
         var tips: [QualityTip] = []
 
         for (muscle, credit) in graded.sorted(by: { $0.value.total > $1.value.total }) {
-            let band = TrainingScience.sessionBand(for: muscle)
+            let band = TrainingScience.sessionBand(for: muscle, profile: profile)
             let sets = credit.total
 
             switch MuscleVolumeAnalyzer.status(sets: sets, band: band) {

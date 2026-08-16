@@ -27,39 +27,69 @@ struct XPRankCard: View {
 
     // MARK: Top row
 
+    /// Rank on the left, distance-to-next on the right — until the text is too large for both to sit
+    /// on one line, at which point they stack.
+    ///
+    /// This was a single `HStack` whose trailing block was `.fixedSize()`. At an accessibility text
+    /// size that block refused to shrink, the `Spacer` had nothing left to give, and the rank name
+    /// rendered *on top of* the XP figure, clipped by the navigation title. `ViewThatFits` picks the
+    /// stacked layout only when the row genuinely won't fit, so nothing changes at default sizes.
     private var topRow: some View {
-        HStack(alignment: .center, spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(progress.rank.color.opacity(0.15))
-                    .frame(width: 54, height: 54)
-                Image(systemName: progress.rank.icon)
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(progress.rank.color)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 14) {
+                rankMedallion
+                rankTitle
+                Spacer(minLength: Space.s)
+                nextRankBlock(alignment: .trailing)
             }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(progress.rank.rawValue)
-                    .font(.title3).fontWeight(.bold)
-                    .foregroundStyle(progress.rank.color)
-                Text("\(progress.totalXP.formatted()) XP")
-                    .font(.elosNumeric(.caption, weight: .medium))
+            VStack(alignment: .leading, spacing: Space.s) {
+                HStack(alignment: .center, spacing: 14) {
+                    rankMedallion
+                    rankTitle
+                    Spacer(minLength: 0)
+                }
+                nextRankBlock(alignment: .leading)
+            }
+        }
+    }
+
+    private var rankMedallion: some View {
+        ZStack {
+            Circle()
+                .fill(progress.rank.color.opacity(0.15))
+                .frame(width: 54, height: 54)
+            // Fixed on purpose: this is a medallion graphic at a fixed diameter, not running text.
+            Image(systemName: progress.rank.icon)
+                .font(.system(.title2, weight: .semibold))
+                .foregroundStyle(progress.rank.color)
+        }
+    }
+
+    private var rankTitle: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(progress.rank.rawValue)
+                .font(.title3).fontWeight(.bold)
+                .foregroundStyle(progress.rank.color)
+            Text("\(progress.totalXP.formatted()) XP")
+                .font(.elosNumeric(.caption, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func nextRankBlock(alignment: HorizontalAlignment) -> some View {
+        if let next = progress.rank.nextRank {
+            VStack(alignment: alignment, spacing: 2) {
+                Text(progress.xpToNext.formatted())
+                    .font(.elosNumeric(.title3, weight: .bold))
+                Text("to \(next.rawValue)")
+                    .font(.elosMicro)
                     .foregroundStyle(.secondary)
             }
-            Spacer(minLength: Space.s)
-            if let next = progress.rank.nextRank {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(progress.xpToNext.formatted())
-                        .font(.elosNumeric(.title3, weight: .bold))
-                    Text("to \(next.rawValue)")
-                        .font(.elosMicro)
-                        .foregroundStyle(.secondary)
-                }
-                .fixedSize()
-            } else {
-                Label("Max Rank", systemImage: "crown.fill")
-                    .font(.system(.caption2, weight: .semibold))
-                    .foregroundStyle(progress.rank.color)
-            }
+        } else {
+            Label("Max Rank", systemImage: "crown.fill")
+                .font(.system(.caption2, weight: .semibold))
+                .foregroundStyle(progress.rank.color)
         }
     }
 
@@ -80,7 +110,7 @@ struct XPRankCard: View {
                             )
                         )
                         .frame(width: max(10, geo.size.width * CGFloat(progress.progress)), height: 10)
-                        .animation(.easeOut(duration: 0.9), value: progress.progress)
+                        .animation(.elosStandard, value: progress.progress)
                 }
             }
             .frame(height: 10)
@@ -139,7 +169,7 @@ struct XPRankCard: View {
                 .accessibilityValue(isCurrent ? "current rank" : (reached ? "unlocked" : "locked"))
             }
         }
-        .animation(.snappy(duration: 0.3), value: progress.rank)
+        .animation(.elosStandard, value: progress.rank)
     }
 
     // MARK: Stats row
@@ -181,7 +211,7 @@ struct XPRankCard: View {
 
     private var rankPathToggle: some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.2)) { rankPathExpanded.toggle() }
+            withAnimation(.elosQuick) { rankPathExpanded.toggle() }
         } label: {
             HStack {
                 Text("Rank Path")
@@ -208,7 +238,7 @@ struct XPRankCard: View {
                             .fill(isUnlocked ? rank.color.opacity(0.15) : Color.secondary.opacity(0.07))
                             .frame(width: 36, height: 36)
                         Image(systemName: rank.icon)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(.subheadline, weight: .semibold))
                             .foregroundStyle(isUnlocked ? rank.color : Color.secondary.opacity(0.3))
                     }
                     VStack(alignment: .leading, spacing: 2) {

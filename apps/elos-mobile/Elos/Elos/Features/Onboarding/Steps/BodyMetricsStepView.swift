@@ -35,7 +35,7 @@ struct BodyMetricsStepView: View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Your body stats")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(.title, weight: .bold))
                 Text("Used to calculate personalized nutrition and training targets.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)

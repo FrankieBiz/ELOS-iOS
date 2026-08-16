@@ -119,7 +119,7 @@ struct BodyMetricsView: View {
                         Text("BMI")
                             .font(.caption).foregroundStyle(.secondary)
                         Text(String(format: "%.1f", b))
-                            .font(.system(size: 22, weight: .bold, design: .monospaced))
+                            .font(.system(.title2, weight: .bold))
                     }
                     Spacer()
                     Text(bmiCategory.label)
@@ -159,7 +159,7 @@ struct BodyMetricsView: View {
         VStack(spacing: 4) {
             HStack(alignment: .lastTextBaseline, spacing: 2) {
                 Text(value)
-                    .font(.system(size: 22, weight: .bold, design: .monospaced))
+                    .font(.system(.title2, weight: .bold))
                 Text(unit)
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -285,9 +285,9 @@ struct BodyMetricsView: View {
                             .font(.caption).foregroundStyle(.secondary)
                         Spacer()
                         Text("\(last.bed) → \(last.wake)")
-                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .font(.system(.footnote, weight: .medium))
                         Text(String(format: "%.1fh", last.duration))
-                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .font(.system(.footnote, weight: .bold))
                             .foregroundStyle(Color.mHealth)
                     }
                 }

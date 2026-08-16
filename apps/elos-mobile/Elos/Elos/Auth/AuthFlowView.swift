@@ -19,6 +19,6 @@ struct AuthFlowView: View {
                     ))
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: showSignup)
+        .animation(.elosStandard, value: showSignup)
     }
 }

@@ -26,8 +26,9 @@ class AppViewModel: ObservableObject {
     /// Resume/Discard choice. Non-nil drives the "Workout in progress" prompt.
     @Published var recoverableSession: WorkoutSessionRecord?
 
-    // MARK: - Theme
-    @Published var forceDark: Bool? = nil
+    // Theme lived here as a `forceDark: Bool?` that was never written to disk, so the choice was
+    // lost on every launch. It's `ThemeStore.appearance` now — persisted, and alongside the rest of
+    // the appearance settings rather than orphaned in the app view model.
 
     // MARK: - Auth deep links
     /// Set when the app is opened from a password-recovery email link.

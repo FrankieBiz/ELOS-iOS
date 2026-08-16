@@ -5,29 +5,36 @@ import SwiftUI
 // A 4pt rhythm. Every gap and inset should come from here rather than a literal, so screens line
 // up with each other instead of each drifting a point or two.
 
+// The base rhythm is unchanged; every value now runs through the density setting, so "Compact" and
+// "Spacious" reach the whole app instead of the handful of screens someone remembered to update.
+// Rounded to whole points — a 2.8pt gap renders as a soft smear on a 3× screen.
 enum Space {
-    static let xs: CGFloat = 4
-    static let s:  CGFloat = 8
-    static let m:  CGFloat = 12
-    static let l:  CGFloat = 16
-    static let xl: CGFloat = 20
-    static let xxl: CGFloat = 28
+    private static var scale: CGFloat { ThemeStore.shared.densityScale }
+    private static func step(_ base: CGFloat) -> CGFloat { max(1, (base * scale).rounded()) }
+
+    static var xs: CGFloat  { step(4) }
+    static var s:  CGFloat  { step(8) }
+    static var m:  CGFloat  { step(12) }
+    static var l:  CGFloat  { step(16) }
+    static var xl: CGFloat  { step(20) }
+    static var xxl: CGFloat { step(28) }
 
     /// Standard inset inside a card.
-    static let card: CGFloat = 16
-    /// Standard screen-edge gutter.
-    static let gutter: CGFloat = 16
+    static var card: CGFloat { step(16) }
+    /// Standard screen-edge gutter. Floored at 8 so a compact layout still clears the display's
+    /// curved corners rather than running content into the bezel.
+    static var gutter: CGFloat { max(8, step(16)) }
 }
 
 // MARK: - Radius
 
 enum Radius {
     /// Chips, small controls, inner wells.
-    static let control: CGFloat = 10
+    static var control: CGFloat { ThemeStore.shared.corners.control }
     /// Cards and primary surfaces.
-    static let card: CGFloat = 16
+    static var card: CGFloat { ThemeStore.shared.corners.card }
     /// Buttons.
-    static let button: CGFloat = 12
+    static var button: CGFloat { ThemeStore.shared.corners.button }
 }
 
 // MARK: - Typography
@@ -39,33 +46,74 @@ enum Radius {
 // Numbers use `.rounded` + `monospacedDigit()`: digits stay column-aligned as values change (no
 // jitter in a live set counter or a volume readout) without the techy feel of full SF Mono.
 
+// The typeface itself is a preference now. Prose styles take whatever design is set (the app-wide
+// `.fontDesign` at the root catches everything using plain `.subheadline` and friends); figures keep
+// `monospacedDigit()` regardless, since column alignment is structural, not decorative.
 extension Font {
     /// Big hero figures — the number on a stat tile.
-    static let elosDisplay = Font.system(.largeTitle, design: .rounded, weight: .bold).monospacedDigit()
+    static var elosDisplay: Font {
+        .system(.largeTitle, design: ThemeStore.shared.numericDesign, weight: .bold).monospacedDigit()
+    }
     /// Section/screen titles.
-    static let elosTitle    = Font.system(.title3, weight: .bold)
+    static var elosTitle: Font    { .system(.title3, design: ThemeStore.shared.fontDesign, weight: .bold) }
     /// Card headings.
-    static let elosHeadline = Font.system(.headline, weight: .semibold)
+    static var elosHeadline: Font { .system(.headline, design: ThemeStore.shared.fontDesign, weight: .semibold) }
     /// Default reading text.
-    static let elosBody     = Font.system(.subheadline)
+    static var elosBody: Font     { .system(.subheadline, design: ThemeStore.shared.fontDesign) }
     /// Supporting text, tips, secondary rows.
-    static let elosCaption  = Font.system(.caption)
+    static var elosCaption: Font  { .system(.caption, design: ThemeStore.shared.fontDesign) }
     /// Smallest supporting text.
-    static let elosMicro    = Font.system(.caption2)
+    static var elosMicro: Font    { .system(.caption2, design: ThemeStore.shared.fontDesign) }
 
     /// Aligned numerals at an arbitrary text style — use for any figure that updates in place.
     static func elosNumeric(_ style: Font.TextStyle, weight: Font.Weight = .bold) -> Font {
-        .system(style, design: .rounded, weight: weight).monospacedDigit()
+        .system(style, design: ThemeStore.shared.numericDesign, weight: weight).monospacedDigit()
     }
+}
+
+// MARK: - Motion
+//
+// Three durations, by role. Before this there were 52 `withAnimation` sites using roughly fifteen
+// different curve/duration pairs — 0.15, 0.18, 0.2, 0.22, 0.25, 0.3, 0.35 across easeInOut, snappy and
+// spring — so nothing in the app moved quite like anything else. Same failure as the font-size literals:
+// no shared vocabulary, every call site drifting a few hundredths.
+//
+// Pick by what the change *is*, not by how long you want it to take.
+
+extension Animation {
+    /// A small state flip the eye should barely register: a chip selecting, a checkbox, a disclosure
+    /// chevron. Fast enough to feel instant, slow enough not to snap.
+    static let elosQuick = Animation.snappy(duration: 0.18)
+
+    /// The default. Layout and appearance changes — a card expanding, a row inserting, a sheet's
+    /// content settling. If you're unsure, this is the one.
+    static let elosStandard = Animation.snappy(duration: 0.26)
+
+    /// Physical, for moments that should feel like they landed: logging a set, adding an exercise,
+    /// reordering. Damping 0.78 gives a little overshoot — noticeably alive, but not the cartoon bounce
+    /// that `dampingFraction: 0.5` was producing at three call sites.
+    static let elosEmphasis = Animation.spring(response: 0.34, dampingFraction: 0.78)
+
+    /// Press feedback only. Faster than `elosQuick` on purpose: a button that takes even 0.18s to
+    /// acknowledge a touch feels laggy, because the user's finger is the reference clock.
+    static let elosPress = Animation.easeOut(duration: 0.11)
+
+    /// A value sweeping to its position — ring fills, progress arcs, a score counting up. Deliberately
+    /// slow: the motion *is* the information, so it has to be followable.
+    static let elosProgress = Animation.easeInOut(duration: 0.6)
 }
 
 extension View {
     /// The small uppercase tracked header above a group of content ("MUSCLE COVERAGE").
+    ///
+    /// Reads the accent-headers preference here rather than at each of its call sites — that's the
+    /// whole reason section headers were centralised into one modifier in the first place.
     func elosSectionLabel() -> some View {
-        self.font(.system(.caption2, weight: .semibold))
+        let accented = ThemeStore.shared.config.accentSectionLabels
+        return self.font(.system(.caption2, design: ThemeStore.shared.fontDesign, weight: .semibold))
             .tracking(1.2)
             .textCase(.uppercase)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(accented ? AnyShapeStyle(Color.tint) : AnyShapeStyle(.secondary))
     }
 
     /// Clamp Dynamic Type on dense, column-aligned panels (bar charts, stat rows) that genuinely
@@ -80,10 +128,14 @@ extension View {
 
 extension View {
     /// A raised inner well — used for stat strips and expandable detail inside a card, where a
-    /// nested card would be too heavy.
+    /// nested card would be too heavy. Elevation level 2: see the note in `AppColors.swift`.
     func elosWell(cornerRadius: CGFloat = Radius.control) -> some View {
         self.background(Color(.tertiarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Elevation.wellHairline, lineWidth: 0.5)
+            }
     }
 }
 
@@ -145,19 +197,27 @@ struct ElosSegmentedControl<Tab: Hashable>: View {
     @Binding var selection: Tab
 
     @Namespace private var indicator
+    /// Observed so the control re-renders when the accent changes.
+    ///
+    /// `Color.tint` is a static, so it can't publish; SwiftUI skips re-running `body` for a child
+    /// whose own inputs haven't changed, and this control's inputs don't change when the theme does.
+    /// In the customizer that showed up immediately — every control on the screen turned magenta
+    /// except the segmented control at the top of it. Subscribing here fixes it for every call site
+    /// at once, rather than each one remembering to pass a refresh token down.
+    @ObservedObject private var theme = ThemeStore.shared
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(tabs, id: \.self) { tab in
                 let isSelected = tab == selection
                 Button {
-                    withAnimation(.snappy(duration: 0.25)) { selection = tab }
+                    withAnimation(.elosStandard) { selection = tab }
                 } label: {
                     Text(label(tab))
                         .font(.system(.footnote, weight: .semibold))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .foregroundStyle(isSelected ? .white : .secondary)
+                        .minimumScaleFactor(0.6)
+                        .foregroundStyle(isSelected ? AnyShapeStyle(Color.onTint) : AnyShapeStyle(.secondary))
                         .padding(.vertical, 7)
                         .frame(maxWidth: .infinity)
                         .background {
@@ -173,6 +233,11 @@ struct ElosSegmentedControl<Tab: Hashable>: View {
             }
         }
         .padding(3)
+        // N fixed segments in one capsule can't reflow, so cap the ramp — at accessibility sizes the
+        // labels were truncating to "Sched…"/"Assign…" while the last two overflowed the capsule
+        // entirely. Same reasoning as the tab bar.
+        .elosDenseLayout()
         .background(Color(.secondarySystemGroupedBackground), in: Capsule())
+        .clipShape(Capsule())
     }
 }

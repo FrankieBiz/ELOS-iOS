@@ -134,11 +134,16 @@ struct StatsView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: Space.xl) {
-                    summaryHeader
-                    liftPicker
-                    e1rmCard
-                    volumeCard
-                    prCard
+                    SectionStack(screen: .stats, spacing: Space.xl) { section in
+                        switch section {
+                        case .statsSummary:    summaryHeader
+                        case .statsLiftPicker: liftPicker
+                        case .statsE1RM:       e1rmCard
+                        case .statsVolume:     volumeCard
+                        case .statsPRs:        prCard
+                        default: EmptyView()
+                        }
+                    }
                     if let err = analyticsVM.loadError {
                         Text(err).font(.elosCaption).foregroundStyle(.secondary).frame(maxWidth: .infinity)
                     }
@@ -147,11 +152,18 @@ struct StatsView: View {
                 .padding(.bottom, 60)
             }
             .scrollIndicators(.hidden)
-            .background(Color(.systemGroupedBackground))
+            // Was a hard-coded grouped background; now the app-wide page style, so this screen picks
+            // up the background choice along with the other four.
+            .elosPageBackground()
             .navigationTitle("Stats")
             // Inline, like Train, Plan and Me. As the only large title in the tab bar it both broke
             // the header rhythm between tabs and spent ~66pt of empty black above the first card.
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    CustomizeScreenButton(screen: .stats)
+                }
+            }
             .onAppear {
                 // Only the e1RM trend still comes from the server. Volume and the PR board are
                 // computed from local logged sets, so they work offline and can't disagree with the

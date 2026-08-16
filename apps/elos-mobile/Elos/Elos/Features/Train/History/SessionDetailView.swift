@@ -82,9 +82,7 @@ struct SessionDetailView: View {
     }
 
     private var suggestedTemplateName: String {
-        let f = DateFormatter()
-        f.dateFormat = "MMM d"
-        return "\(f.string(from: session.startedAt)) Workout"
+        "\(Formatters.monthDay.string(from: session.startedAt)) Workout"
     }
 
     var body: some View {
@@ -118,7 +116,12 @@ struct SessionDetailView: View {
             ) { name, entries, intent in
                 let templatesVM = TemplatesViewModel(context: modelContext)
                 templatesVM.createTemplate(name: name, exercises: entries,
-                                           ownerID: vm.currentUserID, intent: intent)
+                                           ownerID: vm.currentUserID, intent: intent) { message in
+                    // This TemplatesViewModel is a throwaway instance nothing else observes, so a
+                    // failed cloud sync would otherwise be silently dropped. Surface it through the
+                    // app's real error banner instead.
+                    vm.showError(message)
+                }
             }
         }
         .onAppear { loadSets() }
@@ -138,7 +141,7 @@ struct SessionDetailView: View {
 
     private func statItem(value: String, label: String) -> some View {
         VStack(spacing: 3) {
-            Text(value).font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
+            Text(value).font(.elosNumeric(.title3, weight: .bold))
             Text(label).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -163,8 +166,8 @@ struct SessionDetailView: View {
             ForEach(group.sets) { s in
                 HStack {
                     Text("\(s.setIndex + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 24)
-                    Text(vm.weightUnit.formatValue(kg: s.weightKg)).font(.system(size: 14, design: .rounded).monospacedDigit()).frame(maxWidth: .infinity)
-                    Text("\(s.reps)").font(.system(size: 14, design: .rounded).monospacedDigit()).frame(width: 50)
+                    Text(vm.weightUnit.formatValue(kg: s.weightKg)).font(.elosNumeric(.subheadline, weight: .bold)).frame(maxWidth: .infinity)
+                    Text("\(s.reps)").font(.elosNumeric(.subheadline, weight: .bold)).frame(width: 50)
                     Text(s.rpe > 0 ? String(format: "%.1f", s.rpe) : "—")
                         .font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 40)
                 }

@@ -21,7 +21,7 @@ enum FrequencyScorer {
         // direct work at all is a *coverage* gap — `BalanceScorer`'s story, not frequency's — and
         // penalising it here would double-count the same mistake.
         let candidates = volume.expected
-            .filter { !TrainingScience.weeklyBand(for: $0, experience: profile.experience).isOptional }
+            .filter { !TrainingScience.weeklyBand(for: $0, profile: profile).isOptional }
             .filter { volume.directSets(for: $0) > 0 }
 
         guard !candidates.isEmpty else {
@@ -35,7 +35,7 @@ enum FrequencyScorer {
         for muscle in candidates {
             let days = volume.directDaysByFine[muscle] ?? 0
             let sets = volume.sets(for: muscle)
-            let band = TrainingScience.weeklyBand(for: muscle, experience: profile.experience)
+            let band = TrainingScience.weeklyBand(for: muscle, profile: profile)
 
             if days >= target {
                 qualities.append(1.0)

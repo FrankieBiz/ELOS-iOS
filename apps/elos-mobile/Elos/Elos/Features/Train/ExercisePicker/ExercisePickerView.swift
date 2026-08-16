@@ -18,7 +18,9 @@ struct PickedExercise: Hashable {
 
 struct ExercisePickerView: View {
     // Callbacks (exactly one should be provided; presence determines mode)
-    var onPickSingle: ((PickedExercise) -> Void)? = nil
+    /// Return `true` to dismiss the sheet, `false` to keep it open — e.g. a caller that rejects the
+    /// pick (duplicate name) and wants to show its own alert instead of losing the sheet under it.
+    var onPickSingle: ((PickedExercise) -> Bool)? = nil
     var onConfirmMulti: (([PickedExercise]) -> Void)? = nil
     var prefilterBrandSlug: String? = nil
     var prefilterMachineName: String? = nil
@@ -698,8 +700,7 @@ struct ExercisePickerView: View {
         if isMultiSelect {
             selectedIDs.insert(picked.id)
             selectedItems.append(picked)
-        } else {
-            onPickSingle?(picked)
+        } else if onPickSingle?(picked) ?? true {
             dismiss()
         }
     }

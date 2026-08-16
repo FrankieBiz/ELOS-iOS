@@ -2,7 +2,12 @@ import Foundation
 import SwiftData
 
 // Bump this number whenever new exercises are added — the app will reseed on next launch.
-private let kCatalogVersion = 4
+//
+// Was left at 4 while the catalog below grew to 405 entries, so every device that had already
+// seeded v4 kept its old, much smaller catalog: a live store held 68 distinct exercises and the
+// picker simply could not find most common lifts. If you add rows below and don't touch this, the
+// additions ship dead.
+private let kCatalogVersion = 6
 
 enum ExerciseCatalog {
 
@@ -18,7 +23,11 @@ enum ExerciseCatalog {
             stale.forEach { context.delete($0) }
         }
 
-        for ex in catalog {
+        // Guard against the catalog listing the same lift twice: it's a 400-row hand-maintained
+        // literal, and "Deficit Deadlift" was in fact duplicated, which showed up as a doubled row in
+        // the picker. Dedupe here so a slip in the list below can't reach the store.
+        var seen = Set<String>()
+        for ex in catalog where seen.insert(MuscleTaxonomy.normalize(ex.0)).inserted {
             context.insert(ExerciseDefinitionRecord(
                 name: ex.0,
                 primaryMuscle: ex.1,
@@ -327,7 +336,8 @@ enum ExerciseCatalog {
         ("Sumo Deadlift",                   "glutes",       ["hamstrings", "quads", "lower_back", "forearms", "traps"],      "barbell",    "hinge"),
         ("Stiff-Leg Deadlift",              "hamstrings",   ["glutes", "lower_back", "forearms", "traps"],            "barbell",    "hinge"),
         ("Trap Bar Deadlift",               "quads",        ["glutes", "hamstrings", "traps", "lower_back", "forearms"],    "barbell",    "hinge"),
-        ("Deficit Deadlift",                "hamstrings",   ["glutes", "lower_back", "forearms", "traps"],                  "barbell",    "hinge"),
+        // "Deficit Deadlift" is already listed above with identical fields — a second copy here made
+        // the picker show it twice.
         ("Jefferson Deadlift",              "quads",        ["glutes", "hamstrings", "lower_back", "forearms", "traps"],     "barbell",    "hinge"),
         ("Suitcase Deadlift",               "hamstrings",   ["glutes", "core", "lower_back", "forearms", "traps"],           "barbell",    "hinge"),
         ("Jefferson Curl",                  "lower_back",   ["hamstrings", "glutes"],            "barbell",    "hinge"),

@@ -88,7 +88,7 @@ struct WeeklyRadarChart: View {
                     let y = center.y + labelR * sin(angle)
 
                     Text(axes[i].label)
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(.caption2, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .fixedSize()

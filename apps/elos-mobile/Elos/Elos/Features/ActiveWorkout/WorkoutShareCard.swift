@@ -1,6 +1,12 @@
 import SwiftUI
 
 /// Rendered off-screen via ImageRenderer and shared as a PNG.
+///
+/// **Every font here is deliberately a fixed point size, and must stay that way.** This is a
+/// fixed-canvas artwork (390×260), not a screen: the output is an image other people look at, so it has
+/// to be identical regardless of the sender's Dynamic Type setting, and text that grew would simply
+/// overflow the canvas. A codebase-wide sweep that converts `.font(.system(size:))` to text styles
+/// should skip this file — the fixed sizes are the design, not an oversight.
 struct WorkoutShareCard: View {
     let durationMinutes: Int
     let volumeString: String

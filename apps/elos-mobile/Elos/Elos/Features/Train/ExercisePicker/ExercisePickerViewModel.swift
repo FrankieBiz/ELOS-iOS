@@ -107,17 +107,28 @@ final class ExercisePickerViewModel: ObservableObject {
         func identityKey(_ name: String, _ equipment: String) -> String {
             "\(MuscleTaxonomy.normalize(name))|\(MuscleTaxonomy.normalize(equipment))"
         }
-        var seededByIdentity: [String: ExerciseDefinitionRecord] = [:]
+        //
+        // This has to be a multimap. Once a sync has run, a lift can have *two* local rows that both
+        // look "seeded" (non-custom, no owner): the original uppercase-`UUID()` twin and the
+        // server-backed row adopted from a previous sync. A `[String: Record]` kept only the last one
+        // per identity, so the other twin was invisible to both the adopt path (the server id already
+        // existed, so it took the update branch) and the orphan sweep below — and survived every
+        // subsequent sync. That is why the picker still listed 11 lifts twice.
+        var seededByIdentity: [String: [ExerciseDefinitionRecord]] = [:]
         for r in existing where !r.isCustom && r.ownerID.isEmpty {
-            seededByIdentity[identityKey(r.name, r.equipment)] = r
+            seededByIdentity[identityKey(r.name, r.equipment), default: []].append(r)
         }
 
         for ex in incoming {
             let secondaryJSON = (try? String(data: JSONEncoder().encode(ex.secondary_muscles), encoding: .utf8)) ?? "[]"
             let instructionsJSON = (try? String(data: JSONEncoder().encode(ex.instructions ?? []), encoding: .utf8)) ?? "[]"
+            let key = identityKey(ex.name, ex.equipment)
             // Adopt a seeded twin before falling through to "insert new".
             if existingByID[ex.id] == nil,
-               let seeded = seededByIdentity.removeValue(forKey: identityKey(ex.name, ex.equipment)) {
+               let seeded = seededByIdentity[key]?.first {
+                // This row is now the server-backed keeper for that identity; take it out of the
+                // orphan pool so the sweep below can't delete the very record we just adopted.
+                seededByIdentity[key]?.removeFirst()
                 seeded.id = ex.id
                 seeded.ownerID = ex.owner_id ?? ""
                 seeded.name = ex.name
@@ -131,6 +142,10 @@ final class ExercisePickerViewModel: ObservableObject {
                 continue
             }
             if let record = existingByID[ex.id] {
+                // Same reasoning as the adopt branch: this row is the keeper for its identity, so it
+                // must leave the orphan pool. Without this the sweep would delete the server-backed
+                // row and leave the stale twin behind.
+                seededByIdentity[key]?.removeAll { $0 === record }
                 // Update mutable fields so backend corrections (e.g. equipment type) propagate
                 record.name = ex.name
                 record.equipment = ex.equipment
@@ -161,8 +176,8 @@ final class ExercisePickerViewModel: ObservableObject {
         // server-backed row. Templates referencing a deleted id degrade gracefully: `ExerciseResolver`
         // already falls back to normalized-name matching when an id misses.
         let incomingIdentities = Set(incoming.map { identityKey($0.name, $0.equipment) })
-        for (key, orphan) in seededByIdentity where incomingIdentities.contains(key) {
-            context.delete(orphan)
+        for (key, orphans) in seededByIdentity where incomingIdentities.contains(key) {
+            orphans.forEach { context.delete($0) }
         }
 
         try? context.save()

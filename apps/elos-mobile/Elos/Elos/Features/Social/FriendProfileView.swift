@@ -201,7 +201,7 @@ struct FriendProfileView: View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
             statCell(label: "Weekly Volume", value: appVM.weightUnit.formatVolume(kg: s.weekly_volume), icon: "scalemass")
             statCell(label: "Sessions", value: "\(s.weekly_sessions) this week", icon: "calendar")
-            statCell(label: "Streak", value: "\(s.current_streak) days", icon: "flame")
+            statCell(label: "Streak", value: s.current_streak.pluralized("day"), icon: "flame")
             statCell(label: "Top Lift", value: s.top_prs.first.map { $0.exercise_name } ?? "—", icon: "trophy")
         }
     }

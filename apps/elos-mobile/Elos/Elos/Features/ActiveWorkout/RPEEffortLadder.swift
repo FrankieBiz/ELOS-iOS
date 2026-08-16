@@ -19,7 +19,7 @@ struct RPEEffortLadder: View {
                             HapticManager.selection()
                         } label: {
                             Text(RPEScale.label(value))
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .font(.elosNumeric(.subheadline, weight: .semibold))
                                 .frame(minWidth: 36, minHeight: 34)
                                 .background(isSelected ? Color.tint : Color(.tertiarySystemBackground))
                                 .foregroundStyle(isSelected ? .white : Color.primary)

@@ -26,17 +26,25 @@ class MachineLibraryViewModel: ObservableObject {
     @Published var selectedCategory = "all"
     @Published var selectedBrand: String?
     @Published var isLoading = false
+    @Published var hasLoadedOnce = false
+    @Published var loadFailed = false
 
     let categoryOrder = ["all", "chest", "back", "shoulders", "legs", "arms", "glutes", "core", "cable", "smith"]
 
     func load() {
         Task {
             isLoading = true
-            defer { isLoading = false }
-            async let machinesFetch: MachinesListResponse? = try? await ApiClient.shared.get("/machines")
-            async let brandsFetch: BrandsResponse? = try? await ApiClient.shared.get("/machines/brands")
-            if let r = await machinesFetch { machines = r.machines }
-            if let r = await brandsFetch { brands = r.brands }
+            defer { isLoading = false; hasLoadedOnce = true }
+            do {
+                let r: MachinesListResponse = try await ApiClient.shared.get("/machines")
+                machines = r.machines
+                loadFailed = false
+            } catch {
+                loadFailed = machines.isEmpty
+            }
+            if let r = try? await ApiClient.shared.get("/machines/brands") as BrandsResponse {
+                brands = r.brands
+            }
         }
     }
 
@@ -44,23 +52,27 @@ class MachineLibraryViewModel: ObservableObject {
         guard category != "all" else { reload(); return }
         Task {
             isLoading = true
-            defer { isLoading = false }
+            defer { isLoading = false; hasLoadedOnce = true }
             let url = brandQueryParam(prefix: "/machines?category=\(category)")
-            if let r = try? await ApiClient.shared.get(url) as MachinesListResponse {
+            do {
+                let r: MachinesListResponse = try await ApiClient.shared.get(url)
                 machines = r.machines
-            }
+                loadFailed = false
+            } catch { loadFailed = machines.isEmpty }
         }
     }
 
     func reload() {
         Task {
             isLoading = true
-            defer { isLoading = false }
+            defer { isLoading = false; hasLoadedOnce = true }
             let base = selectedCategory == "all" ? "/machines" : "/machines?category=\(selectedCategory)"
             let url = brandQueryParam(prefix: base)
-            if let r = try? await ApiClient.shared.get(url) as MachinesListResponse {
+            do {
+                let r: MachinesListResponse = try await ApiClient.shared.get(url)
                 machines = r.machines
-            }
+                loadFailed = false
+            } catch { loadFailed = machines.isEmpty }
         }
     }
 
@@ -138,6 +150,8 @@ struct MachineLibraryView: View {
 
                 if vm.isLoading && vm.machines.isEmpty {
                     ProgressView().padding(.top, 40)
+                } else if vm.machines.isEmpty && vm.loadFailed {
+                    errorState
                 } else if filtered.isEmpty {
                     Text("No machines found.")
                         .font(.subheadline).foregroundStyle(.secondary)
@@ -167,6 +181,7 @@ struct MachineLibraryView: View {
                 Button { showBrandsBrowse = true } label: {
                     Image(systemName: "square.grid.2x2")
                 }
+                .accessibilityLabel("Browse by brand")
             }
         }
         .sheet(isPresented: $showBrandsBrowse) {
@@ -174,6 +189,32 @@ struct MachineLibraryView: View {
         }
         .searchable(text: $searchText, prompt: "Search machines")
         .onAppear { vm.load() }
+    }
+
+    private var errorState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+            Text("Couldn't load machines")
+                .font(.headline)
+            Text("Check your connection and try again.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                vm.load()
+            } label: {
+                Label("Retry", systemImage: "arrow.clockwise")
+                    .font(.subheadline).fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20).padding(.vertical, 10)
+                    .background(Color.tint)
+                    .clipShape(Capsule())
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 40)
     }
 
     private var filtered: [MachineResponse] {
@@ -188,13 +229,7 @@ private struct MachineRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.good.opacity(0.12))
-                    .frame(width: 44, height: 44)
-                Image(systemName: "dumbbell")
-                    .foregroundStyle(Color.good)
-            }
+            RemoteThumbnail(urlString: machine.image_url, shape: .rounded(8), size: 44, tint: .good, fallbackSystemImage: "dumbbell")
             VStack(alignment: .leading, spacing: 3) {
                 Text(machine.name).font(.subheadline).fontWeight(.semibold).foregroundStyle(.primary)
                 HStack(spacing: 6) {

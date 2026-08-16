@@ -10,6 +10,7 @@ struct CrewView: View {
     @State private var showSearch = false
     @State private var friendPendingRemove: FriendProfileResponse?
     @State private var splitShared = false
+    @State private var emptyStatePulse = false
     @Environment(\.dismiss) private var dismiss
 
     private var inviteURL: URL? {
@@ -88,6 +89,7 @@ struct CrewView: View {
             .sheet(isPresented: $showSearch) {
                 FriendSearchView()
                     .environmentObject(socialVM)
+                    .environmentObject(vm)
             }
             .confirmationDialog(
                 "Remove friend?",
@@ -248,6 +250,7 @@ struct CrewView: View {
                         Image(systemName: "chevron.right")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
+                    .accessibilityLabel("View profile")
                 }
                 .padding(12)
                 .elosCard()
@@ -258,8 +261,10 @@ struct CrewView: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "person.2")
-                .font(.system(size: 40))
+                .font(.largeTitle)
                 .foregroundStyle(.secondary)
+                .symbolEffect(.pulse, options: .nonRepeating, value: emptyStatePulse)
+                .onAppear { emptyStatePulse.toggle() }
             Text("No friends yet")
                 .font(.headline)
             Text("Search for people to compete with each week")

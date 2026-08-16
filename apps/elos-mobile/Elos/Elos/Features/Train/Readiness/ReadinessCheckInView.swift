@@ -27,29 +27,61 @@ struct ReadinessCheckInView: View {
         (sleepQuality + soreness + stress + motivation) / 4.0
     }
 
-    private var scoreColor: Color {
-        overallScore >= 4.0 ? .good : overallScore >= 2.5 ? .warn : .bad
+    /// One banded scale for the whole gauge.
+    ///
+    /// The colour, the verdict word and the advice line used to come from three separate `switch`es
+    /// with three different sets of breakpoints (4.0/2.5, 4.5/3.5/2.5/1.5, and 4.0/3.0/2.0). They
+    /// disagreed in the middle of the range: at 3.5 the sheet said "Ready" — a green-sounding word —
+    /// painted amber, over advice from the band below it. Derive all three from one enum so the
+    /// gauge cannot contradict itself, and match the per-metric ladder's good/tint/warn/bad scale.
+    private enum ReadinessBand {
+        case primed, ready, moderate, depleted, runDown
+
+        init(score: Double) {
+            switch score {
+            case 4.5...:    self = .primed
+            case 3.5..<4.5: self = .ready
+            case 2.5..<3.5: self = .moderate
+            case 1.5..<2.5: self = .depleted
+            default:        self = .runDown
+            }
+        }
+
+        var verdict: String {
+            switch self {
+            case .primed:   return "Primed"
+            case .ready:    return "Ready"
+            case .moderate: return "Moderate"
+            case .depleted: return "Depleted"
+            case .runDown:  return "Run down"
+            }
+        }
+
+        var guidance: String {
+            switch self {
+            case .primed:   return "Good day to push for a PR."
+            case .ready:    return "Train as planned."
+            case .moderate: return "Train as planned, but don't chase a PR."
+            case .depleted: return "Hold intensity, trim volume."
+            case .runDown:  return "Consider a light or recovery session."
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .primed, .ready: return Color.good
+            case .moderate:       return Color.tint
+            case .depleted:       return Color.warn
+            case .runDown:        return Color.bad
+            }
+        }
     }
 
+    private var band: ReadinessBand { ReadinessBand(score: overallScore) }
+    private var scoreColor: Color   { band.color }
     /// The number alone doesn't tell you what to do with it. A verdict does.
-    private var verdict: String {
-        switch overallScore {
-        case 4.5...:    return "Primed"
-        case 3.5..<4.5: return "Ready"
-        case 2.5..<3.5: return "Moderate"
-        case 1.5..<2.5: return "Depleted"
-        default:        return "Run down"
-        }
-    }
-
-    private var guidance: String {
-        switch overallScore {
-        case 4.0...:    return "Good day to push for a PR."
-        case 3.0..<4.0: return "Train as planned."
-        case 2.0..<3.0: return "Hold intensity, trim volume."
-        default:        return "Consider a light or recovery session."
-        }
-    }
+    private var verdict: String     { band.verdict }
+    private var guidance: String    { band.guidance }
 
     var body: some View {
         ScrollView {
@@ -112,7 +144,7 @@ struct ReadinessCheckInView: View {
                     .contentTransition(.numericText())
             }
             .frame(width: 86, height: 86)
-            .animation(.snappy(duration: 0.25), value: overallScore)
+            .animation(.elosStandard, value: overallScore)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(verdict)
@@ -126,7 +158,7 @@ struct ReadinessCheckInView: View {
             }
             Spacer(minLength: 0)
         }
-        .animation(.snappy(duration: 0.25), value: verdict)
+        .animation(.elosStandard, value: verdict)
         .padding(.horizontal, Space.xl)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Readiness \(String(format: "%.1f", overallScore)) of 5, \(verdict)")
@@ -180,7 +212,7 @@ struct ReadinessCheckInView: View {
         }
         .buttonStyle(.plain)
         .disabled(checkInVM.isSaving || checkInVM.saved)
-        .animation(.snappy(duration: 0.2), value: checkInVM.saved)
+        .animation(.elosQuick, value: checkInVM.saved)
         .padding(.horizontal, Space.xl)
     }
 
@@ -344,13 +376,13 @@ private struct ReadinessMetricRow: View {
                                 .contentShape(.rect)
                                 .onTapGesture {
                                     HapticManager.impact(.light)
-                                    withAnimation(.snappy(duration: 0.18)) { value = Double(step) }
+                                    withAnimation(.elosQuick) { value = Double(step) }
                                 }
                         }
                 }
             }
         }
-        .animation(.snappy(duration: 0.18), value: level)
+        .animation(.elosQuick, value: level)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
         .accessibilityValue("\(levelName), \(level) of 5")

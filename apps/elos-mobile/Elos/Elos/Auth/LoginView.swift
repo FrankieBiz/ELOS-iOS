@@ -22,11 +22,11 @@ struct LoginView: View {
                             .fill(Color.tint)
                             .frame(width: 72, height: 72)
                         Image(systemName: "bolt.fill")
-                            .font(.system(size: 30, weight: .bold))
+                            .font(.system(.title, weight: .bold))
                             .foregroundStyle(.white)
                     }
                     Text("ELOS")
-                        .font(.system(size: 38, weight: .black))
+                        .font(.system(.largeTitle, weight: .black))
                         .foregroundStyle(Color.tint)
                     Text("Everyday Life Operating System")
                         .font(.caption)

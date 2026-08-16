@@ -57,3 +57,19 @@ extension PublicProfileResponse: NamedUser {
     var usernameOrNil: String? { username }
     var avatarColorOrNil: String? { avatar_color }
 }
+
+extension String {
+    /// Initials from a single full-name string, for records that store one `name` rather than the
+    /// first/last pair `NamedUser` needs — e.g. `CreatorRecord`.
+    ///
+    /// Not `name.prefix(2)`: that returned the first two *characters*, so Arnold Schwarzenegger showed
+    /// as "AR" and Chris Bumstead as "CH".
+    var nameInitials: String {
+        let parts = split(whereSeparator: \.isWhitespace)
+        let letters = [parts.first, parts.count > 1 ? parts.last : nil]
+            .compactMap { $0?.first.map(String.init) }
+            .joined()
+            .uppercased()
+        return letters.isEmpty ? "?" : letters
+    }
+}

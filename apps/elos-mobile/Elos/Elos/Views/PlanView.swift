@@ -46,19 +46,32 @@ struct PlanView: View {
                 .padding(.bottom, 120)
             }
             .scrollIndicators(.hidden)
+            .elosPageBackground()
             .navigationTitle("Plan")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    // Only the Schedule tab is arrangeable — Assignments, Exams and Courses are each
+                    // a single filtered list, so there's nothing in them to move.
+                    if segment == .schedule {
+                        CustomizeScreenButton(screen: .plan)
+                    }
+                }
+            }
         }
     }
 
     // MARK: - Schedule Tab
 
     private var scheduleTab: some View {
-        VStack(spacing: Space.l) {
-            dayPicker
-            scheduleTimeline
-            loadSummaryCard
-            thisWeekCard
+        SectionStack(screen: .plan, spacing: Space.l) { section in
+            switch section {
+            case .planDayPicker:    dayPicker
+            case .planTimeline:     scheduleTimeline
+            case .planLoadSummary:  loadSummaryCard
+            case .planThisWeek:     thisWeekCard
+            default: EmptyView()
+            }
         }
     }
 

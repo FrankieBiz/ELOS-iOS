@@ -14,7 +14,7 @@ struct QualityScoreRing: View {
                 .trim(from: 0, to: CGFloat(score) / 100)
                 .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .animation(.easeOut(duration: 0.35), value: score)
+                .animation(.elosProgress, value: score)
             Text("\(score)")
                 .font(.system(size: size * 0.35, weight: .bold, design: .rounded))
                 .foregroundStyle(color)

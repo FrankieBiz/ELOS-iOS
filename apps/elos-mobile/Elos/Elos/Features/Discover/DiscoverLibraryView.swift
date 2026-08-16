@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct DiscoverLibraryView: View {
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var discoverVM: DiscoverViewModel
     @State private var searchText = ""
     @State private var showCreators = false
@@ -23,6 +24,8 @@ struct DiscoverLibraryView: View {
                             ProgressView()
                                 .frame(maxWidth: .infinity)
                                 .padding(.top, 24)
+                        } else if discoverVM.syncFailed {
+                            syncFailedNotice
                         } else {
                             if !discoverVM.featuredCreators.isEmpty { featuredCreatorsRow }
                             if !discoverVM.featuredMachines.isEmpty { featuredMachinesRow }
@@ -36,6 +39,13 @@ struct DiscoverLibraryView: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Discover")
             .navigationBarTitleDisplayMode(.inline)
+            // Presented as a sheet, and every other sheet in the app offers an explicit way out —
+            // swipe-to-dismiss alone is invisible and unavailable to Switch Control / VoiceOver users.
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }.fontWeight(.semibold)
+                }
+            }
             .searchable(text: $searchText, prompt: "Search creators, programs, machines")
             .onChange(of: searchText) { _, new in discoverVM.search(query: new) }
             .onAppear { discoverVM.load() }
@@ -104,6 +114,28 @@ struct DiscoverLibraryView: View {
             .buttonStyle(.plain)
             .elosCard()
         }
+    }
+
+    private var syncFailedNotice: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "wifi.exclamationmark").font(.title2).foregroundStyle(.secondary)
+            Text("Couldn't load featured content")
+                .font(.subheadline).fontWeight(.semibold)
+            Text("Check your connection and try again.")
+                .font(.caption).foregroundStyle(.secondary)
+            Button {
+                discoverVM.load()
+            } label: {
+                Label("Retry", systemImage: "arrow.clockwise")
+                    .font(.subheadline).fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20).padding(.vertical, 10)
+                    .background(Color.tint)
+                    .clipShape(Capsule())
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 24)
     }
 
     // MARK: Featured Creators
@@ -246,23 +278,21 @@ struct DiscoverLibraryView: View {
 
 struct CreatorCardCompact: View {
     let creator: CreatorRecord
+    /// Scaled: at 80pt fixed, every full name truncated.
+    @ScaledMetric(relativeTo: .caption) private var creatorCardWidth: CGFloat = 104
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ZStack {
-                Circle()
-                    .fill(Color.tint.opacity(0.15))
-                    .frame(width: 48, height: 48)
-                Text(creator.name.prefix(2).uppercased())
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Color.tint)
-            }
-            Text(creator.name.components(separatedBy: " ").last ?? creator.name)
-                .font(.caption).fontWeight(.semibold)
-                .lineLimit(1)
+            RemoteThumbnail(urlString: creator.imageURL, shape: .circle, size: 48, tint: .tint, fallbackSystemImage: "person.fill")
+            // The whole name. Showing only the last component rendered "Schwarzene…" — the surname,
+            // truncated — while the avatar beside it already carried both initials.
+            Text(creator.name)
+                .font(.system(.caption, weight: .semibold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
             CategoryBadge(category: creator.category)
         }
-        .frame(width: 80)
+        .frame(width: creatorCardWidth, alignment: .leading)
         .padding(10)
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -271,24 +301,24 @@ struct CreatorCardCompact: View {
 
 struct MachineCardCompact: View {
     let machine: MachineRecord
+    /// Scaled: 90pt fitted almost no real machine name.
+    @ScaledMetric(relativeTo: .caption) private var machineCardWidth: CGFloat = 110
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.good.opacity(0.12))
-                    .frame(width: 48, height: 48)
-                Image(systemName: "dumbbell")
-                    .foregroundStyle(Color.good)
-            }
-            Text(machine.name.components(separatedBy: " ").prefix(2).joined(separator: " "))
-                .font(.caption).fontWeight(.semibold)
+            RemoteThumbnail(urlString: machine.imageURL, shape: .rounded(8), size: 48, tint: .good, fallbackSystemImage: "dumbbell")
+            // The whole name, truncated by the layout if it must be — not chopped to its first two
+            // *words*, which turned "Iso-Lateral Wide Chest Press" into "Iso-Lateral Wide" and made
+            // machines that differ only in their later words indistinguishable.
+            Text(machine.name)
+                .font(.system(.caption, weight: .semibold))
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
             Text(machine.category.capitalized)
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.elosMicro).foregroundStyle(.secondary)
         }
-        .frame(width: 90)
+        .frame(width: machineCardWidth, alignment: .leading)
         .padding(10)
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 10))

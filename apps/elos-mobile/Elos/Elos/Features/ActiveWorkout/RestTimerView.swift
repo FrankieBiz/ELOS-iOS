@@ -27,12 +27,12 @@ struct RestTimerBar: View {
                     .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .rotationEffect(.degrees(-90)).frame(width: 30, height: 30)
                 Image(systemName: paused ? "pause.fill" : "timer")
-                    .font(.system(size: 11, weight: .bold)).foregroundStyle(color)
+                    .font(.system(.caption, weight: .bold)).foregroundStyle(color)
             }
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(formatted)
-                    .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
+                    .font(.elosNumeric(.title3, weight: .bold))
                     .foregroundStyle(color)
                     .monospacedDigit()
                 Text(nextLabel.map { "Next: \($0)" } ?? "Resting")
@@ -44,7 +44,7 @@ struct RestTimerBar: View {
             stepButton("−15", action: onMinus)
             Button(action: onPauseToggle) {
                 Image(systemName: paused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(.caption, weight: .bold))
                     .frame(width: 34, height: 34)
                     .background(Color(.tertiarySystemBackground))
                     .foregroundStyle(.secondary)
@@ -71,7 +71,7 @@ struct RestTimerBar: View {
     private func stepButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(.footnote, weight: .semibold))
                 .frame(width: 42, height: 34)
                 .background(Color(.tertiarySystemBackground))
                 .foregroundStyle(.secondary)

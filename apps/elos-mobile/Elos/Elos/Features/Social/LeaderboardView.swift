@@ -137,8 +137,9 @@ struct LeaderboardView: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "trophy")
-                .font(.system(size: 40))
+                .font(.largeTitle)
                 .foregroundStyle(.secondary)
+                .symbolEffect(.wiggle, options: .repeat(.periodic(delay: 4.0)))
             Text("No data yet")
                 .font(.headline)
             Text("Add friends to see the weekly leaderboard")
@@ -152,7 +153,7 @@ struct LeaderboardView: View {
     private var failedState: some View {
         VStack(spacing: 12) {
             Image(systemName: "wifi.exclamationmark")
-                .font(.system(size: 40))
+                .font(.largeTitle)
                 .foregroundStyle(.secondary)
             Text("Couldn't load the leaderboard")
                 .font(.headline)
@@ -168,13 +169,9 @@ struct LeaderboardView: View {
     }
 
     private func weekRangeLabel(from isoDate: String) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        guard let start = formatter.date(from: isoDate) else { return "" }
+        guard let start = Formatters.isoDay.date(from: isoDate) else { return "" }
         let end = Calendar.current.date(byAdding: .day, value: 6, to: start) ?? start
-        let display = DateFormatter()
-        display.dateFormat = "MMM d"
-        return "\(display.string(from: start))–\(display.string(from: end))"
+        return "\(Formatters.monthDay.string(from: start))–\(Formatters.monthDay.string(from: end))"
     }
 }
 

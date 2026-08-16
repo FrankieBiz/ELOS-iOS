@@ -29,16 +29,18 @@ struct ExerciseSwapSheet: View {
     }
 
     /// Shared by the suggestion-tap path and the manual picker's `onPickSingle` — same duplicate
-    /// check, same adopt call, same dismiss-on-success. Adopting used to silently no-op from the
-    /// suggestions list because nothing ever dismissed the sheet; unifying here means both paths
-    /// behave identically instead of drifting.
-    private func tryAdopt(_ picked: PickedExercise) {
+    /// check, same adopt call, same dismiss-on-success. Returns whether the sheet should dismiss:
+    /// `false` on a duplicate keeps `ExercisePickerView` (and the manual-pick path through it) open
+    /// so the "Already in this workout" alert actually has a sheet left to present over.
+    @discardableResult
+    private func tryAdopt(_ picked: PickedExercise) -> Bool {
         if existingNames.contains(picked.name) {
             duplicateName = picked.name
-            return
+            return false
         }
         exercise.adopt(picked, in: modelContext)
         dismiss()
+        return true
     }
 
     /// Suggestion panel content, or nothing when there's nothing to suggest. Built as `AnyView` to

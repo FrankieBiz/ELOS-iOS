@@ -1,34 +1,55 @@
 import SwiftUI
+import SwiftData
 
 struct MeView: View {
     @EnvironmentObject var vm: AppViewModel
+    @Query private var allSessions: [WorkoutSessionRecord]
     @EnvironmentObject var authStore: AuthStore
     @EnvironmentObject var socialVM: SocialViewModel
     @EnvironmentObject var feedVM: FeedViewModel
+    @EnvironmentObject var theme: ThemeStore
+    @EnvironmentObject var layout: LayoutStore
     @State private var showingSettings   = false
+    @State private var settingsScrollToAbout = false
     @State private var showingCanvasSync = false
     @State private var showCrew          = false
 
     var body: some View {
         NavigationStack {
             ScrollView(.vertical) {
-                VStack(spacing: 16) {
-                    profileHero
-                    friendsSnippet
-                    wellnessCard
-                    habitsCard
-                    settingsList
+                SectionStack(screen: .me, spacing: 16) { section in
+                    switch section {
+                    case .meProfile:  profileHero
+                    case .meFriends:  friendsSnippet
+                    case .meWellness: wellnessCard
+                    case .meHabits:   habitsCard
+                    case .meSettings: settingsList
+                    default: EmptyView()
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 120)
             }
             .scrollIndicators(.hidden)
-            .navigationBarHidden(true)
+            .elosPageBackground()
+            // Was `.navigationBarHidden(true)`, which left the scroll content running under the
+            // status bar with nothing behind it — scrolled down, the profile card collided with the
+            // clock and the Dynamic Island. An inline title restores the bar's blur, and matches
+            // Train and Plan, which already use inline titles.
+            .navigationTitle("Me")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    CustomizeScreenButton(screen: .me)
+                }
+            }
             .sheet(isPresented: $showingSettings) {
-                SettingsView()
+                SettingsView(scrollToAbout: settingsScrollToAbout)
                     .environmentObject(vm)
                     .environmentObject(authStore)
+                    .environmentObject(theme)
+                    .environmentObject(layout)
             }
             .sheet(isPresented: $showingCanvasSync) {
                 CanvasSyncSheet()
@@ -57,7 +78,12 @@ struct MeView: View {
         let schoolYear = vm.userProfile?.schoolYear.capitalized ?? ""
         let schoolName = vm.userProfile?.schoolName ?? ""
         let subtitle   = [schoolYear, schoolName].filter { !$0.isEmpty }.joined(separator: " · ")
-        let bestStreak = vm.habits.map(\.streak).max() ?? 0
+        // The training streak, matching the Train tab's rank card. This used to be the best *habit*
+        // streak under the same "Streak" label, so the two tabs disagreed about the same athlete —
+        // Train said "0d" while this said "—".
+        let streak = GamificationEngine.workoutStreak(
+            sessions: allSessions.filter { $0.ownerID == vm.currentUserID }
+        )
 
         return ZStack(alignment: .topTrailing) {
             VStack(spacing: 14) {
@@ -69,14 +95,14 @@ struct MeView: View {
                                                  endPoint: .bottomTrailing))
                             .frame(width: 72, height: 72)
                         Text(initials)
-                            .font(.system(size: 28, weight: .bold))
+                            .font(.system(.title, weight: .bold))
                             .foregroundStyle(.white)
                     }
                     .shadow(color: Color.tint.opacity(0.25), radius: 8, y: 3)
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(fullName)
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.system(.title2, weight: .bold))
                         if let uname = vm.userProfile?.username, !uname.isEmpty {
                             Text("@\(uname)")
                                 .font(.subheadline).fontWeight(.medium)
@@ -94,7 +120,7 @@ struct MeView: View {
                 Divider()
 
                 HStack(spacing: 0) {
-                    heroStat(value: bestStreak > 0 ? "\(bestStreak)d" : "—", label: "Streak")
+                    heroStat(value: "\(streak)d", label: "Streak")
                     Divider().frame(height: 32)
                     heroStat(value: "\(socialVM.friends.count)", label: "Crew")
                     Divider().frame(height: 32)
@@ -106,10 +132,11 @@ struct MeView: View {
 
             Button {
                 HapticManager.impact(.light)
+                settingsScrollToAbout = false
                 showingSettings = true
             } label: {
                 Image(systemName: "gear")
-                    .font(.system(size: 16))
+                    .font(.callout)
                     .foregroundStyle(.secondary)
                     .padding(14)
             }
@@ -120,7 +147,7 @@ struct MeView: View {
     private func heroStat(value: String, label: String) -> some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 17, weight: .bold, design: .rounded).monospacedDigit())
+                .font(.elosNumeric(.callout, weight: .bold))
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -272,19 +299,7 @@ struct MeView: View {
 
     private func wellnessRing(value: String, label: String, progress: Double, color: Color) -> some View {
         VStack(spacing: Space.s) {
-            ZStack {
-                // The track was a 15%-opacity wash of the ring's own colour, so with nothing logged
-                // all three rings read as muddy coloured smudges rather than empty gauges. A neutral
-                // track means colour on screen always signals actual progress.
-                Circle()
-                    .stroke(Color.secondary.opacity(0.16), lineWidth: 5)
-                Circle()
-                    .trim(from: 0, to: progress)
-                    .stroke(color, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .animation(.easeOut(duration: 0.5), value: progress)
-            }
-            .frame(width: 46, height: 46)
+            ProgressRing(progress: progress, color: color, lineWidth: 5, size: 46)
 
             Text(value)
                 .font(.elosNumeric(.caption, weight: .bold))
@@ -347,7 +362,7 @@ struct MeView: View {
                         HStack(spacing: 12) {
                             Image(systemName: habit.done ? "checkmark.circle.fill" : "circle")
                                 .foregroundStyle(habit.done ? Color.mHabits : Color.secondary.opacity(0.35))
-                                .font(.system(size: 22))
+                                .font(.title2)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(habit.label)
                                     .font(.subheadline)
@@ -383,7 +398,8 @@ struct MeView: View {
             ForEach(settingsItems.indices, id: \.self) { i in
                 Button {
                     switch settingsItems[i].action {
-                    case .settings: showingSettings = true
+                    case .settings: settingsScrollToAbout = false; showingSettings = true
+                    case .about:    settingsScrollToAbout = true; showingSettings = true
                     case .canvas:   showingCanvasSync = true
                     }
                 } label: {
@@ -393,7 +409,7 @@ struct MeView: View {
                                 .fill(settingsItems[i].bg)
                                 .frame(width: 32, height: 32)
                             Image(systemName: settingsItems[i].icon)
-                                .font(.system(size: 15))
+                                .font(.subheadline)
                                 .foregroundStyle(settingsItems[i].iconColor)
                         }
                         Text(settingsItems[i].label)
@@ -414,7 +430,7 @@ struct MeView: View {
         .elosCard()
     }
 
-    private enum SettingsAction { case settings, canvas }
+    private enum SettingsAction { case settings, about, canvas }
 
     private struct SettingItem {
         let label: String
@@ -427,7 +443,7 @@ struct MeView: View {
     private var settingsItems: [SettingItem] {[
         SettingItem(label: "Preferences",     icon: "slider.horizontal.3",      iconColor: .secondary, bg: Color.secondary.opacity(0.12), action: .settings),
         SettingItem(label: "Canvas LMS sync", icon: "calendar.badge.checkmark", iconColor: .mSched,    bg: Color.mSched.opacity(0.15),    action: .canvas),
-        SettingItem(label: "About ELOS",      icon: "info.circle",              iconColor: .secondary, bg: Color.secondary.opacity(0.12), action: .settings),
+        SettingItem(label: "About ELOS",      icon: "info.circle",              iconColor: .secondary, bg: Color.secondary.opacity(0.12), action: .about),
     ]}
 
     // MARK: Helpers

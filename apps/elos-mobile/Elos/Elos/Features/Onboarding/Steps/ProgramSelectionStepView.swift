@@ -10,7 +10,7 @@ struct ProgramSelectionStepView: View {
         VStack(alignment: .leading, spacing: 32) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("School & Nutrition")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(.title, weight: .bold))
                 Text("Track assignments, exams, and hit your macro targets.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -74,7 +74,7 @@ struct ProgramSelectionStepView: View {
 
                     HStack {
                         Text("\(vm.useAutoCalc ? vm.autoCalcCalories : vm.calGoal) kcal")
-                            .font(.system(size: 22, weight: .semibold, design: .rounded).monospacedDigit())
+                            .font(.elosNumeric(.title2, weight: .semibold))
                             .foregroundStyle(Color.mNutri)
                         Spacer()
                         if !vm.useAutoCalc {
@@ -97,7 +97,9 @@ struct ProgramSelectionStepView: View {
         .padding(.horizontal, 24)
         .padding(.top, 24)
         .onAppear {
-            vm.applyAutoCalc()
+            // Only (re-)derive from auto-calc; a Back-then-Next revisit must not clobber a value
+            // the user already set by hand with the Stepper while auto-calc was off.
+            if vm.useAutoCalc { vm.applyAutoCalc() }
         }
     }
 }

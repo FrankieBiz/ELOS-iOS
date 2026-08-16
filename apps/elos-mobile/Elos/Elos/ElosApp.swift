@@ -22,6 +22,11 @@ struct ElosApp: App {
     @StateObject private var socialViewModel: SocialViewModel
     @StateObject private var feedViewModel = FeedViewModel()
     @StateObject private var trainingContext = TrainingContext()
+    /// The same instance the static design tokens read through `ThemeStore.shared` — injected here
+    /// as well so views that need to *re-render* on a change can observe it. Two references, one
+    /// object; see the note on `ThemeStore`.
+    @StateObject private var themeStore = ThemeStore.shared
+    @StateObject private var layoutStore = LayoutStore()
 
     init() {
         let schema = Schema([
@@ -121,6 +126,14 @@ struct ElosApp: App {
                     .environmentObject(socialViewModel)
                     .environmentObject(feedViewModel)
                     .environmentObject(trainingContext)
+                    .environmentObject(themeStore)
+                    .environmentObject(layoutStore)
+                    // SwiftUI's *system* accent is a separate thing from `Color.tint`: it's what
+                    // tints List rows, toggles, pickers, navigation chevrons, text cursors and
+                    // alert buttons, and it comes from the asset catalog. Without this, choosing a
+                    // magenta accent left the entire Settings screen orange. Set at the root so
+                    // auth and onboarding follow it too.
+                    .tint(themeStore.accentColor)
                     .modelContainer(container)
                     .onAppear {
                         NotificationManager.requestAuthorization()

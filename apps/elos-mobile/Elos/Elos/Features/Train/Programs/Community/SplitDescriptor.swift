@@ -132,7 +132,8 @@ struct SplitDescriptor {
     static func focusFromExercises(_ exercises: [(name: String, sets: Int)]) -> DayFocus {
         var sets: [String: Int] = [:]  // muscle label -> weekly sets
         for ex in exercises {
-            guard let label = resolveMuscleLabelHeuristic(for: ex.name) else { continue }
+            guard let label = muscleLabel(for: resolvedMuscleTargets(exerciseID: nil, name: ex.name))
+                else { continue }
             sets[label, default: 0] += ex.sets
         }
         guard !sets.isEmpty else { return .other }
@@ -177,14 +178,25 @@ struct SplitDescriptor {
         let broSet: Set<DayFocus> = [.chest, .back, .shoulders, .legs, .arms]
 
         if unique == [.fullBody] { return "Full Body" }
-        if unique.isSubset(of: pplSet) && unique.count >= 2 { return "Push / Pull / Legs" }
-        if unique.isSubset(of: ulSet) { return "Upper / Lower" }
+        // Name only the days that actually exist. These branches used to return the full
+        // "Push / Pull / Legs" for any *subset* of two, so a Push+Pull week (no legs day at all)
+        // was labelled "Push / Pull / Legs" — the split card then read "2 Days · Push / Pull /
+        // Legs", contradicting its own day count and promising a leg day that isn't there.
+        if unique.isSubset(of: pplSet) && unique.count >= 2 { return join(unique, order: [.push, .pull, .legs]) }
+        if unique.isSubset(of: ulSet) { return join(unique, order: [.upper, .lower]) }
         if unique.isSubset(of: broSet) && unique.count >= 3 { return "Bro Split" }
         if unique.isSubset(of: pplSet.union(ulSet)) { return "PPL + Upper / Lower" }
         if unique.isSubset(of: pplSet.union([.fullBody])) { return "PPL + Full Body" }
         if unique.isSubset(of: ulSet.union([.fullBody])) { return "Upper / Lower + Full Body" }
-        if unique.isSubset(of: pplSet.union([.arms, .core])) { return "Push / Pull / Legs" }
+        if unique.isSubset(of: pplSet.union([.arms, .core])) {
+            return join(unique.intersection(pplSet), order: [.push, .pull, .legs])
+        }
         return "Hybrid"
+    }
+
+    /// "Push / Pull", "Push / Pull / Legs" — the present focuses in a fixed, readable order.
+    private static func join(_ focuses: Set<DayFocus>, order: [DayFocus]) -> String {
+        order.filter { focuses.contains($0) }.map(\.displayName).joined(separator: " / ")
     }
 
     // MARK: Top muscles
@@ -193,7 +205,8 @@ struct SplitDescriptor {
         var sets: [String: Int] = [:]
         for day in inputs where !day.isRest {
             for ex in day.exercises {
-                guard let label = resolveMuscleLabelHeuristic(for: ex.name) else { continue }
+                guard let label = muscleLabel(for: resolvedMuscleTargets(exerciseID: nil, name: ex.name))
+                else { continue }
                 sets[label, default: 0] += ex.sets
             }
         }

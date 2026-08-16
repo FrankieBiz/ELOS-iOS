@@ -110,7 +110,7 @@ class TemplatesViewModel: ObservableObject {
     }
 
     func createTemplate(name: String, exercises: [TemplateExerciseEntry], ownerID: String,
-                        intent: TrainingIntent? = nil) {
+                        intent: TrainingIntent? = nil, onSyncFailure: ((String) -> Void)? = nil) {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty, !exercises.isEmpty else { return }
 
         let localID = UUID().uuidString
@@ -148,7 +148,9 @@ class TemplatesViewModel: ObservableObject {
                     templateExercises[record.id] = exRecords
                 }
             } else {
-                syncError = "Couldn't save \"\(name)\" to the cloud. It's saved on this device — reopen it to retry syncing."
+                let message = "Couldn't save \"\(name)\" to the cloud. It's saved on this device — reopen it to retry syncing."
+                syncError = message
+                onSyncFailure?(message)
             }
         }
     }
@@ -459,6 +461,7 @@ struct TemplatesView: View {
                 Image(systemName: "list.bullet.clipboard")
                     .font(.system(.title, weight: .medium))
                     .foregroundStyle(Color.tint)
+                    .symbolEffect(.bounce, options: .repeat(.periodic(delay: 3.0)))
             }
             VStack(spacing: 6) {
                 Text("No Templates Yet")

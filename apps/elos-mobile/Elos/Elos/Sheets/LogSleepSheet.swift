@@ -33,7 +33,7 @@ struct LogSleepSheet: View {
                     // Duration display
                     VStack(spacing: 6) {
                         Text(durationLabel)
-                            .font(.system(size: 48, weight: .bold, design: .monospaced))
+                            .font(.system(.largeTitle, weight: .bold))
                             .foregroundStyle(.primary)
                         Text("Estimated duration")
                             .font(.caption)
@@ -132,17 +132,13 @@ struct LogSleepSheet: View {
     private func saveSleep() {
         let bedStr  = formatted(bedTime)
         let wakeStr = formatted(wakeTime)
-        let df = DateFormatter()
-        df.dateFormat = "MMM d"
-        let dateStr = df.string(from: Date())
-        vm.logSleep(SleepEntry(date: dateStr, bed: bedStr, wake: wakeStr, duration: duration, quality: quality))
+        let dateStr = Formatters.monthDay.string(from: Date())
+        vm.logSleep(SleepEntry(date: dateStr, bed: bedStr, wake: wakeStr, duration: duration, quality: quality, notes: notes))
         HapticManager.success()
     }
 
     private func formatted(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "h:mm a"
-        return f.string(from: date)
+        Formatters.clockTime.string(from: date)
     }
 
     private func qualityLabel(_ q: Int) -> String {

@@ -49,7 +49,7 @@ struct CanvasService {
     }()
 
     private static func dayString(_ date: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: date)
+        Formatters.isoDay.string(from: date)
     }
 
     private static func timeString(_ date: Date) -> String {

@@ -22,6 +22,14 @@ struct TrainView: View {
     @EnvironmentObject var context: TrainingContext
     @Environment(\.modelContext) private var modelContext
 
+    /// Minimum width of a quick-action tile, scaled so the grid drops to two columns exactly when the
+    /// labels would otherwise start truncating. 104pt lays the six actions out as a clean 3×2 at default
+    /// sizes — a fifth tile under a row of four read as an orphan.
+    @ScaledMetric(relativeTo: .caption2) private var quickActionMinWidth: CGFloat = 104
+    /// Width of a recent-exercise chip. Scaled so the lift name keeps its two lines instead of
+    /// truncating as the text grows.
+    @ScaledMetric(relativeTo: .caption) private var recentChipWidth: CGFloat = 140
+
     @State private var expandedExercise: UUID?
     @State private var selectedMuscleName: String? = "chest"
     @State private var prsExpanded         = false
@@ -46,56 +54,68 @@ struct TrainView: View {
         return .gymDayReady
     }
 
+    /// The conditions that used to be `if` statements wrapped around each card in the stack. Moved
+    /// here so `SectionStack` can drop an empty section without leaving its spacing behind — and so
+    /// edit mode can still show a placeholder for a card that has no data yet.
+    private func isAvailable(_ section: LayoutSection) -> Bool {
+        switch section {
+        case .trainDeload:       return context.shouldSuggestDeload
+        case .trainRank:         return userProgress != nil
+        case .trainRecents:      return !trainVM.recentExercises.isEmpty
+        case .trainMuscleVolume: return !vm.muscleVolume.isEmpty
+        case .trainPRs:          return !vm.personalRecords.isEmpty
+        default:                 return true
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView(.vertical) {
-                VStack(spacing: 20) {
-                    if context.shouldSuggestDeload { deloadBanner }
-                    if let progress = userProgress {
-                        XPRankCard(
-                            progress: progress,
-                            workoutStreak: workoutStreak,
-                            sessionCount: sessionCount,
-                            prCount: vm.personalRecords.count
-                        )
+                SectionStack(screen: .train, spacing: 20, isAvailable: isAvailable) { section in
+                    switch section {
+                    case .trainDeload: deloadBanner
+                    case .trainRank:
+                        if let progress = userProgress {
+                            XPRankCard(
+                                progress: progress,
+                                workoutStreak: workoutStreak,
+                                sessionCount: sessionCount,
+                                prCount: vm.personalRecords.count
+                            )
+                        }
+                    case .trainStatus:
+                        // Four mutually exclusive states of one slot, so they move as a unit —
+                        // splitting the readiness prompt away from the header it belongs under would
+                        // let someone strand it at the bottom of the screen.
+                        switch trainState {
+                        case .noSplit:           noSplitHint
+                        case .restDay:           restDayCard
+                        case .gymDayNoReadiness: VStack(spacing: 20) { programHeader; readinessPromptCard }
+                        case .gymDayReady:       programHeader
+                        }
+                    case .trainWeekStrip:    weekStrip
+                    case .trainLeaderboard:  leaderboardCard
+                    case .trainQuickActions: quickActions
+                    case .trainRecents:      recentExercisesRow
+                    case .trainStart:        startButton
+                    case .trainExercises:    exercisesSection
+                    case .trainMuscleVolume: muscleVolumePanel
+                    case .trainRadar:        weeklyRadarCard
+                    case .trainPRs:          personalRecordsCard
+                    default: EmptyView()
                     }
-                    switch trainState {
-                    case .noSplit:           noSplitHint
-                    case .restDay:           restDayCard
-                    case .gymDayNoReadiness: programHeader; readinessPromptCard
-                    case .gymDayReady:       programHeader
-                    }
-                    weekStrip
-                    leaderboardCard
-                    quickActions
-                    if !trainVM.recentExercises.isEmpty { recentExercisesRow }
-                    startButton
-                    exercisesSection
-                    if !vm.muscleVolume.isEmpty { muscleVolumePanel }
-                    weeklyRadarCard
-                    if !vm.personalRecords.isEmpty { personalRecordsCard }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
                 .padding(.bottom, 120)
             }
             .scrollIndicators(.hidden)
+            .elosPageBackground()
             .navigationTitle("Training")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 16) {
-                        Button { context.showHistory = true } label: {
-                            Image(systemName: "calendar.badge.clock")
-                                .foregroundStyle(Color.tint)
-                        }
-                        .accessibilityLabel("Workout history")
-                        Button { context.showAnalytics = true } label: {
-                            Image(systemName: "chart.line.uptrend.xyaxis")
-                                .foregroundStyle(Color.tint)
-                        }
-                        .accessibilityLabel("Analytics")
-                    }
+                    CustomizeScreenButton(screen: .train)
                 }
             }
         }
@@ -115,8 +135,13 @@ struct TrainView: View {
             SplitFinderView(dismissAll: { context.showSplitFinder = false })
                 .environmentObject(vm)
         }
-        .sheet(isPresented: $context.showAnalytics)        { AnalyticsView() }
+        // Presents the Stats tab's own view rather than a second, older copy of it. `AnalyticsView`
+        // was a near-duplicate of `StatsView` — same four cards — but still carried the chip bug
+        // `StatsView` documents fixing ("Bench Press" and "Overhead Press" both labelled "Press") and
+        // the server-side volume chart that buckets machine work as "Unmatched".
+        .sheet(isPresented: $context.showAnalytics)        { StatsView() }
         .sheet(isPresented: $context.showLibrary)          { ExerciseLibraryView(modelContext: vm.modelContext) }
+        .sheet(isPresented: $context.showDiscover)         { DiscoverLibraryView(modelContext: vm.modelContext) }
         .sheet(isPresented: $context.showTemplates)        { TemplatesView(modelContext: vm.modelContext) }
         .sheet(isPresented: $context.showStretches)        { StretchRoutinesView() }
         .sheet(isPresented: $context.showSplitLibrary)     { ProgramsView().environmentObject(vm) }
@@ -184,15 +209,7 @@ struct TrainView: View {
     }
 
     private func startSessionWithWarmup() {
-        if vm.activeSplit?.includeWarmups == true {
-            let goal: TrainingGoal = vm.activeSplit?.name.lowercased().contains("athletic") == true
-                ? .athletic : .hypertrophy
-            context.warmupExercises = WarmupLibrary.block(goal: goal, style: .dynamic)
-            context.warmupPhaseComplete = false
-            context.phase = .warmup
-        } else {
-            context.phase = .active
-        }
+        context.startSession(activeSplit: vm.activeSplit)
         vm.showingSession = true
     }
 
@@ -201,7 +218,7 @@ struct TrainView: View {
     private var noSplitHint: some View {
         HStack(spacing: 8) {
             Image(systemName: "calendar.badge.plus")
-                .font(.system(size: 13))
+                .font(.footnote)
                 .foregroundStyle(.secondary)
             Text("No active split — tap Programs below to set one up.")
                 .font(.caption)
@@ -218,7 +235,7 @@ struct TrainView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Image(systemName: "moon.fill").foregroundStyle(Color.tint)
-                Text("Rest Day").font(.system(size: 18, weight: .bold))
+                Text("Rest Day").font(.system(.title3, weight: .bold))
                 Spacer()
             }
             if let next = vm.weekLoadMap(daysAhead: 7).first(where: { $0.loadType == "gym" }) {
@@ -237,11 +254,13 @@ struct TrainView: View {
     private var readinessPromptCard: some View {
         Button { context.showReadinessSheet = true } label: {
             HStack(spacing: 14) {
-                HStack(spacing: 8) {
-                    Image(systemName: "moon.zzz.fill").foregroundStyle(.indigo)
-                    Image(systemName: "flame.fill").foregroundStyle(.orange)
-                    Image(systemName: "bolt.fill").foregroundStyle(.yellow)
-                }
+                // Was three differently-hued icons (indigo moon, orange flame, yellow bolt) for the
+                // sleep/soreness/motivation dimensions the check-in covers — reads as a sticker pack
+                // rather than a single control. One icon, one hue, same restraint as every other
+                // interactive glyph in the app (tint = interactive, per the app-wide convention).
+                Image(systemName: "gauge.medium")
+                    .font(.system(.title2, weight: .medium))
+                    .foregroundStyle(Color.tint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Quick check-in before you train?")
                         .font(.subheadline).fontWeight(.semibold)
@@ -278,6 +297,7 @@ struct TrainView: View {
             } label: {
                 Image(systemName: "xmark").font(.caption).foregroundStyle(.secondary)
             }
+            .accessibilityLabel("Dismiss deload suggestion")
         }
         .padding(14)
         .background(Color.warn.opacity(0.12))
@@ -294,16 +314,22 @@ struct TrainView: View {
                         let dayCount = vm.activeSplitDays.count
                         let dayIdx   = vm.currentSplitDayIndex
                         let dayName  = vm.currentSplitDay.map { $0.isRest ? "Rest" : ($0.dayName.isEmpty ? "Workout" : $0.dayName) } ?? "—"
-                        Text("\(dayName) · Day \(dayIdx + 1) of \(dayCount)")
-                            .font(.system(size: 20, weight: .bold))
+                        // Matches restDayCard's icon+title pairing right above this in the same
+                        // stack — that state had a moon glyph, this one (the far more common state)
+                        // had none, so the two read as different screens rather than sibling states.
+                        HStack(spacing: 8) {
+                            Image(systemName: "dumbbell.fill").foregroundStyle(Color.tint)
+                            Text("\(dayName) · Day \(dayIdx + 1) of \(dayCount)")
+                                .font(.system(.title3, weight: .bold))
+                        }
                         Text(split.name)
-                            .font(.system(size: 13))
+                            .font(.footnote)
                             .foregroundStyle(.secondary)
                     } else {
                         Text("No Active Split")
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.system(.title3, weight: .bold))
                         Button("Pick a split in Programs") { context.showSplitLibrary = true }
-                            .font(.system(size: 13))
+                            .font(.footnote)
                             .foregroundStyle(Color.tint)
                     }
                 }
@@ -312,7 +338,7 @@ struct TrainView: View {
                     let cal = Calendar.current
                     let weeksIn = max(1, (cal.dateComponents([.weekOfYear], from: activatedAt, to: Date()).weekOfYear ?? 0) + 1)
                     Text("Wk \(weeksIn)")
-                        .font(.system(size: 14, weight: .regular, design: .rounded).monospacedDigit())
+                        .font(.elosNumeric(.subheadline, weight: .regular))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -442,13 +468,13 @@ struct TrainView: View {
     }
 
     private func weekRangeLabel() -> String {
-        let now = Date()
-        let cal = Calendar.current
-        let start = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)) ?? now
-        let end = cal.date(byAdding: .day, value: 6, to: start) ?? now
-        let fmt = DateFormatter()
-        fmt.dateFormat = "MMM d"
-        return "\(fmt.string(from: start))–\(fmt.string(from: end))"
+        // Derived from `isoWeekStart()` — the same boundary the chart's data uses. This label was
+        // computed with `Calendar.current`, which starts the week on Sunday in the US, so it read
+        // "Jul 26 – Aug 1" over a chart actually covering Mon 27th to Sun 2nd: the header described a
+        // different week from the one plotted beneath it.
+        let start = isoWeekStart()
+        let end = Calendar(identifier: .iso8601).date(byAdding: .day, value: 6, to: start) ?? start
+        return "\(Formatters.monthDay.string(from: start))–\(Formatters.monthDay.string(from: end))"
     }
 
     private func rankValue(for metric: String, standings: MyStandingsResponse) -> Int {
@@ -474,30 +500,39 @@ struct TrainView: View {
     // MARK: Quick Actions
     private var recentExercisesRow: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(spacing: Space.s) {
+                // The label yields, the button doesn't: at large text sizes both grew, the row
+                // overflowed, and "Browse all" — the actionable half — ran off the trailing edge.
                 Text("RECENT")
-                    .font(.caption2).fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                Spacer()
+                    .elosSectionLabel()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 0)
                 Button("Browse all") { context.showExercisePicker = true }
-                    .font(.caption)
+                    .font(.elosCaption)
                     .foregroundStyle(Color.tint)
+                    .fixedSize()
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(trainVM.recentExercises) { ex in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(ex.name)
-                                .font(.caption).fontWeight(.semibold)
+                                .font(.system(.caption, weight: .semibold))
                                 .foregroundStyle(.primary)
-                                .lineLimit(1)
-                            Text(ex.primary_muscle.capitalized)
-                                .font(.caption2)
+                                // Two lines. A lift name is the content of the chip, and truncating it
+                                // to "Barbell Bench…" loses the distinction between variants; a slightly
+                                // taller row is the cheaper cost. Width is scaled on top of this.
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(ex.primary_muscle.muscleDisplayName)
+                                .font(.elosMicro)
                                 .foregroundStyle(.secondary)
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .frame(width: 140, alignment: .leading)
+                        // Scaled, not a flat 140: at large text every chip truncated to "Barbell…".
+                        .frame(width: recentChipWidth, alignment: .leading)
                         .background(Color(.secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
@@ -506,12 +541,23 @@ struct TrainView: View {
             }
         }
         .sheet(isPresented: $context.showExercisePicker) {
-            ExercisePickerView(onPickSingle: { _ in context.showExercisePicker = false })
+            ExercisePickerView(onPickSingle: { _ in
+                context.showExercisePicker = false
+                return true
+            })
         }
     }
 
+    /// Four across, falling to two-by-two when the labels no longer fit.
+    ///
+    /// Fixed at four columns, larger text sizes truncated "Templates" to "Templat…" and pushed
+    /// "Library" past the screen edge — the app's main navigation, unreadable. An adaptive grid keeps
+    /// four across at default sizes and reflows instead of clipping.
     private var quickActions: some View {
-        HStack(spacing: Space.s + 2) {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: quickActionMinWidth), spacing: Space.s + 2)],
+            spacing: Space.s + 2
+        ) {
             QuickActionButton(icon: "list.bullet.clipboard", label: "Templates",
                               tint: .tint)    { context.showTemplates    = true }
             QuickActionButton(icon: "calendar.badge.plus",   label: "Programs",
@@ -520,6 +566,14 @@ struct TrainView: View {
                               tint: .mGym)    { context.showStretches    = true }
             QuickActionButton(icon: "dumbbell",              label: "Library",
                               tint: .mAssign) { context.showLibrary      = true }
+            // Discover was fully built — client and backend (`/library/*`, `/machines`) — but nothing
+            // ever presented `DiscoverLibraryView`, so ~2,000 lines of working feature were unreachable.
+            QuickActionButton(icon: "sparkles.rectangle.stack", label: "Discover",
+                              tint: .mNutri)  { context.showDiscover     = true }
+            // Promoted out of the toolbar. A whole screen of training history deserves better than a
+            // 20pt glyph, and it completes the grid.
+            QuickActionButton(icon: "calendar.badge.clock",  label: "History",
+                              tint: .mHabits) { context.showHistory      = true }
         }
     }
 
@@ -545,7 +599,7 @@ struct TrainView: View {
                 }
             } label: {
                 Label(startButtonTitle, systemImage: "play.fill")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(.callout, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
@@ -566,7 +620,7 @@ struct TrainView: View {
                     showSkipConfirm = true
                 } label: {
                     Label("Skip Today", systemImage: "forward.fill")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(.subheadline, weight: .semibold))
                         .foregroundStyle(Color.secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
@@ -623,8 +677,9 @@ struct TrainView: View {
                         exercise: $exercise,
                         isExpanded: expandedExercise == exercise.id,
                         unit: vm.weightUnit,
+                        allExerciseNames: vm.exercises.map(\.name),
                         onSelect: {
-                            withAnimation(.easeInOut(duration: 0.25)) {
+                            withAnimation(.elosStandard) {
                                 expandedExercise = expandedExercise == exercise.id ? nil : exercise.id
                                 selectedMuscleName = exercise.primaryMuscle
                             }
@@ -661,7 +716,7 @@ struct TrainView: View {
     private var personalRecordsCard: some View {
         VStack(spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.25)) { prsExpanded.toggle() }
+                withAnimation(.elosStandard) { prsExpanded.toggle() }
             } label: {
                 HStack {
                     Image(systemName: "chart.line.uptrend.xyaxis").foregroundStyle(Color.good)
@@ -680,7 +735,7 @@ struct TrainView: View {
                     HStack {
                         Text(pr.lift).font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
                         Text(pr.weight)
-                            .font(.system(size: 16, weight: .bold, design: .rounded).monospacedDigit())
+                            .font(.elosNumeric(.callout, weight: .bold))
                         Text(pr.reps)
                             .font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
                             .padding(.horizontal, 8).padding(.vertical, 3)
@@ -746,10 +801,14 @@ struct TrainView: View {
     private func muscleChip(_ label: String, sets: Int, target: Int) -> some View {
         VStack(spacing: 2) {
             Text("\(sets)/\(target)")
-                .font(.system(size: 12, weight: .bold, design: .rounded).monospacedDigit())
-                .foregroundStyle(sets >= target ? Color.good : Color.primary)
+                .font(.elosNumeric(.caption, weight: .bold))
+                // Three states, so emphasis tracks achievement. This was `met ? .good : .primary`,
+                // which made an untrained muscle ("0/14", full-brightness white) the loudest value in
+                // the row while a hit target sat quieter in green — the radar above already shows the
+                // gap as a dent in the polygon, so the untouched number should recede, not shout.
+                .foregroundStyle(sets >= target ? Color.good : sets > 0 ? Color.primary : Color.secondary)
             Text(label)
-                .font(.system(size: 9))
+                .font(.caption2)
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -787,14 +846,17 @@ struct TrainView: View {
         }
         var s = MuscleWeekStats()
         for set in doneSets {
-            switch trainVM.muscleGroup(for: set.exerciseName) {
-            case "chest":                                        s.chest += 1
-            case "lats", "rear_delts":                           s.back += 1
-            case "quads", "hamstrings", "glutes", "calves":      s.legs += 1
-            case "front_delts", "side_delts":                    s.shoulders += 1
-            case "biceps", "triceps":                            s.arms += 1
-            case "core":                                         s.core += 1
-            default: break
+            // Grouped via the taxonomy rather than a hand-listed switch. The old list matched only
+            // "lats"/"rear_delts" for Back and dropped everything else — a set of lower-back or
+            // upper-back work counted toward nothing at all.
+            switch MuscleTaxonomy.group(forMuscle: trainVM.muscleGroup(for: set)) {
+            case .chest:               s.chest += 1
+            case .back:                s.back += 1
+            case .legs, .glutes:       s.legs += 1
+            case .shoulders:           s.shoulders += 1
+            case .arms:                s.arms += 1
+            case .core:                s.core += 1
+            case nil:                  break
             }
         }
         return s
@@ -844,7 +906,7 @@ private struct QuickActionButton: View {
         } label: {
             VStack(spacing: Space.s) {
                 Image(systemName: icon)
-                    .font(.system(size: 22, weight: .medium))
+                    .font(.system(.title2, weight: .medium))
                     .foregroundStyle(tint)
                 Text(label)
                     .font(.system(.caption2, weight: .semibold))
@@ -855,12 +917,11 @@ private struct QuickActionButton: View {
             }
             .frame(maxWidth: .infinity, minHeight: 60)
             .padding(.vertical, Space.m)
-            .background(tint.opacity(0.11))
-            .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                    .stroke(tint.opacity(0.18), lineWidth: 1)
-            )
+            // Neutral surface, hue on the icon only. Tinting the *background* made these the sole
+            // non-neutral surfaces in the app — four competing coloured blocks that sat outside the
+            // elevation language every other card follows. The colour coding survives where it does the
+            // scanning work (the glyph); the tile itself is a level-1 surface like everything else.
+            .elosWell(cornerRadius: Radius.control)
         }
         .buttonStyle(.plain)
     }
@@ -871,17 +932,20 @@ private struct WeekDayCard: View {
     let day: WeekDay
 
     var body: some View {
+        // Text styles, not fixed sizes: at an accessibility text size these chips stayed at 9–15pt
+        // while every card around them grew, so the week strip read as a different app. `elosDenseLayout`
+        // caps the growth — seven chips in a row genuinely cannot reflow to the largest sizes — but they
+        // now move with the user's setting instead of ignoring it.
         VStack(spacing: 4) {
-            Text(day.letter).font(.system(size: 10, weight: .medium))
-            Text("\(day.number)").font(.system(size: 15, weight: .bold))
-            Text(day.title).font(.system(size: 11, weight: .bold)).lineLimit(1)
-            Text(day.sublabel).font(.system(size: 9)).lineLimit(1)
-            if day.isPast {
-                Circle().fill(Color.good).frame(width: 5, height: 5)
-            } else {
-                Circle().fill(Color.clear).frame(width: 5, height: 5)
-            }
+            Text(day.letter).font(.system(.caption2, weight: .medium))
+            Text("\(day.number)").font(.elosNumeric(.subheadline))
+            Text(day.title).font(.system(.caption2, weight: .bold)).lineLimit(1)
+            Text(day.sublabel).font(.elosMicro).lineLimit(1)
+            Circle()
+                .fill(day.isPast ? Color.good : Color.clear)
+                .frame(width: 5, height: 5)
         }
+        .elosDenseLayout()
         .padding(.horizontal, 10).padding(.vertical, 8)
         .foregroundStyle(day.isToday ? Color.white : Color.primary)
         .background(day.isToday ? Color.tint : Color(.secondarySystemBackground))
@@ -899,6 +963,7 @@ private struct ExerciseCard: View {
     @Binding var exercise: Exercise
     let isExpanded: Bool
     let unit: WeightUnit
+    var allExerciseNames: [String] = []
     let onSelect: () -> Void
 
     @State private var showingSwap = false
@@ -949,11 +1014,11 @@ private struct ExerciseCard: View {
                         HStack {
                             Text("\(i + 1)").font(.caption.monospacedDigit()).frame(width: 20).foregroundStyle(.secondary)
                             Text(exercise.sets[i].weight.isEmpty ? "— \(unit.label)" : "\(exercise.sets[i].weight) \(unit.label)")
-                                .font(.system(size: 14, design: .rounded).monospacedDigit())
+                                .font(.elosNumeric(.subheadline, weight: .bold))
                                 .foregroundStyle(exercise.sets[i].done ? .secondary : .primary)
                                 .frame(maxWidth: .infinity)
                             Text(exercise.sets[i].reps.isEmpty ? "—" : exercise.sets[i].reps)
-                                .font(.system(size: 14, design: .rounded).monospacedDigit())
+                                .font(.elosNumeric(.subheadline, weight: .bold))
                                 .foregroundStyle(exercise.sets[i].done ? .secondary : .primary)
                                 .frame(width: 50)
                             Text(exercise.sets[i].rpe.isEmpty ? "—" : exercise.sets[i].rpe)
@@ -981,7 +1046,7 @@ private struct ExerciseCard: View {
         }
         .elosCard()
         .sheet(isPresented: $showingSwap) {
-            ExerciseSwapSheet(exerciseName: $exercise.name)
+            ExerciseSwapSheet(exercise: $exercise, existingNames: allExerciseNames.filter { $0 != exercise.name })
         }
     }
 }
@@ -995,16 +1060,19 @@ private struct MuscleVolumeRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(mv.muscle)
+            // Muscle keys are the catalog's snake_case ("front_delts") — render, don't leak the schema.
+            Text(mv.muscle.muscleDisplayName)
                 .font(.subheadline).fontWeight(isSelected ? .semibold : .regular)
                 .foregroundStyle(isSelected ? Color.tint : Color.primary)
                 .frame(width: 72, alignment: .leading)
+                .minimumScaleFactor(0.85)
+                .lineLimit(1)
             ProgressBar(
                 value: mv.target > 0 ? Double(mv.current) / Double(mv.target) : 0,
                 color: mv.onTrack ? .mGym : .warn, height: 6
             )
             Text("\(mv.current)/\(mv.target)")
-                .font(.system(size: 13, design: .rounded).monospacedDigit()).foregroundStyle(.secondary).frame(width: 42)
+                .font(.elosNumeric(.footnote, weight: .bold)).foregroundStyle(.secondary).frame(width: 42)
             Text(mv.trend)
                 .font(.caption).fontWeight(.semibold)
                 .foregroundStyle(mv.trendUp ? Color.good : Color.bad).frame(width: 36, alignment: .trailing)

@@ -3,6 +3,8 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var vm: AppViewModel
     @EnvironmentObject var authStore: AuthStore
+    @EnvironmentObject var theme: ThemeStore
+    @EnvironmentObject var layout: LayoutStore
     @Environment(\.dismiss) private var dismiss
     @StateObject private var authVM = AuthViewModel()
     @State private var showingSignOutAlert      = false
@@ -61,27 +63,39 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("App") {
-                    HStack {
-                        Label("Theme", systemImage: "circle.lefthalf.filled")
-                        Spacer()
-                        Picker("", selection: Binding(
-                            get: { vm.forceDark.map { $0 ? "dark" : "light" } ?? "system" },
-                            set: { val in
-                                switch val {
-                                case "dark":  vm.forceDark = true
-                                case "light": vm.forceDark = false
-                                default:      vm.forceDark = nil
-                                }
+                Section {
+                    // Opens at the app root rather than pushing here, and closes this sheet on the
+                    // way. Changing the theme re-identifies the tab content underneath — which is
+                    // what hosts this sheet — so a nested customizer would dismiss itself the first
+                    // time you touched a colour. Handing off sidesteps that entirely.
+                    Button {
+                        HapticManager.impact(.light)
+                        dismiss()
+                        layout.customizingScreen = nil
+                        layout.showingCustomizeSheet = true
+                    } label: {
+                        HStack {
+                            Label("Appearance & Layout", systemImage: "paintbrush")
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if theme.config != ThemeConfig() || layout.isAnyScreenCustomized {
+                                Text("Custom")
+                                    .font(.elosCaption)
+                                    .foregroundStyle(Color.tint)
                             }
-                        )) {
-                            Text("System").tag("system")
-                            Text("Light").tag("light")
-                            Text("Dark").tag("dark")
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        .pickerStyle(.segmented)
-                        .frame(width: 180)
                     }
+                } header: {
+                    Text("App")
+                } footer: {
+                    Text("Colours, shapes, spacing, type — and what each screen shows, in what order.")
+                        .font(.elosMicro)
+                }
+
+                Section {
                     HStack {
                         Label("Units", systemImage: "scalemass")
                         Spacer()
@@ -265,6 +279,7 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showingPlateCalc) {
                 PlateCalculatorView()
+                    .environmentObject(vm)
             }
             .sheet(isPresented: $showingBodyMetrics) {
                 BodyMetricsView()

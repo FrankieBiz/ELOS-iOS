@@ -226,6 +226,7 @@ struct ExerciseLibraryView: View {
                 ExercisePickerView(onPickSingle: { picked in
                     pickedDetail = libVM.definitions.first { $0.id == picked.id }
                     showAdvancedPicker = false
+                    return true
                 })
             }
             .navigationDestination(item: $pickedDetail) { ex in

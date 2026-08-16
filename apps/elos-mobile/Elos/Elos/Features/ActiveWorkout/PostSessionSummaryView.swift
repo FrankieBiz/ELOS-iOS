@@ -89,7 +89,7 @@ struct PostSessionSummaryView: View {
 
     private func statColumn(title: String, sub: String) -> some View {
         VStack(spacing: 3) {
-            Text(title).font(.system(size: 18, weight: .bold, design: .rounded).monospacedDigit())
+            Text(title).font(.elosNumeric(.title3))
             Text(sub).font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -132,7 +132,7 @@ struct PostSessionSummaryView: View {
                     } label: {
                         Image(systemName: sharedPRs.contains(exercise)
                               ? "checkmark.circle.fill" : "square.and.arrow.up")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(.subheadline, weight: .semibold))
                             .foregroundStyle(sharedPRs.contains(exercise) ? Color.secondary : Color.tint)
                     }
                     .buttonStyle(.plain)
@@ -156,7 +156,7 @@ struct PostSessionSummaryView: View {
     }
 
     private func e1rm(_ s: ExerciseSetRecord) -> Double {
-        s.weightKg * (1 + Double(s.reps) / 30)
+        StrengthMath.e1rm(weightKg: s.weightKg, reps: s.reps) ?? 0
     }
 
     private var topLiftPayload: FeedTopLift? {
@@ -171,7 +171,7 @@ struct PostSessionSummaryView: View {
             Task { await vm.connectHealth() }
         } label: {
             Label("Connect Apple Health", systemImage: "heart.fill")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(.subheadline, weight: .semibold))
                 .foregroundStyle(Color.tint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -199,7 +199,7 @@ struct PostSessionSummaryView: View {
         } label: {
             Label(workoutShared ? "Shared to Friends" : "Share to Friends",
                   systemImage: workoutShared ? "checkmark.circle.fill" : "person.2.fill")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(.subheadline, weight: .semibold))
                 .foregroundStyle(workoutShared ? Color.secondary : Color.tint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -215,7 +215,7 @@ struct PostSessionSummaryView: View {
             renderShareImage()
         } label: {
             Label("Share Image", systemImage: "photo.on.rectangle.angled")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(.subheadline, weight: .semibold))
                 .foregroundStyle(Color.tint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -267,9 +267,11 @@ struct PostSessionSummaryView: View {
                     ForEach(sorted, id: \.key) { item in
                         VStack(spacing: 2) {
                             Text("\(item.value)")
-                                .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
-                            Text(item.key.capitalized)
-                                .font(.system(size: 9))
+                                .font(.elosNumeric(.footnote))
+                            // `.capitalized` alone kept the snake_case underscore, so the card read
+                            // "Front_delts" / "Lower_back".
+                            Text(item.key.muscleDisplayName)
+                                .font(.elosMicro)
                                 .foregroundStyle(.secondary)
                         }
                         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -336,7 +338,7 @@ struct PostSessionSummaryView: View {
             context.dismissPostSummary()
         } label: {
             Label("View Analytics", systemImage: "chart.line.uptrend.xyaxis")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(.subheadline, weight: .semibold))
                 .foregroundStyle(Color.tint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -351,7 +353,7 @@ struct PostSessionSummaryView: View {
             context.dismissPostSummary()
         } label: {
             Text("Done")
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(.callout, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)

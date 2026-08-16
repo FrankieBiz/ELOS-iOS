@@ -7,10 +7,10 @@ struct WelcomeStepView: View {
 
             VStack(spacing: 10) {
                 Text("ELOS")
-                    .font(.system(size: 60, weight: .black))
+                    .font(.system(.largeTitle, weight: .black))
                     .foregroundStyle(Color.tint)
                 Text("Everyday Life\nOperating System")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(.title2, weight: .bold))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.primary)
             }
@@ -49,9 +49,16 @@ private struct FeatureRow: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(color.opacity(0.15))
                     .frame(width: 44, height: 44)
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(color)
+                if icon == "flame.fill" {
+                    Image(systemName: icon)
+                        .font(.system(.title3, weight: .semibold))
+                        .foregroundStyle(color)
+                        .symbolEffect(.variableColor.iterative, options: .repeating)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(.title3, weight: .semibold))
+                        .foregroundStyle(color)
+                }
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)

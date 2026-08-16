@@ -22,11 +22,11 @@ struct SignupView: View {
                             .fill(Color.tint)
                             .frame(width: 72, height: 72)
                         Image(systemName: "bolt.fill")
-                            .font(.system(size: 30, weight: .bold))
+                            .font(.system(.title, weight: .bold))
                             .foregroundStyle(.white)
                     }
                     Text("Create Account")
-                        .font(.system(size: 32, weight: .bold))
+                        .font(.system(.title, weight: .bold))
                     Text("Start your ELOS journey")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
