@@ -80,7 +80,12 @@ struct WorkoutDetailView: View {
                         disclaimerCard(disclaimer, attribution: w.attribution)
                     }
                 } else {
-                    Text("Could not load workout.").foregroundStyle(.secondary).padding(.top, 40)
+                    VStack(spacing: 12) {
+                        Text("Could not load workout.").foregroundStyle(.secondary)
+                        Button("Retry") { Task { await detailVM.load(workoutId: workoutId, context: modelContext) } }
+                            .font(.subheadline).fontWeight(.semibold).foregroundStyle(Color.tint)
+                    }
+                    .padding(.top, 40)
                 }
             }
             .padding(16)
@@ -179,7 +184,7 @@ struct WorkoutDetailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             }
 
-            Button { detailVM.addToMyPlan() } label: {
+            Button { detailVM.addToMyPlan(ownerID: appVM.currentUserID, context: modelContext, vm: appVM) } label: {
                 Group {
                     if detailVM.isAddingToPlan {
                         ProgressView().tint(.white)
@@ -224,19 +229,6 @@ final class WorkoutDetailViewModel: ObservableObject {
 
     private struct SaveWorkoutBody: Encodable { let workoutId: String }
     private struct EmptySaveResponse: Decodable { let ok: Bool? }
-    private struct CreateTemplateForkRequest: Encodable {
-        let name: String
-        let exercises: [TemplateExForkRequest]
-    }
-    private struct TemplateExForkRequest: Encodable {
-        let exercise_name: String
-        let order_index: Int
-        let target_sets: Int
-        let target_reps: String
-        let target_rpe: Double?
-        let rest_seconds: Int
-    }
-    private struct ForkTemplateResponse: Decodable { let id: String }
 
     func load(workoutId: String, context: ModelContext) async {
         isLoading = true
@@ -271,30 +263,67 @@ final class WorkoutDetailViewModel: ObservableObject {
         }
     }
 
-    func addToMyPlan() {
-        guard let w = workout, let firstDay = w.days.first else { return }
-        let exercises = firstDay.exercises.map { ex in
-            TemplateExForkRequest(
-                exercise_name: ex.exercise_name,
-                order_index: ex.order_index,
-                target_sets: ex.sets ?? 3,
-                target_reps: ex.reps ?? "8-10",
-                target_rpe: nil,
-                rest_seconds: ex.rest_seconds ?? 90
-            )
+    /// Builds the local split + one template per program day (up to 7 — `SplitDayPersistence`'s
+    /// shape is a fixed 7-slot week). Network-free and synchronous so it's directly testable;
+    /// `addToMyPlan` below is the thin async wrapper that calls this then pushes.
+    ///
+    /// Reuses `SplitDayPersistence.upsertDays` (the same day-persistence the split builder already
+    /// uses) rather than a third split-construction path. Templates are created locally
+    /// (`serverConfirmed: false`, the default) and left for `TemplatesView.reconcileUnconfirmed` —
+    /// which already "runs on every load, so a template can never be stranded on-device" — to push;
+    /// if the server assigns a different id, `TemplateIDRepointing` (built for exactly this) already
+    /// re-points this split's day `templateID`s automatically. Not activated by default, matching
+    /// the existing "blank Create Split just adds to My Splits, unactivated" convention — the lifter
+    /// can hit Set as Active from My Splits once they've looked it over.
+    @discardableResult
+    func buildLocalSplit(ownerID: String, context: ModelContext) -> UserSplitRecord? {
+        guard let w = workout, !w.days.isEmpty else { return nil }
+
+        let dayLabels = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        var dayNames = Array(repeating: "", count: 7)
+        var dayTemplateIDs = Array(repeating: "", count: 7)
+        var dayIsRest = Array(repeating: true, count: 7)
+
+        let orderedDays = w.days.sorted { $0.order_index < $1.order_index }
+        for (i, day) in orderedDays.prefix(7).enumerated() {
+            let template = WorkoutTemplateRecord(ownerID: ownerID, name: "\(w.creator_name): \(day.name)")
+            context.insert(template)
+            for ex in day.exercises {
+                context.insert(TemplateExerciseRecord(
+                    ownerID: ownerID, templateID: template.id, exerciseName: ex.exercise_name,
+                    orderIndex: ex.order_index, targetSets: ex.sets ?? 3, targetReps: ex.reps ?? "8-10",
+                    restSeconds: ex.rest_seconds ?? 90))
+            }
+            dayNames[i] = day.name
+            dayTemplateIDs[i] = template.id
+            dayIsRest[i] = false
         }
+
+        let split = UserSplitRecord(ownerID: ownerID, name: w.title)
+        context.insert(split)
+        // Matches CreateSplitView.saveSplit(): pending from the moment it's created, so a
+        // failed/offline push is retried on next launch instead of the split silently vanishing.
+        split.syncPending = true
+        let indexToWeekday = [2, 3, 4, 5, 6, 7, 1]   // same convention as CreateSplitView.saveSplit()
+        split.pinnedWeekdays = (0..<7).filter { !dayIsRest[$0] }.map { indexToWeekday[$0] }
+        SplitDayPersistence.upsertDays(
+            splitID: split.id, dayLabels: dayLabels, dayNames: dayNames,
+            dayTemplateIDs: dayTemplateIDs, dayIsRest: dayIsRest,
+            dayExercises: Array(repeating: [], count: 7),   // ad-hoc unused — every day is template-backed
+            dayExcludedMuscles: Array(repeating: [], count: 7),
+            existing: [], modelContext: context)
+        try? context.save()
+        return split
+    }
+
+    func addToMyPlan(ownerID: String, context: ModelContext, vm: AppViewModel) {
+        guard let split = buildLocalSplit(ownerID: ownerID, context: context) else { return }
         isAddingToPlan = true
         Task {
             defer { isAddingToPlan = false }
-            do {
-                _ = try await ApiClient.shared.post(
-                    "/templates",
-                    body: CreateTemplateForkRequest(name: "\(w.creator_name): \(firstDay.name)", exercises: exercises)
-                ) as ForkTemplateResponse
-                addedToPlan = true
-            } catch {
-                addError = "Couldn't add this to your plan. Please try again."
-            }
+            await TemplateSync.pushPendingTemplates(forSplit: split, context: context)
+            await vm.pushSplitToServer(split)
+            addedToPlan = true
         }
     }
 }
@@ -319,7 +348,7 @@ struct WorkoutDaySectionView: View {
                         }
                     }
                     Spacer()
-                    Text("\(day.exercises.count) exercises")
+                    Text(day.exercises.count.pluralized("exercise"))
                         .font(.caption2).foregroundStyle(.secondary)
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.caption).foregroundStyle(.secondary)

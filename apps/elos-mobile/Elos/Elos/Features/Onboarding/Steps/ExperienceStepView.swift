@@ -20,7 +20,7 @@ struct ExperienceStepView: View {
         VStack(alignment: .leading, spacing: 32) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Training profile")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(.title, weight: .bold))
                 Text("Tell us about your experience level and what you're working towards.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -77,7 +77,7 @@ private struct ExperienceChip: View {
         Button(action: onTap) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 20))
+                    .font(.title3)
                     .foregroundStyle(isSelected ? Color.tint : Color.secondary)
                     .frame(width: 28)
                 VStack(alignment: .leading, spacing: 2) {
@@ -97,9 +97,9 @@ private struct ExperienceChip: View {
             }
             .padding(14)
             .background(isSelected ? Color.tintSoft : Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(isSelected ? Color.tint : Color.clear, lineWidth: 1.5)
             )
         }
@@ -119,7 +119,7 @@ private struct GoalChip: View {
         Button(action: onTap) {
             VStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 22))
+                    .font(.title2)
                     .foregroundStyle(isSelected ? Color.tint : Color.secondary)
                 Text(label)
                     .font(.subheadline)
@@ -133,9 +133,9 @@ private struct GoalChip: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .background(isSelected ? Color.tintSoft : Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(isSelected ? Color.tint : Color.clear, lineWidth: 1.5)
             )
         }

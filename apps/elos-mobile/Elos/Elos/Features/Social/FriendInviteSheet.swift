@@ -57,7 +57,7 @@ struct FriendInviteSheet: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                                 .background(Color.tint)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                         .padding(.horizontal, 24)
                     }

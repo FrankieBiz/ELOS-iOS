@@ -6,6 +6,10 @@ struct ExerciseOrdererTests {
         .init(id: "fly", name: "Cable Fly", primaryMuscle: "chest", secondaryMuscles: [], equipment: "cable", movementPattern: "isolation", isCustom: false),
         .init(id: "bench", name: "Bench Press", primaryMuscle: "chest", secondaryMuscles: ["triceps"], equipment: "barbell", movementPattern: "push", isCustom: false),
         .init(id: "pushdown", name: "Tricep Pushdown", primaryMuscle: "triceps", secondaryMuscles: [], equipment: "cable", movementPattern: "isolation", isCustom: false),
+        .init(id: "curl", name: "Bicep Curl", primaryMuscle: "biceps", secondaryMuscles: [], equipment: "dumbbell", movementPattern: "isolation", isCustom: false),
+        .init(id: "closegrip", name: "Close-Grip Bench", primaryMuscle: "triceps", secondaryMuscles: ["chest"], equipment: "barbell", movementPattern: "push", isCustom: false),
+        .init(id: "squat", name: "Squat", primaryMuscle: "quads", secondaryMuscles: [], equipment: "barbell", movementPattern: "squat", isCustom: false),
+        .init(id: "legext", name: "Leg Extension", primaryMuscle: "quads", secondaryMuscles: [], equipment: "machine", movementPattern: "isolation", isCustom: false),
     ]
     @Test func compoundsComeFirst() {
         let day = [DayExercise(id: "fly", name: "Cable Fly"),
@@ -20,5 +24,94 @@ struct ExerciseOrdererTests {
         let ordered = ExerciseOrderer.order(day, catalog: catalog)
         #expect(ordered.first?.id == "bench")
         #expect(ordered.count == 2)
+    }
+
+    // MARK: Priority partitioning
+
+    @Test func priorityGroupExercisesPrecedeEverythingElse() {
+        let day = [DayExercise(id: "squat", name: "Squat"),
+                   DayExercise(id: "curl", name: "Bicep Curl"),
+                   DayExercise(id: "closegrip", name: "Close-Grip Bench")]
+        let ordered = ExerciseOrderer.order(day, catalog: catalog, priority: .arms)
+        let ids = ordered.map(\.id)
+        // Arms exercises (curl, closegrip) first, quads (squat) last — regardless of compound-ness.
+        #expect(Set(ids.prefix(2)) == Set(["curl", "closegrip"]))
+        #expect(ids.last == "squat")
+    }
+
+    @Test func compoundBeforeIsolationHoldsWithinThePriorityGroup() {
+        let day = [DayExercise(id: "curl", name: "Bicep Curl"),
+                   DayExercise(id: "closegrip", name: "Close-Grip Bench"),
+                   DayExercise(id: "squat", name: "Squat")]
+        let ordered = ExerciseOrderer.order(day, catalog: catalog, priority: .arms)
+        // Both arm exercises lead; the compound one (closegrip) leads *within* that group.
+        #expect(ordered.map(\.id) == ["closegrip", "curl", "squat"])
+    }
+
+    @Test func compoundBeforeIsolationHoldsWithinTheRestGroup() {
+        let day = [DayExercise(id: "curl", name: "Bicep Curl"),
+                   DayExercise(id: "legext", name: "Leg Extension"),
+                   DayExercise(id: "squat", name: "Squat")]
+        let ordered = ExerciseOrderer.order(day, catalog: catalog, priority: .arms)
+        // curl (arms) leads. Among the rest, squat (compound) leads legext (isolation).
+        #expect(ordered.map(\.id) == ["curl", "squat", "legext"])
+    }
+
+    @Test func priorityWithNoMatchesBehavesLikeNoPriority() {
+        let day = [DayExercise(id: "curl", name: "Bicep Curl"),
+                   DayExercise(id: "bench", name: "Bench Press")]
+        // Nothing here is a legs exercise — .legs priority should be a no-op vs. nil. DayExercise
+        // isn't Equatable, so compare the id sequence rather than the arrays directly.
+        let withPriority = ExerciseOrderer.order(day, catalog: catalog, priority: .legs)
+        let withoutPriority = ExerciseOrderer.order(day, catalog: catalog, priority: nil)
+        #expect(withPriority.map(\.id) == withoutPriority.map(\.id))
+    }
+
+    @Test func priorityGroupOrderIsStableAmongEqualRank() {
+        let day = [DayExercise(id: "curl", name: "Bicep Curl"),
+                   DayExercise(id: "pushdown", name: "Tricep Pushdown"),
+                   DayExercise(id: "bench", name: "Bench Press")]
+        let ordered = ExerciseOrderer.order(day, catalog: catalog, priority: .arms)
+        // curl and pushdown are both arms, both isolation (equal rank) — relative order must survive.
+        #expect(ordered.map(\.id) == ["curl", "pushdown", "bench"])
+    }
+
+    @Test func priorityPartitionMatchesAnyPrimaryMuscleNotJustTheFirst() {
+        // A manual muscle check-off override can span two different `MuscleGroup`s. `.first` (front
+        // delts → shoulders) alone would misclassify this as shoulders and drop it into the "rest"
+        // partition, even though it also has a back primary (lats) and should lead a back-priority sort.
+        let overridden = MuscleTargets(primary: [.frontDelts, .lats])
+        let day = [DayExercise(id: "curl", name: "Bicep Curl"),
+                   DayExercise(id: "multi", name: "Face Pull to Row", muscleTargets: overridden)]
+        let ordered = ExerciseOrderer.order(day, catalog: catalog, priority: .back)
+        #expect(ordered.map(\.id) == ["multi", "curl"])
+    }
+
+    // MARK: orderedIndices — the permutation `FixOperation.reorderDay` needs
+
+    @Test func orderedIndicesProducesTheSameResultAsOrder() {
+        let day = [DayExercise(id: "fly", name: "Cable Fly"),
+                   DayExercise(id: "pushdown", name: "Tricep Pushdown"),
+                   DayExercise(id: "bench", name: "Bench Press")]
+        let viaIndices = ExerciseOrderer.orderedIndices(day, catalog: catalog).map { day[$0] }
+        let viaOrder = ExerciseOrderer.order(day, catalog: catalog)
+        #expect(viaIndices.map(\.id) == viaOrder.map(\.id))
+    }
+
+    @Test func orderedIndicesIsABijection() {
+        let day = [DayExercise(id: "fly", name: "Cable Fly"),
+                   DayExercise(id: "bench", name: "Bench Press"),
+                   DayExercise(id: "pushdown", name: "Tricep Pushdown")]
+        let indices = ExerciseOrderer.orderedIndices(day, catalog: catalog)
+        #expect(Set(indices) == Set(0..<day.count))
+    }
+
+    @Test func orderedIndicesWithPriorityMatchesOrderWithPriority() {
+        let day = [DayExercise(id: "curl", name: "Bicep Curl"),
+                   DayExercise(id: "pushdown", name: "Tricep Pushdown"),
+                   DayExercise(id: "bench", name: "Bench Press")]
+        let viaIndices = ExerciseOrderer.orderedIndices(day, catalog: catalog, priority: .arms).map { day[$0] }
+        let viaOrder = ExerciseOrderer.order(day, catalog: catalog, priority: .arms)
+        #expect(viaIndices.map(\.id) == viaOrder.map(\.id))
     }
 }

@@ -58,9 +58,10 @@ final class SleepRecord {
     var wakeString: String
     var duration: Double
     var quality: Int
+    var notes: String
 
     init(id: String = UUID().uuidString, ownerID: String, logDate: Date = Date(),
-         bedString: String, wakeString: String, duration: Double, quality: Int) {
+         bedString: String, wakeString: String, duration: Double, quality: Int, notes: String = "") {
         self.id         = id
         self.ownerID    = ownerID
         self.logDate    = logDate
@@ -68,6 +69,7 @@ final class SleepRecord {
         self.wakeString = wakeString
         self.duration   = duration
         self.quality    = quality
+        self.notes      = notes
     }
 }
 
@@ -152,13 +154,20 @@ final class WorkoutSessionRecord {
     var draftJSON: String = ""
     /// True once this finished session has been written to Apple Health (dedup for backfill/export).
     var exportedToHealth: Bool = false
+    /// Which gym `AppViewModel.activeGymID` was set to when this session started — "" for a
+    /// session logged before gyms existed, or pulled from the server (a gym is local-only and
+    /// never syncs, so a session rehydrated from another device has no way to know). Local-only,
+    /// same defaulted-column trick as `draftJSON`/`exportedToHealth`. Purely a soft input to
+    /// Phase 3's learned-equipment index — nothing scoped to a session's own gym is load-bearing.
+    var gymID: String = ""
 
     init(id: String = UUID().uuidString, ownerID: String,
          startedAt: Date = Date(), finishedAt: Date? = nil,
          sessionRPE: Int = 0, notes: String = "",
          templateID: String = "", totalVolume: Double = 0,
          serverID: String = "", syncPending: Bool = false,
-         draftJSON: String = "", exportedToHealth: Bool = false) {
+         draftJSON: String = "", exportedToHealth: Bool = false,
+         gymID: String = "") {
         self.id          = id
         self.ownerID     = ownerID
         self.startedAt   = startedAt
@@ -171,6 +180,7 @@ final class WorkoutSessionRecord {
         self.syncPending = syncPending
         self.draftJSON   = draftJSON
         self.exportedToHealth = exportedToHealth
+        self.gymID       = gymID
     }
 }
 
@@ -192,6 +202,16 @@ final class ExerciseSetRecord {
     var equipmentBrandName: String?
     var serverID: String = ""       // backend UUID, "" until the set POST is confirmed
     var syncPending: Bool = false   // true until successfully POSTed to the server
+    /// What this set trained, captured at log time. Local-only and defaulted (lightweight SwiftData
+    /// migration, no backend contract change). Recorded because the muscle can't be recovered later:
+    /// the exercise name alone sent the post-workout breakdown through a heuristic that read
+    /// "Low Back Extension" as quads, and a lifter's own check-off is unrecoverable by any guess.
+    var muscleTargetsJSON: String = ""
+
+    var muscleTargets: MuscleTargets? {
+        get { MuscleTargets(jsonString: muscleTargetsJSON) }
+        set { muscleTargetsJSON = newValue?.jsonString ?? "" }
+    }
 
     init(id: String = UUID().uuidString, ownerID: String,
          sessionID: String, exerciseName: String, setIndex: Int,
@@ -200,7 +220,8 @@ final class ExerciseSetRecord {
          isDone: Bool = false, completedAt: Date? = nil,
          equipmentId: String? = nil, equipmentDedupeKey: String? = nil,
          equipmentBrandName: String? = nil,
-         serverID: String = "", syncPending: Bool = false) {
+         serverID: String = "", syncPending: Bool = false,
+         muscleTargetsJSON: String = "") {
         self.id                  = id
         self.ownerID             = ownerID
         self.sessionID           = sessionID
@@ -217,6 +238,7 @@ final class ExerciseSetRecord {
         self.equipmentBrandName  = equipmentBrandName
         self.serverID            = serverID
         self.syncPending         = syncPending
+        self.muscleTargetsJSON   = muscleTargetsJSON
     }
 }
 
@@ -288,6 +310,15 @@ final class WorkoutTemplateRecord {
     var name: String
     var createdAt: Date
     var serverConfirmed: Bool
+    /// The lifter's stated focus + goal for this template, as JSON. Defaulted so this is a
+    /// lightweight SwiftData migration, and local-only — the backend contract is untouched
+    /// (same approach as `UserProfileRecord.equipmentPreferenceJSON`).
+    var intentJSON: String = ""
+
+    var intent: TrainingIntent? {
+        get { TrainingIntent(jsonString: intentJSON) }
+        set { intentJSON = newValue?.jsonString ?? "" }
+    }
 
     init(id: String = UUID().uuidString, ownerID: String,
          name: String, createdAt: Date = Date(), serverConfirmed: Bool = false) {
@@ -315,6 +346,15 @@ final class TemplateExerciseRecord {
     var equipmentId: String?
     var equipmentDedupeKey: String?
     var equipmentBrandName: String?
+    /// The lifter's muscle check-off for this exercise, as JSON. Defaulted so this is a lightweight
+    /// SwiftData migration, and local-only — the backend template contract is untouched (same
+    /// approach as `WorkoutTemplateRecord.intentJSON`).
+    var muscleTargetsJSON: String = ""
+
+    var muscleTargets: MuscleTargets? {
+        get { MuscleTargets(jsonString: muscleTargetsJSON) }
+        set { muscleTargetsJSON = newValue?.jsonString ?? "" }
+    }
 
     init(id: String = UUID().uuidString, ownerID: String,
          templateID: String, exerciseID: String? = nil,
@@ -323,7 +363,8 @@ final class TemplateExerciseRecord {
          targetRPE: Double = 0, restSeconds: Int = 90,
          notes: String = "",
          equipmentId: String? = nil, equipmentDedupeKey: String? = nil,
-         equipmentBrandName: String? = nil) {
+         equipmentBrandName: String? = nil,
+         muscleTargetsJSON: String = "") {
         self.id                  = id
         self.ownerID             = ownerID
         self.templateID          = templateID
@@ -338,6 +379,7 @@ final class TemplateExerciseRecord {
         self.equipmentId         = equipmentId
         self.equipmentDedupeKey  = equipmentDedupeKey
         self.equipmentBrandName  = equipmentBrandName
+        self.muscleTargetsJSON   = muscleTargetsJSON
     }
 }
 
@@ -500,6 +542,14 @@ final class UserSplitRecord {
     var scheduledStartAt: Date? = nil    // non-nil = pending; activates when Date() >= this
     var pinnedWeekdaysJSON: String? = nil // JSON [Int] of Calendar weekday numbers; nil = ordinal rotation
     var includeWarmups: Bool = false      // true = warmup exercises shown before session
+    /// The lifter's stated goal for this split, as JSON. Defaulted (lightweight migration) and
+    /// local-only — no backend contract change.
+    var intentJSON: String = ""
+
+    var intent: TrainingIntent? {
+        get { TrainingIntent(jsonString: intentJSON) }
+        set { intentJSON = newValue?.jsonString ?? "" }
+    }
 
     init(id: String = UUID().uuidString,
          ownerID: String,
@@ -609,6 +659,31 @@ final class UserSplitDayRecord {
     var templateID: String
     var isRest: Bool
     var exercisesJSON: String  // JSON array of {id, name} for directly-assigned exercises
+    /// Muscles the lifter has said this specific day isn't training — local-only JSON, same
+    /// lightweight-migration trick as `WorkoutTemplateRecord.intentJSON`. Defaulted so existing rows
+    /// pick up the new column with no exclusions.
+    var excludedMusclesJSON: String = ""
+    /// Alternate versions of this day for different gyms — "Leg Day @ Fairless" vs "@ Warminster"
+    /// — as JSON. Local-only, same trick. `dayName`/`templateID`/`exercisesJSON`/`isRest` above
+    /// stay the single source of truth for everything that already reads them (session start,
+    /// sync, scoring); this column only ever describes the *other* versions plus which one is
+    /// active. See `DayVariants` — every mutation goes through it, never this string directly.
+    var variantsJSON: String = ""
+
+    var excludedMuscles: Set<FineMuscle> {
+        get {
+            guard !excludedMusclesJSON.isEmpty,
+                  let data = excludedMusclesJSON.data(using: .utf8),
+                  let decoded = try? JSONDecoder().decode(Set<FineMuscle>.self, from: data)
+            else { return [] }
+            return decoded
+        }
+        set {
+            guard let data = try? JSONEncoder().encode(newValue),
+                  let s = String(data: data, encoding: .utf8) else { return }
+            excludedMusclesJSON = s
+        }
+    }
 
     init(id: String = UUID().uuidString, splitID: String,
          orderIndex: Int, dayLabel: String,
@@ -622,6 +697,29 @@ final class UserSplitDayRecord {
         self.templateID    = templateID
         self.isRest        = isRest
         self.exercisesJSON = exercisesJSON
+    }
+}
+
+/// A place the lifter trains — "Fairless", "Warminster". Local-only, no backend table, same call
+/// `EquipmentPreference`/`VolumeOverrides` already make: nothing here needs to sync across devices
+/// today, and adding that later is a deliberate contract change, not a silent add-on. `id` is what
+/// `DayVariant.gymID` and `WorkoutSessionRecord.gymID` reference; a variant whose gym has since
+/// been deleted falls back to its own stored `name` rather than becoming unreadable.
+@Model
+final class GymRecord {
+    var id: String
+    var ownerID: String
+    var name: String
+    var createdAt: Date
+    var lastUsedAt: Date?
+
+    init(id: String = UUID().uuidString, ownerID: String, name: String,
+         createdAt: Date = Date(), lastUsedAt: Date? = nil) {
+        self.id = id
+        self.ownerID = ownerID
+        self.name = name
+        self.createdAt = createdAt
+        self.lastUsedAt = lastUsedAt
     }
 }
 

@@ -9,9 +9,17 @@ final class AuthViewModel: ObservableObject {
     @Published var email           = ""
     @Published var password        = ""
     @Published var confirmPassword = ""
-    @Published var isLoading       = false
+    @Published var isSigningIn     = false
+    @Published var isRegistering   = false
+    @Published var isSendingReset  = false
+    @Published var isAppleLoading  = false
+    @Published var isDeleting      = false
     @Published var errorMessage: String?
     @Published var infoMessage: String?
+
+    /// True while any auth action is in flight. Used to disable sibling buttons so
+    /// only the tapped control shows a spinner while concurrent actions can't stack.
+    var isBusy: Bool { isSigningIn || isRegistering || isSendingReset || isAppleLoading || isDeleting }
 
     /// Raw nonce for the in-flight Sign in with Apple request. The hashed form
     /// goes to Apple; the raw form goes to Supabase for verification.
@@ -32,18 +40,21 @@ final class AuthViewModel: ObservableObject {
         case .failure(let error):
             // User-cancelled taps shouldn't show an error.
             if (error as? ASAuthorizationError)?.code == .canceled { return }
-            errorMessage = "Sign in with Apple didn't complete. Please try again."
+            #if DEBUG
+            print("[Auth] Sign in with Apple failed: \(error)")
+            #endif
+            errorMessage = Self.appleFailureMessage(for: error)
         case .success(let authorization):
             guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
                   let tokenData = credential.identityToken,
                   let idToken = String(data: tokenData, encoding: .utf8) else {
-                errorMessage = "Sign in with Apple didn't complete. Please try again."
+                errorMessage = "Apple didn't return a sign-in token. Sign in with your email and password instead."
                 return
             }
-            isLoading    = true
-            errorMessage = nil
-            infoMessage  = nil
-            defer { isLoading = false }
+            isAppleLoading = true
+            errorMessage   = nil
+            infoMessage    = nil
+            defer { isAppleLoading = false }
             do {
                 try await SupabaseManager.shared.client.auth.signInWithIdToken(
                     credentials: .init(provider: .apple, idToken: idToken, nonce: appleNonce)
@@ -61,6 +72,35 @@ final class AuthViewModel: ObservableObject {
             } catch {
                 errorMessage = friendlyMessage(for: error)
             }
+        }
+    }
+
+    /// Apple's failures all arrive as the same opaque `ASAuthorizationError`, and collapsing them
+    /// into "please try again" left the two *most likely* causes invisible — both of which retrying
+    /// will never fix:
+    ///
+    /// 1. The build has no `com.apple.developer.applesignin` entitlement. Sign in with Apple needs a
+    ///    paid Apple Developer membership; a personal/free team can't provision it, so this build
+    ///    reports `.unknown`/`.notHandled` forever.
+    /// 2. On the Simulator, Sign in with Apple additionally requires the simulator itself to be
+    ///    signed into an Apple ID (Settings → Sign in to your iPhone).
+    ///
+    /// In both cases the useful instruction is "use email and password", so say that.
+    static func appleFailureMessage(for error: Error) -> String {
+        guard let authError = error as? ASAuthorizationError else {
+            return "Sign in with Apple didn't complete. You can sign in with your email and password instead."
+        }
+        switch authError.code {
+        case .unknown, .notHandled, .failed, .invalidResponse:
+            #if targetEnvironment(simulator)
+            return "Sign in with Apple isn't available here. The Simulator needs to be signed into an Apple ID (Settings → Sign in to your iPhone), and this build doesn't carry the Apple sign-in capability. Use your email and password instead."
+            #else
+            return "Sign in with Apple isn't available in this build. Use your email and password instead."
+            #endif
+        case .notInteractive:
+            return "Sign in with Apple couldn't open. Use your email and password instead."
+        default:
+            return "Sign in with Apple didn't complete. You can sign in with your email and password instead."
         }
     }
 
@@ -90,10 +130,10 @@ final class AuthViewModel: ObservableObject {
             errorMessage = "Please enter your email and password."
             return
         }
-        isLoading    = true
+        isSigningIn  = true
         errorMessage = nil
         infoMessage  = nil
-        defer { isLoading = false }
+        defer { isSigningIn = false }
         do {
             try await SupabaseManager.shared.client.auth.signIn(
                 email: email,
@@ -113,10 +153,10 @@ final class AuthViewModel: ObservableObject {
             errorMessage = "Enter your email above, then tap Forgot password."
             return
         }
-        errorMessage = nil
-        infoMessage  = nil
-        isLoading    = true
-        defer { isLoading = false }
+        errorMessage  = nil
+        infoMessage   = nil
+        isSendingReset = true
+        defer { isSendingReset = false }
         do {
             try await SupabaseManager.shared.client.auth.resetPasswordForEmail(
                 trimmed,
@@ -132,9 +172,9 @@ final class AuthViewModel: ObservableObject {
     // MARK: - Email / Password
 
     func deleteAccount(authStore: AuthStore) async -> Bool {
-        isLoading    = true
+        isDeleting   = true
         errorMessage = nil
-        defer { isLoading = false }
+        defer { isDeleting = false }
         do {
             struct OkResponse: Decodable { let ok: Bool }
             _ = try await ApiClient.shared.delete("/auth/account") as OkResponse
@@ -150,10 +190,10 @@ final class AuthViewModel: ObservableObject {
         guard !email.isEmpty else { errorMessage = "Email is required."; return }
         guard password.count >= 8 else { errorMessage = "Password must be at least 8 characters."; return }
         guard password == confirmPassword else { errorMessage = "Passwords do not match."; return }
-        isLoading    = true
-        errorMessage = nil
-        infoMessage  = nil
-        defer { isLoading = false }
+        isRegistering = true
+        errorMessage  = nil
+        infoMessage   = nil
+        defer { isRegistering = false }
         do {
             let response = try await SupabaseManager.shared.client.auth.signUp(
                 email: email,

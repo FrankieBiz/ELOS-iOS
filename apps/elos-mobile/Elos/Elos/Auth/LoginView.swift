@@ -22,11 +22,11 @@ struct LoginView: View {
                             .fill(Color.tint)
                             .frame(width: 72, height: 72)
                         Image(systemName: "bolt.fill")
-                            .font(.system(size: 30, weight: .bold))
+                            .font(.system(.title, weight: .bold))
                             .foregroundStyle(.white)
                     }
                     Text("ELOS")
-                        .font(.system(size: 38, weight: .black))
+                        .font(.system(.largeTitle, weight: .black))
                         .foregroundStyle(Color.tint)
                     Text("Everyday Life Operating System")
                         .font(.caption)
@@ -83,7 +83,7 @@ struct LoginView: View {
                         Task { await authVM.login(authStore: authStore) }
                     } label: {
                         Group {
-                            if authVM.isLoading {
+                            if authVM.isSigningIn {
                                 ProgressView().tint(.white)
                             } else {
                                 Text("Sign In")
@@ -91,7 +91,7 @@ struct LoginView: View {
                         }
                     }
                     .buttonStyle(ElosFilledButtonStyle())
-                    .disabled(authVM.isLoading || authVM.email.isEmpty || authVM.password.isEmpty)
+                    .disabled(authVM.isBusy || authVM.email.isEmpty || authVM.password.isEmpty)
                     .padding(.top, 4)
 
                     HStack(spacing: 12) {
@@ -109,7 +109,7 @@ struct LoginView: View {
                     .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
                     .frame(height: 50)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .disabled(authVM.isLoading)
+                    .disabled(authVM.isBusy)
                 }
                 .padding(.horizontal, 24)
 
@@ -118,16 +118,16 @@ struct LoginView: View {
                     Task { await authVM.sendPasswordReset() }
                 } label: {
                     HStack(spacing: 6) {
-                        if authVM.isLoading {
+                        if authVM.isSendingReset {
                             ProgressView().scaleEffect(0.7)
                         }
-                        Text(authVM.isLoading ? "Sending…" : "Forgot password?")
+                        Text(authVM.isSendingReset ? "Sending…" : "Forgot password?")
                             .font(.caption)
                             .foregroundStyle(Color.tint)
                     }
                 }
                 .buttonStyle(.plain)
-                .disabled(authVM.isLoading)
+                .disabled(authVM.isBusy)
                 .padding(.top, 12)
 
                 if let info = authVM.infoMessage {

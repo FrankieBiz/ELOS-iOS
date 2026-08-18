@@ -3,6 +3,9 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var vm: AppViewModel
     @EnvironmentObject var authStore: AuthStore
+    @EnvironmentObject var theme: ThemeStore
+    @EnvironmentObject var layout: LayoutStore
+    @EnvironmentObject var feedVM: FeedViewModel
     @Environment(\.dismiss) private var dismiss
     @StateObject private var authVM = AuthViewModel()
     @State private var showingSignOutAlert      = false
@@ -11,9 +14,13 @@ struct SettingsView: View {
     @State private var showingEditProfile       = false
     @State private var showingPlateCalc         = false
     @State private var showingBodyMetrics       = false
+    /// When opened via MeView's "About ELOS" row specifically (as opposed to "Preferences" or the
+    /// gear icon, which both land at the top), jump straight to the About section on appear.
+    var scrollToAbout: Bool = false
 
     var body: some View {
         NavigationView {
+            ScrollViewReader { proxy in
             List {
                 Section("Account") {
                     if let profile = vm.userProfile {
@@ -23,7 +30,7 @@ struct SettingsView: View {
                                     .fill(LinearGradient(colors: [.mSched, .tint], startPoint: .topLeading, endPoint: .bottomTrailing))
                                     .frame(width: 44, height: 44)
                                 Text(initials(from: profile))
-                                    .font(.system(size: 16, weight: .bold))
+                                    .font(.system(.callout, weight: .bold))
                                     .foregroundStyle(.white)
                             }
                             VStack(alignment: .leading, spacing: 2) {
@@ -57,27 +64,39 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("App") {
-                    HStack {
-                        Label("Theme", systemImage: "circle.lefthalf.filled")
-                        Spacer()
-                        Picker("", selection: Binding(
-                            get: { vm.forceDark.map { $0 ? "dark" : "light" } ?? "system" },
-                            set: { val in
-                                switch val {
-                                case "dark":  vm.forceDark = true
-                                case "light": vm.forceDark = false
-                                default:      vm.forceDark = nil
-                                }
+                Section {
+                    // Opens at the app root rather than pushing here, and closes this sheet on the
+                    // way. Changing the theme re-identifies the tab content underneath — which is
+                    // what hosts this sheet — so a nested customizer would dismiss itself the first
+                    // time you touched a colour. Handing off sidesteps that entirely.
+                    Button {
+                        HapticManager.impact(.light)
+                        dismiss()
+                        layout.customizingScreen = nil
+                        layout.showingCustomizeSheet = true
+                    } label: {
+                        HStack {
+                            Label("Appearance & Layout", systemImage: "paintbrush")
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if theme.config != ThemeConfig() || layout.isAnyScreenCustomized {
+                                Text("Custom")
+                                    .font(.elosCaption)
+                                    .foregroundStyle(Color.tint)
                             }
-                        )) {
-                            Text("System").tag("system")
-                            Text("Light").tag("light")
-                            Text("Dark").tag("dark")
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        .pickerStyle(.segmented)
-                        .frame(width: 180)
                     }
+                } header: {
+                    Text("App")
+                } footer: {
+                    Text("Colours, shapes, spacing, type — and what each screen shows, in what order.")
+                        .font(.elosMicro)
+                }
+
+                Section {
                     HStack {
                         Label("Units", systemImage: "scalemass")
                         Spacer()
@@ -93,7 +112,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Training") {
+                Section {
                     Button {
                         HapticManager.impact(.light)
                         showingBodyMetrics = true
@@ -108,6 +127,53 @@ struct SettingsView: View {
                         Label("Plate Calculator", systemImage: "scalemass")
                             .foregroundStyle(.primary)
                     }
+                    NavigationLink {
+                        VolumeTargetsView().environmentObject(vm)
+                    } label: {
+                        HStack {
+                            Label("Volume Targets", systemImage: "chart.bar")
+                            if vm.volumeOverrides.isCustomized {
+                                Spacer()
+                                Text("Custom")
+                                    .font(.elosCaption)
+                                    .foregroundStyle(Color.tint)
+                            }
+                        }
+                    }
+                    NavigationLink {
+                        GymsView().environmentObject(vm)
+                    } label: {
+                        Label("Gyms", systemImage: "building.2")
+                    }
+                    Toggle(isOn: $vm.showQualityRater) {
+                        Label("Show Quality Rating", systemImage: "gauge.medium")
+                    }
+                    .tint(Color.tint)
+                } header: {
+                    Text("Training")
+                } footer: {
+                    // Gyms tracks WHERE you train, not WHAT equipment you generally have — that's a
+                    // separate setting, cross-linked here so checking one screen surfaces the other.
+                    Text("General equipment access is set in Edit Profile.")
+                        .font(.elosMicro)
+                }
+
+                Section {
+                    // Reads and writes the same three-state preference the post-session prompt
+                    // sets. Answering here counts as being asked: switching it off from `unasked`
+                    // stores an explicit `off`, so the prompt won't come back later.
+                    Toggle(isOn: Binding(
+                        get: { feedVM.autoShare.isOn },
+                        set: { feedVM.autoShare = $0 ? .on : .off }
+                    )) {
+                        Label("Auto-share workouts", systemImage: "square.stack.3d.up")
+                    }
+                    .tint(Color.tint)
+                } header: {
+                    Text("Feed")
+                } footer: {
+                    Text("Posts your workout and any PRs to the Feed when you finish a session. Friends only — nothing is public.")
+                        .font(.elosMicro)
                 }
 
                 Section("Canvas LMS") {
@@ -167,6 +233,7 @@ struct SettingsView: View {
                 }
 
                 Section("About") {
+                    Color.clear.frame(height: 0).id("about")
                     HStack {
                         Text("Version")
                         Spacer()
@@ -231,10 +298,19 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showingPlateCalc) {
                 PlateCalculatorView()
+                    .environmentObject(vm)
             }
             .sheet(isPresented: $showingBodyMetrics) {
                 BodyMetricsView()
                     .environmentObject(vm)
+            }
+            .onAppear {
+                if scrollToAbout {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        withAnimation { proxy.scrollTo("about", anchor: .top) }
+                    }
+                }
+            }
             }
         }
     }
@@ -340,33 +416,19 @@ struct CanvasSyncSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        KeychainHelper.save(token, forKey: "canvasToken")
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
+                    Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
                 }
             }
             .onAppear {
                 token = KeychainHelper.load(forKey: "canvasToken") ?? ""
             }
+            // Persist on dismiss regardless of how the sheet closed — tapping Done previously was the
+            // only save path, so swiping down to close silently dropped whatever the user just pasted.
+            .onDisappear {
+                KeychainHelper.save(token, forKey: "canvasToken")
+            }
         }
     }
 }
 
-// MARK: - GoalRow
-
-private struct GoalRow: View {
-    let label: String
-    let value: String
-    let color: Color
-
-    var body: some View {
-        HStack {
-            Circle().fill(color).frame(width: 8, height: 8)
-            Text(label)
-            Spacer()
-            Text(value).fontWeight(.semibold).foregroundStyle(color)
-        }
-    }
-}

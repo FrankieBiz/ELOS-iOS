@@ -16,6 +16,12 @@ struct PostSessionSummaryView: View {
     @State private var sharedPRs: Set<String> = []
     @State private var shareImage: UIImage?
 
+    /// Where the automatic post has got to. Only consulted while `feedVM.autoShare` is on.
+    private enum AutoShareState { case idle, posting, posted, failed, undone }
+    @State private var autoShareState: AutoShareState = .idle
+    /// The post auto-share created, kept so Undo has something to delete.
+    @State private var autoSharedPost: FeedPostResponse?
+
     private var durationMinutes: Int {
         Int(Date().timeIntervalSince(summary.startedAt)) / 60
     }
@@ -44,7 +50,7 @@ struct PostSessionSummaryView: View {
                     muscleCard
                     if summary.comparisonLabel != nil { comparisonCard }
                     if summary.nextWorkoutDay != nil { nextWorkoutCard }
-                    shareToFriendsButton
+                    shareSection
                     shareImageButton
                     if !vm.healthKitEnabled && HealthKitService.shared.isAvailable {
                         connectHealthButton
@@ -63,6 +69,10 @@ struct PostSessionSummaryView: View {
         .presentationDetents([.large])
         .interactiveDismissDisabled(true)
         .onAppear { computeProgress() }
+        .task {
+            guard feedVM.autoShare.isOn else { return }
+            await runAutoShare()
+        }
         .sheet(isPresented: Binding(
             get: { shareImage != nil },
             set: { if !$0 { shareImage = nil } }
@@ -89,7 +99,7 @@ struct PostSessionSummaryView: View {
 
     private func statColumn(title: String, sub: String) -> some View {
         VStack(spacing: 3) {
-            Text(title).font(.system(size: 18, weight: .bold, design: .monospaced))
+            Text(title).font(.elosNumeric(.title3))
             Text(sub).font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -127,17 +137,26 @@ struct PostSessionSummaryView: View {
                     Image(systemName: "trophy.fill").foregroundStyle(.yellow)
                     Text(exercise).font(.subheadline).fontWeight(.semibold)
                     Spacer()
-                    Button {
-                        Task { await sharePR(exercise) }
-                    } label: {
-                        Image(systemName: sharedPRs.contains(exercise)
-                              ? "checkmark.circle.fill" : "square.and.arrow.up")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(sharedPRs.contains(exercise) ? Color.secondary : Color.tint)
+                    // Once the workout itself is on the feed it already names these PRs, so
+                    // offering to post each one again would put four cards from one session in
+                    // your friends' feed.
+                    if workoutShared {
+                        Text("In your post")
+                            .font(.elosMicro)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Button {
+                            Task { await sharePR(exercise) }
+                        } label: {
+                            Image(systemName: sharedPRs.contains(exercise)
+                                  ? "checkmark.circle.fill" : "square.and.arrow.up")
+                                .font(.system(.subheadline, weight: .semibold))
+                                .foregroundStyle(sharedPRs.contains(exercise) ? Color.secondary : Color.tint)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(sharedPRs.contains(exercise))
+                        .accessibilityLabel("Share \(exercise) PR to friends")
                     }
-                    .buttonStyle(.plain)
-                    .disabled(sharedPRs.contains(exercise))
-                    .accessibilityLabel("Share \(exercise) PR to friends")
                 }
             }
         }
@@ -156,7 +175,7 @@ struct PostSessionSummaryView: View {
     }
 
     private func e1rm(_ s: ExerciseSetRecord) -> Double {
-        s.weightKg * (1 + Double(s.reps) / 30)
+        StrengthMath.e1rm(weightKg: s.weightKg, reps: s.reps) ?? 0
     }
 
     private var topLiftPayload: FeedTopLift? {
@@ -171,40 +190,200 @@ struct PostSessionSummaryView: View {
             Task { await vm.connectHealth() }
         } label: {
             Label("Connect Apple Health", systemImage: "heart.fill")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(.subheadline, weight: .semibold))
                 .foregroundStyle(Color.tint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .background(Color.tintSoft)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+
+    /// What the lifter sees about this workout reaching the feed.
+    ///
+    /// Three shapes, because the honest answer depends on whether they've ever been asked:
+    /// unasked gets the one-time prompt, on reports what already happened and offers to take it
+    /// back, off gets the manual button this screen has always had.
+    @ViewBuilder
+    private var shareSection: some View {
+        switch feedVM.autoShare {
+        case .unasked: autoSharePromptCard
+        case .off:     shareToFriendsButton
+        case .on:
+            switch autoShareState {
+            case .idle, .posting: autoShareProgressRow
+            case .posted:         autoShareSharedRow
+            case .failed:         autoShareFailedRow
+            case .undone:         shareToFriendsButton
+            }
+        }
+    }
+
+    /// Asked once, on the first workout finished after the update. Answering either way is a
+    /// persisted choice, so this never appears again.
+    private var autoSharePromptCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "square.stack.3d.up.fill").foregroundStyle(Color.tint)
+                Text("Share with your crew?")
+                    .font(.subheadline).fontWeight(.semibold)
+                Spacer()
+            }
+            Text("Post your workouts and PRs to the Feed automatically when you finish. You can change this any time in Settings.")
+                .font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Button {
+                    HapticManager.impact(.light)
+                    feedVM.autoShare = .off
+                } label: {
+                    Text("Not now")
+                        .font(.system(.subheadline, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color(.tertiarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    HapticManager.success()
+                    feedVM.autoShare = .on
+                    Task { await runAutoShare() }
+                } label: {
+                    Text("Auto-share")
+                        .font(.system(.subheadline, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.tint)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .elosCard()
+    }
+
+    private var autoShareProgressRow: some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            Text("Sharing with your crew…")
+                .font(.subheadline).foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(14)
+        .elosCard()
+    }
+
+    private var autoShareSharedRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.good)
+            Text("Shared with your crew")
+                .font(.subheadline).fontWeight(.semibold)
+            Spacer()
+            Button {
+                HapticManager.impact(.light)
+                Task { await undoAutoShare() }
+            } label: {
+                Text("Undo")
+                    .font(.system(.subheadline, weight: .semibold))
+                    .foregroundStyle(Color.tint)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .elosCard()
+    }
+
+    /// Deliberately not an error banner. Nobody pressed anything, so shouting about a background
+    /// post that failed would be the app reporting its own errand. The workout itself is saved
+    /// either way, which is the part worth saying out loud.
+    private var autoShareFailedRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.circle").foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Couldn't post to your feed")
+                    .font(.subheadline).fontWeight(.semibold)
+                Text("Your workout is saved.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                Task { await runAutoShare() }
+            } label: {
+                Text("Retry")
+                    .font(.system(.subheadline, weight: .semibold))
+                    .foregroundStyle(Color.tint)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .elosCard()
+    }
+
+    // MARK: Posting
+
+    /// The one place a workout post is built, so the manual button and the automatic path can't
+    /// drift into publishing different things.
+    private func postWorkout(silent: Bool) async -> FeedPostResponse? {
+        await feedVM.shareWorkout(
+            date: dateString,
+            durationMin: durationMinutes,
+            volumeKg: summary.totalVolumeKg,
+            totalSets: doneSets.count,
+            uniqueExercises: Set(doneSets.map(\.exerciseName)).count,
+            topLift: topLiftPayload,
+            pr: FeedPRSummary.label(for: summary.prsHit),
+            silent: silent
+        )
+    }
+
+    private func runAutoShare() async {
+        guard autoShareState != .posting, autoSharedPost == nil else { return }
+        autoShareState = .posting
+        if let post = await postWorkout(silent: true) {
+            autoSharedPost = post
+            workoutShared = true
+            autoShareState = .posted
+        } else {
+            autoShareState = .failed
+        }
+    }
+
+    /// Takes the post back down without touching the preference — undoing one post is not a
+    /// standing objection to auto-sharing, and silently flipping the setting off would be the app
+    /// inferring far more than was said.
+    private func undoAutoShare() async {
+        guard let post = autoSharedPost else { return }
+        await feedVM.deletePost(post)
+        autoSharedPost = nil
+        workoutShared = false
+        autoShareState = .undone
     }
 
     private var shareToFriendsButton: some View {
         Button {
             Task {
-                let ok = await feedVM.shareWorkout(
-                    date: dateString,
-                    durationMin: durationMinutes,
-                    volumeKg: summary.totalVolumeKg,
-                    totalSets: doneSets.count,
-                    uniqueExercises: Set(doneSets.map(\.exerciseName)).count,
-                    topLift: topLiftPayload,
-                    pr: summary.prsHit.first
-                )
-                if ok { workoutShared = true }
-                else { vm.showError("Couldn't share your workout. Please try again.") }
+                if let post = await postWorkout(silent: false) {
+                    autoSharedPost = post
+                    workoutShared = true
+                } else {
+                    vm.showError("Couldn't share your workout. Please try again.")
+                }
             }
         } label: {
             Label(workoutShared ? "Shared to Friends" : "Share to Friends",
                   systemImage: workoutShared ? "checkmark.circle.fill" : "person.2.fill")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(.subheadline, weight: .semibold))
                 .foregroundStyle(workoutShared ? Color.secondary : Color.tint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .background(Color.tintSoft)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(workoutShared)
@@ -215,12 +394,12 @@ struct PostSessionSummaryView: View {
             renderShareImage()
         } label: {
             Label("Share Image", systemImage: "photo.on.rectangle.angled")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(.subheadline, weight: .semibold))
                 .foregroundStyle(Color.tint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .background(Color.tintSoft)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -267,14 +446,16 @@ struct PostSessionSummaryView: View {
                     ForEach(sorted, id: \.key) { item in
                         VStack(spacing: 2) {
                             Text("\(item.value)")
-                                .font(.system(size: 13, weight: .bold, design: .monospaced))
-                            Text(item.key.capitalized)
-                                .font(.system(size: 9))
+                                .font(.elosNumeric(.footnote))
+                            // `.capitalized` alone kept the snake_case underscore, so the card read
+                            // "Front_delts" / "Lower_back".
+                            Text(item.key.muscleDisplayName)
+                                .font(.elosMicro)
                                 .foregroundStyle(.secondary)
                         }
                         .padding(.horizontal, 10).padding(.vertical, 6)
                         .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
                 }
             }
@@ -336,12 +517,12 @@ struct PostSessionSummaryView: View {
             context.dismissPostSummary()
         } label: {
             Label("View Analytics", systemImage: "chart.line.uptrend.xyaxis")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(.subheadline, weight: .semibold))
                 .foregroundStyle(Color.tint)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .background(Color.tintSoft)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -351,12 +532,12 @@ struct PostSessionSummaryView: View {
             context.dismissPostSummary()
         } label: {
             Text("Done")
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(.callout, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(Color.tint)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -374,8 +555,8 @@ struct PostSessionSummaryView: View {
         }
         .padding(16)
         .background(rank.color.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(rank.color.opacity(0.35), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(rank.color.opacity(0.35), lineWidth: 1))
     }
 
     private func nextDateString(_ date: Date) -> String {

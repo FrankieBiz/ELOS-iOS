@@ -26,8 +26,9 @@ class AppViewModel: ObservableObject {
     /// Resume/Discard choice. Non-nil drives the "Workout in progress" prompt.
     @Published var recoverableSession: WorkoutSessionRecord?
 
-    // MARK: - Theme
-    @Published var forceDark: Bool? = nil
+    // Theme lived here as a `forceDark: Bool?` that was never written to disk, so the choice was
+    // lost on every launch. It's `ThemeStore.appearance` now — persisted, and alongside the rest of
+    // the appearance settings rather than orphaned in the app view model.
 
     // MARK: - Auth deep links
     /// Set when the app is opened from a password-recovery email link.
@@ -107,11 +108,45 @@ class AppViewModel: ObservableObject {
     /// (the persisted/synced flag); this is the typed projection views read.
     @Published var weightUnit: WeightUnit = .localeDefault
 
+    /// The lifter's deviations from the science-derived volume targets. Every builder passes these
+    /// into `TrainingProfile`, which is what makes them reach the bands, the bars and the score —
+    /// `TrainingScience` itself never reads UserDefaults, so the engine stays a pure function.
+    @Published var volumeOverrides: VolumeOverrides = .none {
+        didSet { persistVolumeOverrides() }
+    }
+
+    private static let volumeOverridesKey = "elos.volumeOverrides"
+
+    private func persistVolumeOverrides() {
+        guard let data = try? JSONEncoder().encode(volumeOverrides) else { return }
+        UserDefaults.standard.set(data, forKey: Self.volumeOverridesKey)
+    }
+
+    /// Global on/off for the 0–100 quality score + tips layer (`TemplateQualityPanel` and everything
+    /// it opens). Coverage bars stay visible either way — this only hides the *rating*, not the
+    /// underlying muscle-coverage data. Defaults to `true`; `UserDefaults.bool(forKey:)` alone would
+    /// default a never-set key to `false`, which is backwards from the intended default, so this
+    /// reads `.object(forKey:)` first to tell "never set" apart from "explicitly turned off".
+    @Published var showQualityRater: Bool = (UserDefaults.standard.object(forKey: "elos.showQualityRater") as? Bool) ?? true {
+        didSet { UserDefaults.standard.set(showQualityRater, forKey: "elos.showQualityRater") }
+    }
+
+    /// Which gym's day-variants are currently active. Empty = no gym selected — every day just
+    /// shows its default/original version, exactly like before this feature existed. Local-only,
+    /// same as `volumeOverrides`: nothing about which gym you're at needs to sync across devices.
+    @Published var activeGymID: String = UserDefaults.standard.string(forKey: "elos.activeGymID") ?? "" {
+        didSet { UserDefaults.standard.set(activeGymID, forKey: "elos.activeGymID") }
+    }
+
     // MARK: - Init
     init(context: ModelContext) {
         self.context = context
         let stored = UserDefaults.standard.stringArray(forKey: "elos.favoriteSplitKeys") ?? []
         favoriteSplitKeys = Set(stored)
+        if let data = UserDefaults.standard.data(forKey: Self.volumeOverridesKey),
+           let decoded = try? JSONDecoder().decode(VolumeOverrides.self, from: data) {
+            volumeOverrides = decoded
+        }
     }
 
     var modelContext: ModelContext { context }
@@ -130,22 +165,40 @@ class AppViewModel: ObservableObject {
     var doneSetsCount: Int  { exercises.flatMap(\.sets).filter(\.done).count }
     var totalSetsCount: Int { exercises.flatMap(\.sets).count }
 
+    /// Volume logged **today** in kilograms: every session finished today, plus whatever is in the live
+    /// draft right now.
+    ///
+    /// The Today tab used to show `sessionVolumeKg`, which only counts the *in-progress* draft — so the
+    /// moment you finished a workout the tile dropped to "0" and its subtitle read "tap to train", on the
+    /// one day it should have had something to show. A tile on a screen called Today should mean today.
+    var todayVolumeKg: Double {
+        guard !currentUserID.isEmpty else { return sessionVolumeKg }
+        let uid = currentUserID
+        let desc = FetchDescriptor<WorkoutSessionRecord>(
+            predicate: #Predicate { $0.ownerID == uid && $0.finishedAt != nil }
+        )
+        let finishedToday = ((try? context.fetch(desc)) ?? [])
+            .filter { Calendar.current.isDateInToday($0.finishedAt ?? .distantPast) }
+            .reduce(0.0) { $0 + $1.totalVolume }
+        return finishedToday + sessionVolumeKg
+    }
+
+    /// Short by design. "Good afternoon, Frankie." wrapped to two lines as a large title and pushed
+    /// every piece of actual content a quarter of the way down the screen — a lot of real estate for
+    /// a phrase that carries no information. Dropping "Good" and the full stop fits one line.
     var greeting: String {
         let h = Calendar.current.component(.hour, from: Date())
         let name = displayName == "there" ? "there" : displayName
         switch h {
-        case 0...4:   return "Good evening, \(name)."
-        case 5...11:  return "Good morning, \(name)."
-        case 12...16: return "Good afternoon, \(name)."
-        default:      return "Good evening, \(name)."
+        case 5...11:  return "Morning, \(name)"
+        case 12...16: return "Afternoon, \(name)"
+        default:      return "Evening, \(name)"
         }
     }
 
-    var todayDateString: String {
-        let f = DateFormatter()
-        f.dateFormat = "EEE, MMM d"
-        return f.string(from: Date())
-    }
+    /// Cached formatter: this is the Today header, so a computed property that built a
+    /// `DateFormatter` each time it was read did so on every render.
+    var todayDateString: String { Formatters.weekdayMonthDay.string(from: Date()) }
 
     // MARK: - Load / Clear
     func loadForUser(id: String) {
@@ -201,10 +254,8 @@ class AppViewModel: ObservableObject {
         )
         sleepDesc.sortBy = [SortDescriptor(\.logDate, order: .reverse)]
         let sleepRecords = (try? context.fetch(sleepDesc)) ?? []
-        let dateFmt = DateFormatter()
-        dateFmt.dateFormat = "MMM d"
         sleepLog = sleepRecords.map { r in
-            SleepEntry(date: dateFmt.string(from: r.logDate), bed: r.bedString, wake: r.wakeString, duration: r.duration, quality: r.quality)
+            SleepEntry(date: Formatters.monthDay.string(from: r.logDate), bed: r.bedString, wake: r.wakeString, duration: r.duration, quality: r.quality, notes: r.notes)
         }
 
         // Load assignments
@@ -250,6 +301,38 @@ class AppViewModel: ObservableObject {
         profile.syncPending = true
         try? context.save()
         Task { await pushProfileToServer(profile) }
+    }
+
+    /// Response shape for `GET /analytics/prs` (weights in kg, computed server-side).
+    /// Only the fields the Train tab renders are decoded; extra keys are ignored.
+    private struct PersonalRecordsAPIResponse: Decodable {
+        let prs: [Entry]
+        struct Entry: Decodable {
+            let exercise_name: String
+            let weight_kg: Double
+            let reps: Int
+        }
+    }
+
+    /// Load the user's personal records from the API into `personalRecords`.
+    /// This is the single place the Train tab's PR card and the XP/rank PR bonus
+    /// get their data. Weight is rendered through `weightUnit` so it honors the
+    /// kg/lb preference. Failures are non-blocking — the guarded card simply stays
+    /// hidden until a later refresh, consistent with the app's local-first stance.
+    func loadPersonalRecords() async {
+        guard !currentUserID.isEmpty else { return }
+        do {
+            let response: PersonalRecordsAPIResponse = try await ApiClient.shared.get("/analytics/prs")
+            personalRecords = response.prs.map { pr in
+                PersonalRecord(
+                    lift:   pr.exercise_name,
+                    weight: weightUnit.formatWeight(kg: pr.weight_kg),
+                    reps:   "×\(pr.reps)"
+                )
+            }
+        } catch {
+            // Local-first / non-blocking: keep any existing PRs on failure.
+        }
     }
 
     func clearData() {
@@ -362,15 +445,19 @@ class AppViewModel: ObservableObject {
     func addAssignment(name: String, subject: String, due: String) {
         guard !currentUserID.isEmpty else { return }
         let newIntID = (assignments.map(\.id).max() ?? 0) + 1
+        // Mirror the Canvas-sync threshold (daysUntil <= 3) so a manually-added assignment due soon
+        // gets the same "Due soon" treatment a synced one would — `due` is an ISO day string here
+        // (or the "—" sentinel for "no date set"), never a real date, so parseability guards the flag.
+        let isUrgent = Formatters.isoDay.date(from: due) != nil && Formatters.daysFromToday(toISODay: due) <= 3
         let record = AssignmentRecord(
             ownerID: currentUserID,
             name: name, subject: subject, dueString: due,
-            isUrgent: false, isDone: false
+            isUrgent: isUrgent, isDone: false
         )
         context.insert(record)
         try? context.save()
         assignmentRecordIDs[newIntID] = record.id
-        assignments.append(Assignment(id: newIntID, name: name, subject: subject, due: due, urgent: false, done: false))
+        assignments.append(Assignment(id: newIntID, name: name, subject: subject, due: due, urgent: isUrgent, done: false))
     }
 
     func addHydration(oz: Int) {
@@ -409,7 +496,8 @@ class AppViewModel: ObservableObject {
             bedString: entry.bed,
             wakeString: entry.wake,
             duration: entry.duration,
-            quality: entry.quality
+            quality: entry.quality,
+            notes: entry.notes
         )
         context.insert(record)
         try? context.save()
@@ -432,14 +520,26 @@ class AppViewModel: ObservableObject {
         )
         let pending = (try? context.fetch(pendingDesc)) ?? []
         let now = Date()
-        for record in pending {
-            if let startAt = record.scheduledStartAt, startAt <= now {
-                record.isActive    = true
-                record.activatedAt = Calendar.current.startOfDay(for: startAt)
-                record.scheduledStartAt = nil
-            }
+        let dueForPromotion = pending.filter { ($0.scheduledStartAt ?? .distantFuture) <= now }
+        // If more than one is somehow simultaneously due (e.g. two "start next Monday" splits left
+        // unopened for weeks), promote only the one scheduled latest — never activate two at once.
+        if let toPromote = dueForPromotion.max(by: { ($0.scheduledStartAt ?? .distantPast) < ($1.scheduledStartAt ?? .distantPast) }) {
+            // Deactivate whatever's currently active first — otherwise the promoted split lands
+            // alongside the old one, and two records end up with isActive == true at once.
+            let activeDesc = FetchDescriptor<UserSplitRecord>(
+                predicate: #Predicate { $0.ownerID == uid && $0.isActive == true }
+            )
+            for s in (try? context.fetch(activeDesc)) ?? [] { s.isActive = false }
+            let promotedStartAt = toPromote.scheduledStartAt ?? now
+            toPromote.isActive    = true
+            toPromote.activatedAt = Calendar.current.startOfDay(for: promotedStartAt)
+            toPromote.scheduledStartAt = nil
+            try? context.save()
+            // Keep the server's notion of "active" in sync too — otherwise a later
+            // syncSplitsFromServer() overwrites isActive from the stale pre-promotion value.
+            let serverID = toPromote.serverID
+            Task { await activateSplitOnServer(serverID: serverID) }
         }
-        if !pending.isEmpty { try? context.save() }
 
         // 2. Fetch active split
         let splitDesc = FetchDescriptor<UserSplitRecord>(
@@ -476,8 +576,7 @@ class AppViewModel: ObservableObject {
 
     func skipToday() {
         guard let split = activeSplit else { return }
-        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
-        split.addSkip(dateString: fmt.string(from: Date()))
+                split.addSkip(dateString: Formatters.isoDay.string(from: Date()))
         try? context.save()
         loadActiveSplit()
     }
@@ -485,8 +584,7 @@ class AppViewModel: ObservableObject {
     func loadTodayReadiness() {
         guard !currentUserID.isEmpty else { return }
         let uid = currentUserID
-        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
-        let todayStr = fmt.string(from: Date())
+                let todayStr = Formatters.isoDay.string(from: Date())
         let desc = FetchDescriptor<ReadinessCheckInRecord>(
             predicate: #Predicate { $0.ownerID == uid }
         )
@@ -555,12 +653,11 @@ class AppViewModel: ObservableObject {
         let start = cal.startOfDay(for: activatedAt)
         let daysSince = cal.dateComponents([.day], from: start, to: today).day ?? 0
         guard daysSince > 0 else { return 0 }
-        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
-        let skipped = split.skippedDates
+                let skipped = split.skippedDates
         var skipsToDate = 0
         for i in 0..<daysSince {
             if let d = cal.date(byAdding: .day, value: i, to: start) {
-                if skipped.contains(fmt.string(from: d)) { skipsToDate += 1 }
+                if skipped.contains(Formatters.isoDay.string(from: d)) { skipsToDate += 1 }
             }
         }
         return (daysSince - skipsToDate) % activeSplitDays.count
@@ -597,35 +694,59 @@ class AppViewModel: ObservableObject {
         if let data = day.exercisesJSON.data(using: .utf8),
            let infos = try? JSONDecoder().decode([DayExercise].self, from: data),
            !infos.isEmpty {
+            let catalog = exerciseCatalogForResolution()
             exercises = infos.map { info in
                 // Use the lower bound of any rep range (e.g. "6–10" → "6", "8-12" → "8")
                 let baseReps = info.reps
                     .components(separatedBy: CharacterSet(charactersIn: "-–"))
                     .first?
                     .trimmingCharacters(in: .whitespaces) ?? "10"
-                return Exercise(name: info.name, primaryMuscle: "", secondaryMuscles: [],
+                let targets = resolveTargets(exerciseID: info.id, name: info.name,
+                                             equipmentId: info.equipmentId,
+                                             override: info.muscleTargets, catalog: catalog)
+                return Exercise(name: info.name,
+                                primaryMuscle: targets.catalogPrimary ?? "",
+                                secondaryMuscles: targets.catalogSecondaries,
                                 setsLabel: "\(info.sets)×\(info.reps)", lastBest: "",
                                 sets: (0..<info.sets).map { _ in WorkSet(weight: "", reps: baseReps, rpe: "") },
                                 equipmentId: info.equipmentId,
                                 equipmentDedupeKey: info.equipmentDedupeKey,
                                 equipmentBrandName: info.equipmentBrandName,
                                 isGenericExercise: (info.equipmentDedupeKey ?? "").isEmpty,
-                                supportsAddedWeight: ExerciseCatalog.weightableBodyweightExercises.contains(info.name))
+                                supportsAddedWeight: ExerciseCatalog.weightableBodyweightExercises.contains(info.name),
+                                muscleTargets: targets.isEmpty ? nil : targets)
             }
             return
         }
 
         // 2. Fall back to template if one is assigned
         guard !day.templateID.isEmpty else { return }
-        let tmplID = day.templateID
+        let tmplExercises = fetchTemplateExercises(templateID: day.templateID)
+        guard !tmplExercises.isEmpty else { return }
+        exercises = self.exercises(fromTemplateExercises: tmplExercises)
+    }
+
+    func fetchTemplateExercises(templateID: String) -> [TemplateExerciseRecord] {
         var eDesc = FetchDescriptor<TemplateExerciseRecord>(
-            predicate: #Predicate { $0.templateID == tmplID }
+            predicate: #Predicate { $0.templateID == templateID }
         )
         eDesc.sortBy = [SortDescriptor(\.orderIndex)]
-        let tmplExercises = (try? context.fetch(eDesc)) ?? []
-        guard !tmplExercises.isEmpty else { return }
-        exercises = tmplExercises.map { ex in
-            Exercise(name: ex.exerciseName, primaryMuscle: "", secondaryMuscles: [],
+        return (try? context.fetch(eDesc)) ?? []
+    }
+
+    /// Builds live-session `Exercise`s from a template's saved exercises — the one place this mapping
+    /// happens, so starting a session from a split day's assigned template and starting one directly
+    /// from the Templates tab both carry equipment/rest/muscle-target data instead of one of them
+    /// quietly reverting to `isGenericExercise` and a flat 90s rest.
+    func exercises(fromTemplateExercises tmplExercises: [TemplateExerciseRecord]) -> [Exercise] {
+        let catalog = exerciseCatalogForResolution()
+        return tmplExercises.map { ex in
+            let targets = resolveTargets(exerciseID: ex.exerciseID, name: ex.exerciseName,
+                                         equipmentId: ex.equipmentId,
+                                         override: ex.muscleTargets, catalog: catalog)
+            return Exercise(name: ex.exerciseName,
+                     primaryMuscle: targets.catalogPrimary ?? "",
+                     secondaryMuscles: targets.catalogSecondaries,
                      setsLabel: "\(ex.targetSets)×\(ex.targetReps)", lastBest: "",
                      sets: (0..<ex.targetSets).map { _ in
                          WorkSet(weight: "", reps: ex.targetReps.components(separatedBy: "-").first ?? "10",
@@ -636,8 +757,35 @@ class AppViewModel: ObservableObject {
                      equipmentBrandName: ex.equipmentBrandName,
                      isGenericExercise: (ex.equipmentDedupeKey ?? "").isEmpty,
                      supportsAddedWeight: ExerciseCatalog.weightableBodyweightExercises.contains(ex.exerciseName),
-                     restSeconds: ex.restSeconds > 0 ? ex.restSeconds : 90)
+                     restSeconds: ex.restSeconds > 0 ? ex.restSeconds : 90,
+                     muscleTargets: targets.isEmpty ? nil : targets)
         }
+    }
+
+    /// Resolve what an exercise trains as the session is built, through the one shared precedence
+    /// chain (lifter override → catalog → machine → name). Every `Exercise` in a live session used to
+    /// be constructed with `primaryMuscle: ""`, which pushed the whole post-workout muscle breakdown
+    /// onto a name heuristic.
+    func resolveTargets(exerciseID: String?, name: String,
+                        equipmentId: String?, override: MuscleTargets?,
+                        catalog: [ExerciseCandidate]? = nil) -> MuscleTargets {
+        let pool = catalog ?? exerciseCatalogForResolution()
+        // Split days store a UUID as the exercise id when the row came from a scaffold, so match by id
+        // then by name, the way `ExerciseResolver` does.
+        let candidate = pool.first { !($0.id.isEmpty) && $0.id == exerciseID }
+            ?? pool.first { MuscleTaxonomy.normalize($0.name) == MuscleTaxonomy.normalize(name) }
+        return ResolvedExercise(
+            exercise: ScoredExercise(id: exerciseID ?? "", name: name, sets: 1, repsText: "",
+                                     equipmentId: equipmentId, muscleTargets: override),
+            candidate: candidate
+        ).targets
+    }
+
+    /// The exercise catalog as resolution candidates. Fetched once per session build — resolving each
+    /// exercise against its own fetch would scan the whole catalog per row.
+    func exerciseCatalogForResolution() -> [ExerciseCandidate] {
+        ((try? context.fetch(FetchDescriptor<ExerciseDefinitionRecord>())) ?? [])
+            .map { ExerciseCandidate(record: $0) }
     }
 
     func prepareExercisesForToday() {
@@ -664,6 +812,7 @@ class AppViewModel: ObservableObject {
     /// surface a Resume prompt. Reads local SwiftData only; safe to call eagerly.
     func recoverActiveSession() {
         guard !currentUserID.isEmpty else { return }
+        repairImplausibleSessionDurations()
         // A session already live in the UI needs no recovery (e.g. mere suspend).
         guard !showingSession, recoverableSession == nil else { return }
         let uid = currentUserID
@@ -700,7 +849,10 @@ class AppViewModel: ObservableObject {
     /// Finalize a session as completed if it has logged data; otherwise delete it.
     private func finalizeOrDiscard(_ session: WorkoutSessionRecord) {
         if loggedSetCount(for: session) > 0 {
-            session.finishedAt = Date()
+            // End it when the lifter actually stopped — the last set they logged — not "now". Stamping
+            // the current time on a session abandoned days ago produced workouts of 1,422 and 9,749
+            // minutes in History, and fed those durations into every average built on top of them.
+            session.finishedAt = lastSetCompletedAt(for: session) ?? session.startedAt
             session.syncPending = true
             try? context.save()
             Task { await WorkoutSyncService.shared.pushFinish(session, context: context) }
@@ -708,6 +860,44 @@ class AppViewModel: ObservableObject {
             context.delete(session)
             try? context.save()
         }
+    }
+
+    /// The longest a single session can plausibly run. Beyond this it isn't a long workout, it's a
+    /// session someone walked away from that got stamped when the app next noticed.
+    static let maxPlausibleSessionHours: Double = 6
+
+    /// Repair sessions already stamped with a bogus end time by the old `finalizeOrDiscard`, which used
+    /// "now" instead of the last set. Idempotent: after a repair the duration is plausible, so the
+    /// session no longer matches. Without this the fix only helps future workouts and History keeps
+    /// showing the 9,749-minute ones already on disk.
+    func repairImplausibleSessionDurations() {
+        guard !currentUserID.isEmpty else { return }
+        let uid = currentUserID
+        let desc = FetchDescriptor<WorkoutSessionRecord>(
+            predicate: #Predicate { $0.ownerID == uid && $0.finishedAt != nil }
+        )
+        var repaired = 0
+        for session in (try? context.fetch(desc)) ?? [] {
+            guard let finished = session.finishedAt else { continue }
+            let hours = finished.timeIntervalSince(session.startedAt) / 3600
+            guard hours > Self.maxPlausibleSessionHours,
+                  let lastSet = lastSetCompletedAt(for: session),
+                  lastSet < finished
+            else { continue }
+            session.finishedAt = lastSet
+            repaired += 1
+        }
+        if repaired > 0 { try? context.save() }
+    }
+
+    /// When the lifter last logged a set in this session — the honest end time for one they walked
+    /// away from without finishing.
+    private func lastSetCompletedAt(for session: WorkoutSessionRecord) -> Date? {
+        let sid = session.id
+        let desc = FetchDescriptor<ExerciseSetRecord>(
+            predicate: #Predicate { $0.sessionID == sid && $0.isDone == true }
+        )
+        return ((try? context.fetch(desc)) ?? []).compactMap(\.completedAt).max()
     }
 
     /// Resume the recovered session: re-attach it to TrainViewModel, rebuild the
@@ -775,6 +965,7 @@ class AppViewModel: ObservableObject {
             byName[r.exerciseName, default: []].append(r)
         }
 
+        let catalog = exerciseCatalogForResolution()
         return order.map { name in
             let sets = (byName[name] ?? []).sorted { $0.setIndex < $1.setIndex }
             let workSets = sets.map { rec in
@@ -786,14 +977,22 @@ class AppViewModel: ObservableObject {
                 )
             }
             let first = sets.first
+            // Sets record what they trained, so a resumed session keeps the lifter's own check-off
+            // instead of falling back to a guess from the exercise name.
+            let targets = resolveTargets(exerciseID: nil, name: name,
+                                         equipmentId: first?.equipmentId,
+                                         override: first?.muscleTargets, catalog: catalog)
             return Exercise(
-                name: name, primaryMuscle: "", secondaryMuscles: [],
+                name: name,
+                primaryMuscle: targets.catalogPrimary ?? "",
+                secondaryMuscles: targets.catalogSecondaries,
                 setsLabel: "\(workSets.count)×", lastBest: "",
                 sets: workSets,
                 equipmentId: first?.equipmentId,
                 equipmentDedupeKey: first?.equipmentDedupeKey,
                 equipmentBrandName: first?.equipmentBrandName,
-                isGenericExercise: (first?.equipmentDedupeKey ?? "").isEmpty
+                isGenericExercise: (first?.equipmentDedupeKey ?? "").isEmpty,
+                muscleTargets: targets.isEmpty ? nil : targets
             )
         }
     }
@@ -801,8 +1000,7 @@ class AppViewModel: ObservableObject {
     // Returns whether today is already marked as skipped
     var isTodaySkipped: Bool {
         guard let split = activeSplit else { return false }
-        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
-        return split.skippedDates.contains(fmt.string(from: Date()))
+                return split.skippedDates.contains(Formatters.isoDay.string(from: Date()))
     }
 
     // MARK: - Schedule Builder
@@ -819,8 +1017,7 @@ class AppViewModel: ObservableObject {
     func buildScheduleRows(for date: Date) -> [ScheduleRow] {
         guard !currentUserID.isEmpty else { return [] }
         let uid = currentUserID
-        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
-        let dateStr = fmt.string(from: date)
+                let dateStr = Formatters.isoDay.string(from: date)
 
         // 1. Canvas class/event rows for this date
         let evDesc = FetchDescriptor<ScheduleEventRecord>(
@@ -833,8 +1030,7 @@ class AppViewModel: ObservableObject {
         }
 
         // 2. Exams on this date
-        let examFmt = DateFormatter(); examFmt.dateFormat = "yyyy-MM-dd"
-        let examDesc = FetchDescriptor<ExamRecord>(predicate: #Predicate { $0.ownerID == uid })
+                let examDesc = FetchDescriptor<ExamRecord>(predicate: #Predicate { $0.ownerID == uid })
         let allExams = (try? context.fetch(examDesc)) ?? []
         for exam in allExams where exam.dateString == dateStr {
             rows.append(ScheduleRow(time: "—", title: "\(exam.title) (Exam)",
@@ -851,7 +1047,13 @@ class AppViewModel: ObservableObject {
 
         // 4. Gym day: determine if this calendar date has a gym day (accounting for skips + exam pushes)
         if let gymDay = gymDay(for: date), !gymDay.isRest {
-            let gymTitle = gymDay.dayName.isEmpty ? "Workout" : gymDay.dayName
+            var gymTitle = gymDay.dayName.isEmpty ? "Workout" : gymDay.dayName
+            // Switching gyms silently changes what this day actually is (a different variant's
+            // exercises); say so here rather than leaving zero confirmation that the right version
+            // loaded — feeds both Today's schedule and Plan's timeline, which both read this title.
+            if let variant = DayVariants.activeVariantName(for: gymDay) {
+                gymTitle += " · \(variant)"
+            }
             rows.append(ScheduleRow(time: "15:30", title: gymTitle,
                                     moduleType: "gym", durationMinutes: 60, isDone: false))
         }
@@ -863,18 +1065,63 @@ class AppViewModel: ObservableObject {
         }
     }
 
-    // Returns which split day (if any) falls on a given calendar date, applying skips + exam pushes
-    func gymDay(for date: Date) -> UserSplitDayRecord? {
+    /// The split day that would land on this date if nothing were scheduled against it — no exam
+    /// check applied. Only meaningful for the two weekday-fixed paths (pinned / 7-day backward-compat);
+    /// the ordinal-rotation path has no independent "ignoring exam" answer, since its exam-push
+    /// bookkeeping *is* what determines the mapping from date to day (a past exam shifts every date
+    /// after it) — that path returns `nil` here and must be special-cased by callers that need to know
+    /// "was this a gym day at all" for copy purposes (see `isOrdinalRotationSplit`).
+    func scheduledGymDayIgnoringExam(for date: Date) -> UserSplitDayRecord? {
         guard let split = activeSplit, !activeSplitDays.isEmpty else { return nil }
         let cal = Calendar.current
         let target = cal.startOfDay(for: date)
 
-        // Weekday-pinned path (Split Finder splits and new CreateSplitView splits)
         if let pinned = split.pinnedWeekdays {
             let weekday = cal.component(.weekday, from: target)
             let nonRestDays = activeSplitDays.filter { !$0.isRest }
             guard let idx = pinned.firstIndex(of: weekday), idx < nonRestDays.count else { return nil }
             return nonRestDays[idx]
+        }
+
+        if activeSplitDays.count == 7 {
+            let weekday = cal.component(.weekday, from: target)
+            let indexToWeekday = [2, 3, 4, 5, 6, 7, 1]
+            guard let dayIndex = indexToWeekday.firstIndex(of: weekday) else { return nil }
+            let day = activeSplitDays[dayIndex]
+            return day.isRest ? nil : day
+        }
+
+        return nil
+    }
+
+    /// True only for splits using the ordinal-rotation scheduling path (no fixed weekdays) — the one
+    /// path where an exam genuinely pushes that day's workout to a later date rather than just
+    /// clearing it, since the rotation index itself can be held back.
+    var isOrdinalRotationSplit: Bool {
+        guard let split = activeSplit, !activeSplitDays.isEmpty else { return false }
+        return split.pinnedWeekdays == nil && activeSplitDays.count != 7
+    }
+
+    // Returns which split day (if any) falls on a given calendar date, applying skips + exam pushes
+    func gymDay(for date: Date) -> UserSplitDayRecord? {
+        guard let split = activeSplit, !activeSplitDays.isEmpty else { return nil }
+        let cal = Calendar.current
+        let target = cal.startOfDay(for: date)
+        let uid = currentUserID
+        let examDesc = FetchDescriptor<ExamRecord>(predicate: #Predicate { $0.ownerID == uid })
+        let examDateStrings: Set<String> = Set(((try? context.fetch(examDesc)) ?? []).map(\.dateString))
+        let targetStr = Formatters.isoDay.string(from: target)
+
+        // Weekday-pinned path (Split Finder splits and new CreateSplitView splits). A fixed weekday
+        // has no "next available day" to push into, so an exam here clears the day rather than
+        // rescheduling it — see `scheduledGymDayIgnoringExam` for the pre-exam answer.
+        if let pinned = split.pinnedWeekdays {
+            let weekday = cal.component(.weekday, from: target)
+            let nonRestDays = activeSplitDays.filter { !$0.isRest }
+            guard let idx = pinned.firstIndex(of: weekday), idx < nonRestDays.count else { return nil }
+            let day = nonRestDays[idx]
+            if examDateStrings.contains(targetStr) { return nil }
+            return day
         }
 
         // Backward-compat path: 7-day CreateSplitView splits saved before pinnedWeekdays was set.
@@ -884,7 +1131,9 @@ class AppViewModel: ObservableObject {
             let indexToWeekday = [2, 3, 4, 5, 6, 7, 1]         // orderIndex 0–6 → Calendar weekday
             guard let dayIndex = indexToWeekday.firstIndex(of: weekday) else { return nil }
             let day = activeSplitDays[dayIndex]                  // sorted by orderIndex
-            return day.isRest ? nil : day
+            if day.isRest { return nil }
+            if examDateStrings.contains(targetStr) { return nil }
+            return day
         }
 
         // Ordinal rotation path (existing splits)
@@ -892,16 +1141,12 @@ class AppViewModel: ObservableObject {
         let start = cal.startOfDay(for: activatedAt)
         guard target >= start else { return nil }
 
-        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
-        let skipped = split.skippedDates
-        let uid = currentUserID
-        let examDesc = FetchDescriptor<ExamRecord>(predicate: #Predicate { $0.ownerID == uid })
-        let examDateStrings: Set<String> = Set(((try? context.fetch(examDesc)) ?? []).map(\.dateString))
+                let skipped = split.skippedDates
 
         var splitIndex = 0
         var d = start
         while d < target {
-            let dStr = fmt.string(from: d)
+            let dStr = Formatters.isoDay.string(from: d)
             if !skipped.contains(dStr) {
                 let dayRecord = activeSplitDays[splitIndex % activeSplitDays.count]
                 // Exam push: if this is a gym day and there's an exam on this date, don't advance split
@@ -915,7 +1160,7 @@ class AppViewModel: ObservableObject {
         }
 
         // Determine what falls on the target date
-        let dStr = fmt.string(from: target)
+        let dStr = Formatters.isoDay.string(from: target)
         if skipped.contains(dStr) { return nil }
         let dayRecord = activeSplitDays[splitIndex % activeSplitDays.count]
         // If exam on this gym day → pushed (return nil)
@@ -927,8 +1172,7 @@ class AppViewModel: ObservableObject {
     func weekLoadMap(daysAhead: Int = 7) -> [(date: Date, loadType: String)] {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
-        let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
-        let uid = currentUserID
+                let uid = currentUserID
         let examDates: Set<String> = {
             let desc = FetchDescriptor<ExamRecord>(predicate: #Predicate { $0.ownerID == uid })
             return Set(((try? context.fetch(desc)) ?? []).map(\.dateString))
@@ -937,7 +1181,7 @@ class AppViewModel: ObservableObject {
 
         return (0..<daysAhead).compactMap { offset in
             guard let date = cal.date(byAdding: .day, value: offset, to: today) else { return nil }
-            let dStr = fmt.string(from: date)
+            let dStr = Formatters.isoDay.string(from: date)
             if skipped.contains(dStr) { return (date, "skip") }
             if let day = gymDay(for: date) {
                 return (date, day.isRest ? "rest" : "gym")
@@ -1101,6 +1345,12 @@ class AppViewModel: ObservableObject {
                                     localDay.isRest = remoteDay.is_rest
                                     localDay.templateID = remoteDay.template_id
                                     localDay.exercisesJSON = remoteDay.exercises_json
+                                    // The wire fields just changed under this day's active
+                                    // variant (if it has any) — bring the variant's own cached
+                                    // copy in line with what the server actually holds, rather
+                                    // than letting the next switch-away silently overwrite this
+                                    // real edit with a stale one.
+                                    DayVariants.syncActiveVariantToWireFields(day: localDay)
                                 }
                             }
                         } else {
@@ -1149,11 +1399,14 @@ class AppViewModel: ObservableObject {
                 loadActiveSplit()
             }
 
-            // Push locally-created splits (this user's) not yet on the server
+            // Push locally-created splits (this user's) not yet on the server. Their days may still
+            // reference not-yet-confirmed templates (e.g. an offline Discover import) — push those
+            // first so the split carries corrected server template ids instead of dangling local ones.
             let allLocal = (try? context.fetch(
                 FetchDescriptor<UserSplitRecord>(predicate: #Predicate { $0.ownerID == uid })
             )) ?? []
             for record in allLocal where record.syncPending && record.serverID.isEmpty {
+                await TemplateSync.pushPendingTemplates(forSplit: record, context: context)
                 await pushSplitToServer(record)
             }
 

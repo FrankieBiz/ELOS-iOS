@@ -1,6 +1,12 @@
 import SwiftUI
 
 /// Rendered off-screen via ImageRenderer and shared as a PNG.
+///
+/// **Every font here is deliberately a fixed point size, and must stay that way.** This is a
+/// fixed-canvas artwork (390×260), not a screen: the output is an image other people look at, so it has
+/// to be identical regardless of the sender's Dynamic Type setting, and text that grew would simply
+/// overflow the canvas. A codebase-wide sweep that converts `.font(.system(size:))` to text styles
+/// should skip this file — the fixed sizes are the design, not an oversight.
 struct WorkoutShareCard: View {
     let durationMinutes: Int
     let volumeString: String
@@ -66,7 +72,7 @@ struct WorkoutShareCard: View {
 
                 // Volume hero
                 Text(volumeString)
-                    .font(.system(size: 52, weight: .black, design: .monospaced))
+                    .font(.system(size: 52, weight: .black, design: .rounded).monospacedDigit())
                     .foregroundStyle(.white)
                     .padding(.bottom, 20)
 
@@ -96,7 +102,7 @@ struct WorkoutShareCard: View {
                             .lineLimit(1)
                         Spacer()
                         Text("\(unit.formatWeight(kg: top.weightKg, decimals: 0)) × \(top.reps)")
-                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
                             .foregroundStyle(.white)
                     }
                     .padding(.bottom, capturedPR != nil ? 8 : 0)
@@ -128,13 +134,13 @@ struct WorkoutShareCard: View {
             .padding(28)
         }
         .frame(width: 390, height: 260)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     private func shareStatCol(value: String, label: String) -> some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 20, weight: .bold, design: .monospaced))
+                .font(.system(size: 20, weight: .bold, design: .rounded).monospacedDigit())
                 .foregroundStyle(.white)
             Text(label)
                 .font(.system(size: 11, weight: .medium))

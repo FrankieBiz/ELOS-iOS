@@ -1,6 +1,6 @@
 import Foundation
 
-struct DayExercise: Codable, Identifiable {
+struct DayExercise: Codable, Identifiable, Equatable {
     let id: String
     let name: String
     var sets: Int
@@ -10,10 +10,13 @@ struct DayExercise: Codable, Identifiable {
     var equipmentId: String?
     var equipmentDedupeKey: String?
     var equipmentBrandName: String?
+    /// The lifter's muscle check-off for this exercise, when they've corrected it. Rides along in the
+    /// same opaque `exercisesJSON` as the equipment fields — no backend change.
+    var muscleTargets: MuscleTargets?
 
     init(id: String, name: String, sets: Int = 3, reps: String = "10",
          equipmentId: String? = nil, equipmentDedupeKey: String? = nil,
-         equipmentBrandName: String? = nil) {
+         equipmentBrandName: String? = nil, muscleTargets: MuscleTargets? = nil) {
         self.id   = id
         self.name = name
         self.sets = sets
@@ -21,6 +24,7 @@ struct DayExercise: Codable, Identifiable {
         self.equipmentId        = equipmentId
         self.equipmentDedupeKey = equipmentDedupeKey
         self.equipmentBrandName = equipmentBrandName
+        self.muscleTargets      = muscleTargets
     }
 
     // Backward-compat: older stored JSON won't have sets/reps/equipment; fall back to defaults.
@@ -33,10 +37,11 @@ struct DayExercise: Codable, Identifiable {
         equipmentId        = try? c.decodeIfPresent(String.self, forKey: .equipmentId)
         equipmentDedupeKey = try? c.decodeIfPresent(String.self, forKey: .equipmentDedupeKey)
         equipmentBrandName = try? c.decodeIfPresent(String.self, forKey: .equipmentBrandName)
+        muscleTargets      = try? c.decodeIfPresent(MuscleTargets.self, forKey: .muscleTargets)
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, sets, reps, equipmentId, equipmentDedupeKey, equipmentBrandName
+        case id, name, sets, reps, equipmentId, equipmentDedupeKey, equipmentBrandName, muscleTargets
     }
 
     /// Parse a library prescription like "3x6–10" or "2–3x8–12/side" into a DayExercise.

@@ -38,9 +38,9 @@ class TrainViewModel: ObservableObject {
 
     // MARK: - Session lifecycle
 
-    func startSession(ownerID: String) {
+    func startSession(ownerID: String, gymID: String = "") {
         guard currentSession == nil else { return }
-        let session = WorkoutSessionRecord(ownerID: ownerID, startedAt: Date(), syncPending: true)
+        let session = WorkoutSessionRecord(ownerID: ownerID, startedAt: Date(), syncPending: true, gymID: gymID)
         context.insert(session)
         try? context.save()
         currentSession = session
@@ -74,7 +74,8 @@ class TrainViewModel: ObservableObject {
         ownerID: String,
         equipmentId: String? = nil,
         equipmentDedupeKey: String? = nil,
-        equipmentBrandName: String? = nil
+        equipmentBrandName: String? = nil,
+        muscleTargets: MuscleTargets? = nil
     ) {
         guard let session = currentSession else { return }
         let now = Date()
@@ -92,7 +93,8 @@ class TrainViewModel: ObservableObject {
             equipmentId: equipmentId,
             equipmentDedupeKey: equipmentDedupeKey,
             equipmentBrandName: equipmentBrandName,
-            syncPending: true
+            syncPending: true,
+            muscleTargetsJSON: muscleTargets?.jsonString ?? ""
         )
         context.insert(record)
         sessionSets.append(record)
@@ -264,8 +266,7 @@ class TrainViewModel: ObservableObject {
         let doneSets = sessionSets.filter(\.isDone)
         var setsByMuscle: [String: Int] = [:]
         for set in doneSets {
-            let group = muscleGroup(for: set.exerciseName)
-            setsByMuscle[group, default: 0] += 1
+            setsByMuscle[muscleGroup(for: set), default: 0] += 1
         }
 
         var comparisonPercent: Double? = nil
@@ -317,13 +318,8 @@ class TrainViewModel: ObservableObject {
     /// (machine-specific), or both are generic and the names match. This is what
     /// keeps progressive overload / PRs scoped to a specific machine.
     private func sameLift(_ record: ExerciseSetRecord, exerciseName: String, dedupeKey: String?) -> Bool {
-        let target = normalizedKey(dedupeKey)
-        let recordKey = normalizedKey(record.equipmentDedupeKey)
-        if let target, let recordKey { return target == recordKey }
-        if target == nil && recordKey == nil {
-            return record.exerciseName.caseInsensitiveCompare(exerciseName) == .orderedSame
-        }
-        return false
+        StrengthMath.isSameLift(nameA: record.exerciseName, dedupeKeyA: record.equipmentDedupeKey,
+                                nameB: exerciseName, dedupeKeyB: dedupeKey)
     }
 
     // MARK: - Previous set lookup for pre-filling
@@ -425,18 +421,16 @@ class TrainViewModel: ObservableObject {
 
         var setCounts: [String: Int] = [:]
         for s in recent {
-            let muscle = muscleGroup(for: s.exerciseName)
-            setCounts[muscle, default: 0] += 1
+            setCounts[muscleGroup(for: s), default: 0] += 1
         }
 
-        let targets: [String: Int] = [
-            "chest": 12, "lats": 14, "quads": 14, "hamstrings": 10,
-            "glutes": 12, "front_delts": 10, "side_delts": 10,
-            "rear_delts": 10, "biceps": 10, "triceps": 10, "core": 8,
-        ]
-
         return setCounts.sorted { $0.key < $1.key }.map { muscle, count in
-            let target = targets[muscle] ?? 10
+            // Target comes from `TrainingScience`, the same volume landmarks the coverage bars and the
+            // quality score use, instead of a second hand-maintained table that disagreed with them
+            // and had no entry for half the vocabulary (lower back, traps, calves, forearms).
+            let target = MuscleTaxonomy.fine(forMuscle: muscle).map {
+                Int(TrainingScience.weeklyBand(for: $0, experience: .intermediate).targetLow)
+            } ?? 10
             return MuscleVolume(
                 muscle: muscle, current: count, target: target,
                 trend: "+\(count)", trendUp: true, onTrack: count >= target
@@ -453,7 +447,7 @@ class TrainViewModel: ObservableObject {
         equipmentBrandName: String? = nil
     ) {
         guard reps > 0, reps <= 30, weightKg > 0 else { return }
-        let newE1RM = weightKg * (1.0 + Double(reps) / 30.0)
+        guard let newE1RM = StrengthMath.e1rm(weightKg: weightKg, reps: reps) else { return }
 
         let desc = FetchDescriptor<ExerciseSetRecord>(
             predicate: #Predicate { $0.ownerID == ownerID && $0.exerciseName == exerciseName && $0.isDone == true }
@@ -464,20 +458,23 @@ class TrainViewModel: ObservableObject {
             $0.sessionID != sessionID && $0.reps > 0 && $0.reps <= 30 && $0.weightKg > 0
             && sameLift($0, exerciseName: exerciseName, dedupeKey: equipmentDedupeKey)
         }
-        let maxPrior = historical.map { $0.weightKg * (1.0 + Double($0.reps) / 30.0) }.max() ?? 0
+        let maxPrior = historical.compactMap { StrengthMath.e1rm(weightKg: $0.weightKg, reps: $0.reps) }.max() ?? 0
 
         guard newE1RM > maxPrior else { return }
 
-        // Label the PR with the brand for machine-specific lifts so two machines
-        // surface as distinct PRs.
+        // Label the PR with the brand for machine-specific lifts so two machines surface as distinct
+        // PRs — but only when the name doesn't already carry it. Picking a machine straight from the
+        // picker names the exercise "\(brandName) \(machineName)", so prepending unconditionally
+        // produced "Atlantis Strength Atlantis Strength Pec / Rear Delt Fly Combo".
         let prLabel: String
-        if let brand = equipmentBrandName, !brand.isEmpty {
+        if let brand = equipmentBrandName, !brand.isEmpty,
+           !exerciseName.localizedCaseInsensitiveContains(brand) {
             prLabel = "\(brand) \(exerciseName)"
         } else {
             prLabel = exerciseName
         }
 
-        withAnimation(.spring(duration: 0.3)) {
+        withAnimation(.elosEmphasis) {
             newPRExerciseName = prLabel
         }
         if !prsHitThisSession.contains(prLabel) {
@@ -530,24 +527,27 @@ class TrainViewModel: ObservableObject {
         return m
     }
 
-    /// Resolve the trained muscle for an exercise. Prefer the canonical
-    /// `ExerciseDefinitionRecord.primary_muscle` from the synced catalog; fall
-    /// back to a name heuristic for custom/unmatched exercises.
+    /// Resolve the trained muscle for a logged set.
+    ///
+    /// Prefers what the set itself recorded at log time — that's the only way to honour the lifter's
+    /// own muscle check-off, and the only way a machine-backed set is attributed at all. Falls back to
+    /// the synced catalog by name, then to the machine, then to the movement lexicon.
+    func muscleGroup(for set: ExerciseSetRecord) -> String {
+        if let recorded = set.muscleTargets?.catalogPrimary { return recorded }
+        if let dbMuscle = dbPrimaryMuscle(for: set.exerciseName) { return dbMuscle }
+        if let equipmentId = set.equipmentId,
+           let record = EquipmentDatabase.find(equipmentId: equipmentId),
+           let fromEquipment = EquipmentMuscleMap.targets(for: record)?.catalogPrimary {
+            return fromEquipment
+        }
+        return MovementLexicon.targets(forExerciseName: set.exerciseName)?.catalogPrimary ?? "other"
+    }
+
+    /// Name-only resolution, for callers with no set record to hand (e.g. historical charts built from
+    /// exercise names). Routed through the shared `MovementLexicon` rather than a private heuristic —
+    /// the old copy read "Low Back Extension" as **quads**, because it tested `contains("extension")`.
     func muscleGroup(for exerciseName: String) -> String {
         if let dbMuscle = dbPrimaryMuscle(for: exerciseName) { return dbMuscle }
-        let n = exerciseName.lowercased()
-        if n.contains("bench") || n.contains("fly") || (n.contains("push") && !n.contains("pushdown")) { return "chest" }
-        if n.contains("squat") || n.contains("leg press") || n.contains("lunge") || n.contains("extension") { return "quads" }
-        if n.contains("deadlift") || n.contains("rdl") || (n.contains("curl") && n.contains("leg")) { return "hamstrings" }
-        if n.contains("hip thrust") || n.contains("glute") { return "glutes" }
-        if n.contains("pull") || n.contains("row") || n.contains("lat") { return "lats" }
-        if n.contains("curl") && !n.contains("leg") { return "biceps" }
-        if n.contains("tricep") || n.contains("pushdown") || n.contains("skull") { return "triceps" }
-        if n.contains("overhead") || (n.contains("press") && n.contains("shoulder")) { return "front_delts" }
-        if n.contains("lateral") || n.contains("side delt") { return "side_delts" }
-        if n.contains("face pull") || n.contains("rear delt") { return "rear_delts" }
-        if n.contains("calf") { return "calves" }
-        if n.contains("plank") || n.contains("core") || n.contains("ab") { return "core" }
-        return "other"
+        return MovementLexicon.targets(forExerciseName: exerciseName)?.catalogPrimary ?? "other"
     }
 }

@@ -75,6 +75,10 @@ class DiscoverViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var searchResults: SearchResults = SearchResults()
     @Published var isSearching = false
+    /// Only true when a sync actually failed *and* there's no local cache to fall back on — this is
+    /// local-first-then-sync by design (see `load()`), so a failed background refresh with existing
+    /// cached creators/machines should stay silent, not flash an error over content that's still valid.
+    @Published var syncFailed = false
 
     struct SearchResults {
         var creators: [CreatorResponse] = []
@@ -99,8 +103,9 @@ class DiscoverViewModel: ObservableObject {
         Task {
             isLoading = true
             defer { isLoading = false }
-            await syncCreators()
-            await syncMachines()
+            let creatorsOK = await syncCreators()
+            let machinesOK = await syncMachines()
+            syncFailed = (!creatorsOK && featuredCreators.isEmpty) || (!machinesOK && featuredMachines.isEmpty)
         }
     }
 
@@ -124,8 +129,9 @@ class DiscoverViewModel: ObservableObject {
         }
     }
 
-    private func syncCreators() async {
-        guard let response = try? await ApiClient.shared.get("/library/creators") as CreatorsResponse else { return }
+    @discardableResult
+    private func syncCreators() async -> Bool {
+        guard let response = try? await ApiClient.shared.get("/library/creators") as CreatorsResponse else { return false }
         let existing = Set(featuredCreators.map(\.id))
         for c in response.creators where !existing.contains(c.id) {
             let record = CreatorRecord(
@@ -143,10 +149,12 @@ class DiscoverViewModel: ObservableObject {
         }
         try? context.save()
         featuredCreators = (try? context.fetch(FetchDescriptor<CreatorRecord>(sortBy: [SortDescriptor(\.name)]))) ?? []
+        return true
     }
 
-    private func syncMachines() async {
-        guard let response = try? await ApiClient.shared.get("/machines") as MachinesResponse else { return }
+    @discardableResult
+    private func syncMachines() async -> Bool {
+        guard let response = try? await ApiClient.shared.get("/machines") as MachinesResponse else { return false }
         let existing = Set(featuredMachines.map(\.id))
         for m in response.machines where !existing.contains(m.id) {
             let record = MachineRecord(
@@ -163,5 +171,6 @@ class DiscoverViewModel: ObservableObject {
         }
         try? context.save()
         featuredMachines = (try? context.fetch(FetchDescriptor<MachineRecord>(sortBy: [SortDescriptor(\.name)]))) ?? []
+        return true
     }
 }

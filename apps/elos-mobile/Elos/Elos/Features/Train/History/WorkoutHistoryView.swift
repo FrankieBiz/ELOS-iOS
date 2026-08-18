@@ -28,12 +28,13 @@ struct WorkoutHistoryView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Group {
                 if sessions.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "calendar.badge.clock")
-                            .font(.system(size: 48)).foregroundStyle(.secondary)
+                            .font(.largeTitle).foregroundStyle(.secondary)
+                            .symbolEffect(.pulse, options: .repeating)
                         Text("No Workouts Yet")
                             .font(.title3).fontWeight(.semibold)
                         Text("Your completed sessions will appear here.")
@@ -47,7 +48,7 @@ struct WorkoutHistoryView: View {
                             HStack(spacing: 0) {
                                 summaryCell(
                                     value: "\(sessions.count)",
-                                    label: "Sessions"
+                                    label: sessions.count == 1 ? "Session" : "Sessions"
                                 )
                                 Divider().frame(height: 32)
                                 summaryCell(
@@ -60,7 +61,7 @@ struct WorkoutHistoryView: View {
                                 Divider().frame(height: 32)
                                 summaryCell(
                                     value: "\(weeksActive)",
-                                    label: "Weeks"
+                                    label: weeksActive == 1 ? "Week" : "Weeks"
                                 )
                             }
                             .padding(.vertical, 8)
@@ -106,7 +107,7 @@ struct WorkoutHistoryView: View {
     private func summaryCell(value: String, label: String) -> some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(size: 20, weight: .bold, design: .monospaced))
+                .font(.elosNumeric(.title3, weight: .bold))
             Text(label)
                 .font(.caption2).foregroundStyle(.secondary)
         }
@@ -119,8 +120,27 @@ struct WorkoutHistoryView: View {
             predicate: #Predicate { $0.ownerID == uid }
         )
         desc.sortBy = [SortDescriptor(\.startedAt, order: .reverse)]
-        sessions = (try? modelContext.fetch(desc)) ?? []
+        let all = (try? modelContext.fetch(desc)) ?? []
+
+        // A session with no logged sets isn't a workout — it's an app launch that got abandoned, or a
+        // session the recovery pass hasn't swept yet. Listing them filled History with "0 lb /
+        // In progress" rows carrying no information, and inflated the Sessions and Weeks counts.
+        let loggedCounts = setCountsBySession(in: all.map(\.id))
+        sessions = all.filter { (loggedCounts[$0.id] ?? 0) > 0 }
+
         loadExerciseNames()
+    }
+
+    /// Logged-set counts for a batch of sessions, in one fetch rather than one per session.
+    private func setCountsBySession(in ids: [String]) -> [String: Int] {
+        let idSet = Set(ids)
+        let all = (try? modelContext.fetch(
+            FetchDescriptor<ExerciseSetRecord>(predicate: #Predicate { $0.isDone == true })
+        )) ?? []
+        return all.reduce(into: [:]) { counts, set in
+            guard idSet.contains(set.sessionID) else { return }
+            counts[set.sessionID, default: 0] += 1
+        }
     }
 
     private func loadExerciseNames() {

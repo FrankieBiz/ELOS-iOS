@@ -5,11 +5,28 @@ struct ContentView: View {
     @EnvironmentObject var trainVM: TrainViewModel
     @EnvironmentObject var trainingContext: TrainingContext
 
+    /// Set when a cross-screen link points at a tab the lifter has hidden. See `OpenTabAction`.
+    @State private var tabAsSheet: AppTab?
+    @EnvironmentObject var theme: ThemeStore
+    @EnvironmentObject var layout: LayoutStore
+    @Environment(\.dynamicTypeSize) private var systemTypeSize
+
+    @State private var didApplyLaunchTab = false
+
     var body: some View {
         ZStack(alignment: .bottom) {
             tabContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(.easeInOut(duration: 0.2), value: vm.selectedTab)
+                // Re-identified on every appearance change, which forces the whole tab subtree to
+                // re-read the design tokens (`Color.tint`, `Space`, `Radius`, `elosCard`). Those are
+                // statics — they can't publish — and making them observable would have meant
+                // rewriting a thousand-odd call sites. This is the seam that avoids that.
+                //
+                // Scoped tightly to the tab content on purpose: the active workout, the error banner
+                // and the customizer sheet all sit outside it, so changing a colour can never tear
+                // down a session in progress or dismiss the sheet doing the changing.
+                .id(theme.revision)
+                .animation(.elosQuick, value: vm.selectedTab)
 
             ElosTabBar()
 
@@ -20,6 +37,14 @@ struct ContentView: View {
             }
         }
         .ignoresSafeArea(edges: .bottom)
+        .overlay(alignment: .bottom) {
+            if layout.editingScreen != nil {
+                LayoutEditBar()
+                    .padding(.bottom, 96)   // clear the tab bar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(16)
+            }
+        }
         .overlay {
             if vm.showingSession {
                 ActiveSessionView()
@@ -27,7 +52,7 @@ struct ContentView: View {
                     .zIndex(10)
             }
         }
-        .animation(.spring(duration: 0.32), value: vm.recoverableSession != nil)
+        .animation(.elosEmphasis, value: vm.recoverableSession != nil)
         .overlay(alignment: .top) {
             if let message = vm.errorBanner {
                 ErrorBanner(message: message) { vm.dismissError() }
@@ -35,8 +60,9 @@ struct ContentView: View {
                     .zIndex(20)
             }
         }
-        .animation(.spring(duration: 0.32), value: vm.showingSession)
-        .animation(.easeInOut(duration: 0.25), value: vm.errorBanner)
+        .animation(.elosEmphasis, value: vm.showingSession)
+        .animation(.elosStandard, value: vm.errorBanner)
+        .animation(.elosStandard, value: layout.editingScreen)
         .sheet(isPresented: $vm.showingLogSleep) {
             LogSleepSheet()
                 .environmentObject(vm)
@@ -45,14 +71,56 @@ struct ContentView: View {
             AddHabitSheet()
                 .environmentObject(vm)
         }
-        .preferredColorScheme(vm.forceDark.map { $0 ? .dark : .light })
+        // Hosted here rather than inside Settings so a theme change can't dismiss the screen that
+        // made it — see the `.id` note above.
+        .sheet(isPresented: $layout.showingCustomizeSheet) {
+            CustomizeView()
+                .environmentObject(theme)
+                .environmentObject(layout)
+        }
+        // A tab that isn't in the bar still has content worth reaching — hiding Plan doesn't delete
+        // your assignments. Switching the bar to it would leave nothing highlighted and no way
+        // back, so it opens as a detour with an obvious exit instead.
+        .sheet(item: $tabAsSheet) { tab in
+            screen(for: tab)
+                .presentationDragIndicator(.visible)
+        }
+        .environment(\.openTab, OpenTabAction { tab in
+            if layout.isTabHidden(tab) {
+                tabAsSheet = tab
+            } else {
+                // Following a link out of the detour closes it on the way.
+                tabAsSheet = nil
+                withAnimation(.elosQuick) { vm.selectedTab = tab }
+            }
+        })
+        .preferredColorScheme(theme.colorScheme)
+        // Relative to the system setting, never instead of it.
+        .dynamicTypeSize(systemTypeSize.shifted(by: theme.config.textScale.steps))
+        .fontDesign(theme.fontDesign)
+        .onAppear {
+            guard !didApplyLaunchTab else { return }
+            didApplyLaunchTab = true
+            vm.selectedTab = layout.config.tabs.launchTab
+        }
+        .onChange(of: vm.selectedTab) { _, _ in
+            // Rearranging is per-screen; walking to another tab ends it rather than leaving the
+            // edit chrome hanging over a screen you didn't ask to edit.
+            if layout.editingScreen != nil { layout.editingScreen = nil }
+        }
     }
 
     @ViewBuilder
-    private var tabContent: some View {
-        switch vm.selectedTab {
+    private var tabContent: some View { screen(for: vm.selectedTab) }
+
+    /// The one mapping from a tab to its screen, shared by the tab bar and the hidden-tab sheet so
+    /// the two can't disagree about what a tab shows.
+    @ViewBuilder
+    private func screen(for tab: AppTab) -> some View {
+        switch tab {
         case .today: TodayView()
         case .train: TrainView()
+        case .feed:  FeedTabView()
         case .stats: StatsView()
         case .plan:  PlanView()
         case .me:    MeView()
@@ -83,7 +151,7 @@ private struct ErrorBanner: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background(Color.red.opacity(0.92))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .padding(.horizontal, 14)
         .padding(.top, 8)
         .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
@@ -95,6 +163,9 @@ private struct ResumeSessionPrompt: View {
     @EnvironmentObject var vm: AppViewModel
     @EnvironmentObject var trainVM: TrainViewModel
     @EnvironmentObject var trainingContext: TrainingContext
+    /// Sits outside the tab content, which is what gets rebuilt on a theme change — so it subscribes
+    /// directly rather than keeping a stale accent on its Resume button.
+    @ObservedObject private var theme = ThemeStore.shared
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
@@ -134,7 +205,7 @@ private struct ResumeSessionPrompt: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(Color(.tertiarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
 
@@ -148,14 +219,13 @@ private struct ResumeSessionPrompt: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(Color.tint)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(14)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .elosCard()
         .shadow(color: .black.opacity(0.15), radius: 10, y: 4)
         .padding(.horizontal, 14)
         .padding(.bottom, 96)   // clear the tab bar
@@ -165,27 +235,45 @@ private struct ResumeSessionPrompt: View {
 // MARK: - Custom Tab Bar
 private struct ElosTabBar: View {
     @EnvironmentObject var vm: AppViewModel
+    @EnvironmentObject var layout: LayoutStore
+    @EnvironmentObject var theme: ThemeStore
+
+    /// The tabs the user kept, in the order they put them. `LayoutStore` guarantees this is
+    /// non-empty and duplicate-free however mangled the stored value gets — this is the app's only
+    /// navigation, so it can't be allowed to render nothing.
+    private var tabs: [AppTab] { layout.visibleTabs }
 
     var body: some View {
         VStack(spacing: 0) {
             Divider()
             HStack(spacing: 0) {
-                ForEach(AppTab.allCases, id: \.self) { tab in
+                ForEach(tabs, id: \.self) { tab in
                     Button {
                         HapticManager.selection()
-                        withAnimation(.easeInOut(duration: 0.2)) {
+                        withAnimation(.elosQuick) {
                             vm.selectedTab = tab
                         }
                     } label: {
                         VStack(spacing: 4) {
+                            // Fixed on purpose: this is the tab bar. The system's own tab icons don't
+                            // grow with Dynamic Type either — five of them share one row, and scaling
+                            // the glyphs would push the labels out before it helped anyone.
                             Image(systemName: vm.selectedTab == tab ? tab.selectedIcon : tab.icon)
-                                .font(.system(size: 20, weight: vm.selectedTab == tab ? .bold : .regular))
+                                .font(.system(size: theme.config.compactTabBar ? 23 : 20,
+                                              weight: vm.selectedTab == tab ? .bold : .regular))
                                 .foregroundStyle(vm.selectedTab == tab ? Color.tint : Color.secondary)
 
-                            Text(tab.label.uppercased())
-                                .font(.system(size: 9, weight: .semibold))
-                                .kerning(0.5)
-                                .foregroundStyle(vm.selectedTab == tab ? Color.tint : Color.secondary)
+                            // Five labels share one row and cannot reflow, so they shrink rather than
+                            // wrap. Left to scale freely, "TODAY" hyphenated to "TO-DAY" and
+                            // "TRAIN"/"STATS" collided with no gap between them.
+                            if !theme.config.compactTabBar {
+                                Text(tab.label.uppercased())
+                                    .font(.system(.caption2, weight: .semibold))
+                                    .kerning(0.5)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                    .foregroundStyle(vm.selectedTab == tab ? Color.tint : Color.secondary)
+                            }
                         }
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: 44)
@@ -197,8 +285,18 @@ private struct ElosTabBar: View {
                     .accessibilityAddTraits(vm.selectedTab == tab ? [.isButton, .isSelected] : .isButton)
                 }
             }
+            // A tab bar is the canonical layout that cannot reflow: fixed columns, always visible.
+            // Cap the ramp here rather than let it break the app's primary navigation.
+            .elosDenseLayout()
             .background(Color(.systemBackground))
             .safeAreaPadding(.bottom)
+        }
+        .onChange(of: layout.revision) { _, _ in
+            // Hiding the tab you're standing on would otherwise leave the bar with nothing
+            // highlighted and no obvious way back.
+            if !tabs.contains(vm.selectedTab), let first = tabs.first {
+                withAnimation(.elosQuick) { vm.selectedTab = first }
+            }
         }
     }
 }

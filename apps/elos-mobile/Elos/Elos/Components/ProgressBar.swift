@@ -20,7 +20,7 @@ struct ProgressBar: View {
             }
         }
         .frame(height: height)
-        .animation(animate ? .easeInOut(duration: 0.6) : nil, value: clamped)
+        .animation(animate ? .elosProgress : nil, value: clamped)
     }
 }
 

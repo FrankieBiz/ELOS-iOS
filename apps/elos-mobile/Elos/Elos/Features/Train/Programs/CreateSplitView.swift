@@ -36,8 +36,32 @@ struct CreateSplitView: View {
     @State private var dayTemplateIDs: [String] = Array(repeating: "", count: 7)
     @State private var dayIsRest: [Bool] = Array(repeating: false, count: 7)
     @State private var dayExercises: [[DayExercise]] = Array(repeating: [], count: 7)
+    @State private var dayExcludedMuscles: [Set<FineMuscle>] = Array(repeating: [], count: 7)
     @State private var activePicker: ActivePicker? = nil
     @State private var showDiscardConfirm = false
+    @State private var showFullReport = false
+    /// Weekly scope carries a goal but no single focus — a week isn't one kind of day.
+    @State private var intent = TrainingIntent.default
+    /// Muscles a suggestion asked for, folded into the next picker's Smart Sort bias.
+    @State private var pendingBiasMuscles: [String] = []
+    /// Which exercise's muscle check-off is open, if any.
+    @State private var muscleEdit: MuscleEdit? = nil
+    @State private var skipMusclesDay: SkipMusclesDay? = nil
+    /// The day whose own report is open, from tapping a "BY DAY" row in the full report.
+    @State private var selectedDaySummary: SplitDaySummary? = nil
+    /// The auto-fix preview currently open, if any.
+    @State private var pendingFix: FixProposal? = nil
+
+    private struct MuscleEdit: Identifiable {
+        let dayIndex: Int
+        let exerciseIndex: Int
+        var id: String { "\(dayIndex)-\(exerciseIndex)" }
+    }
+
+    private struct SkipMusclesDay: Identifiable {
+        let dayIndex: Int
+        var id: Int { dayIndex }
+    }
 
     private var hasUnsavedContent: Bool {
         !splitName.trimmingCharacters(in: .whitespaces).isEmpty
@@ -74,24 +98,41 @@ struct CreateSplitView: View {
                         MuscleGroupPanelWeekly(
                             dayTemplateIDs: dayTemplateIDs,
                             dayIsRest: dayIsRest,
-                            dayExerciseNames: dayExercises.map { $0.map { $0.name } }
+                            dayExercises: dayExercises
                         )
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                         .listRowBackground(Color.clear)
 
-                        qualityPanel
+                        if vm.showQualityRater {
+                            qualityPanel
+                        }
                     }
                 }
 
-                Section("Weekly Schedule") {
+                Section {
                     ForEach(0..<7, id: \.self) { i in
                         dayRow(index: i)
+                    }
+                } header: {
+                    HStack {
+                        Text("Weekly Schedule")
+                        Spacer()
+                        PriorityMenu(onSelect: { autoOrderAllDays(priority: $0) }) {
+                            Label("Auto-order all days", systemImage: "arrow.up.arrow.down")
+                                .font(.caption)
+                                .labelStyle(.iconOnly)
+                                .padding(8)
+                                .contentShape(Rectangle())
+                        }
                     }
                 }
             }
             .navigationTitle(editSplit != nil ? "Edit Split" : (template != nil ? "Customize Split" : "New Split"))
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
+                // A saved split's own goal wins; otherwise seed from the profile so the chip
+                // starts on something sensible rather than blank.
+                intent = editSplit?.intent ?? TrainingIntent(profile: TrainingProfile(record: profiles.first))
                 if let t = template {
                     splitName = t.title
                     for (i, day) in t.workouts.prefix(7).enumerated() {
@@ -107,6 +148,7 @@ struct CreateSplitView: View {
                         dayIsRest[i] = day.isRest
                         dayNames[i] = day.isRest ? "" : (day.dayName == dayLabels[i] ? "" : day.dayName)
                         dayTemplateIDs[i] = day.templateID
+                        dayExcludedMuscles[i] = day.excludedMuscles
                         if let data = day.exercisesJSON.data(using: .utf8),
                            let decoded = try? JSONDecoder().decode([DayExercise].self, from: data) {
                             dayExercises[i] = decoded
@@ -128,7 +170,7 @@ struct CreateSplitView: View {
                         .disabled(splitName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
-            .sheet(item: $activePicker) { picker in
+            .sheet(item: $activePicker, onDismiss: { pendingBiasMuscles = [] }) { picker in
                 switch picker {
                 case .template(let i):
                     TemplatePickerSheet(
@@ -137,6 +179,10 @@ struct CreateSplitView: View {
                     ) { templateID, templateName in
                         dayTemplateIDs[i] = templateID
                         if dayNames[i].isEmpty { dayNames[i] = templateName }
+                        // A day's exercises come from either its template or its ad-hoc list, never
+                        // both — `prepareExercises(for:)` silently prefers ad-hoc when both are set,
+                        // so leaving stale exercises here would make this template pick a no-op.
+                        dayExercises[i] = []
                     }
                 case .exercise(let i):
                     ExercisePickerView(
@@ -148,12 +194,69 @@ struct CreateSplitView: View {
                                     sets: def.sets, reps: def.reps,
                                     equipmentId: picked.equipmentId,
                                     equipmentDedupeKey: picked.equipmentDedupeKey,
-                                    equipmentBrandName: picked.equipmentBrandName))
+                                    equipmentBrandName: picked.equipmentBrandName,
+                                    muscleTargets: picked.muscleTargets))
+                                // Ad-hoc exercises take precedence over a template at save time —
+                                // clear the template chip so the UI doesn't keep showing it as active
+                                // for a day whose exercises it no longer actually determines.
+                                dayTemplateIDs[i] = ""
                             }
+                            return true
                         },
-                        dayContext: DayContextInferrer.infer(dayName: dayNames[i], added: dayExercises[i], catalog: exerciseCatalog)
+                        dayContext: biasedContext(dayIndex: i)
                     )
                 }
+            }
+            // Indices are resolved defensively on both sides. A sheet's content closure is re-evaluated
+            // on state changes while it's presented, so a bare `dayExercises[i][j]` here is a crash
+            // waiting for the day the row it points at goes away.
+            .sheet(item: $muscleEdit) { edit in
+                if let ex = exercise(at: edit) {
+                    MuscleTargetSheet(
+                        title: ex.name,
+                        record: ex.equipmentId.flatMap { EquipmentDatabase.find(equipmentId: $0) },
+                        initial: resolvedTargets(for: ex)
+                    ) { chosen in
+                        guard exercise(at: edit) != nil else { return }
+                        dayExercises[edit.dayIndex][edit.exerciseIndex].muscleTargets = chosen
+                    }
+                }
+            }
+            .sheet(item: $skipMusclesDay) { day in
+                SkipMusclesSheet(selection: $dayExcludedMuscles[day.dayIndex])
+            }
+            .sheet(isPresented: $showFullReport) {
+                SplitQualityReportView(
+                    report: qualityReport,
+                    days: daySummaries,
+                    onTapTip: { tip in
+                        showFullReport = false
+                        handle(tip: tip)
+                    },
+                    onAutoFix: { tip in
+                        showFullReport = false
+                        startAutoFix(for: tip)
+                    },
+                    onTapMuscle: { bar in
+                        showFullReport = false
+                        let payload = bar.fine?.rawValue ?? bar.group.rawValue
+                        pendingBiasMuscles = MuscleTaxonomy.targetMuscles(forPayload: payload)
+                        activePicker = .exercise(dayIndex: firstOpenDayIndex())
+                    },
+                    onSelectDay: { selectedDaySummary = $0 })
+            }
+            .sheet(item: $selectedDaySummary) { day in
+                DayQualityReportView(dayName: day.name, report: day.report)
+            }
+            .sheet(item: $pendingFix) { proposal in
+                QualityFixPreviewSheet(
+                    proposal: proposal,
+                    onConfirm: { apply($0) },
+                    onDeny: {},
+                    onTryAnother: { candidate in
+                        QualityFixEngine.propose(for: proposal.tip, context: currentContext(), using: candidate)
+                    },
+                    onChooseManually: { handle(tip: proposal.tip) })
             }
             .confirmationDialog("Discard this split?", isPresented: $showDiscardConfirm, titleVisibility: .visible) {
                 Button("Discard", role: .destructive) { onSave() }
@@ -170,8 +273,19 @@ struct CreateSplitView: View {
         TemplateQualityEngine.score(days: dayExercises.map { $0.map(ScoredExercise.init(day:)) },
                                     dayNames: dayNames,
                                     scope: .weeklySplit,
-                                    profile: TrainingProfile(record: profiles.first),
-                                    catalog: exerciseCatalog)
+                                    profile: scoringProfile,
+                                    catalog: exerciseCatalog,
+                                    intent: intent,
+                                    dayExclusions: dayExcludedMuscles,
+                                    dayIsRest: dayIsRest)
+    }
+
+    /// The selected goal overrides the saved profile's, so the goal chip actually moves the rep/rest
+    /// targets. Experience stays profile-driven — it isn't a per-split choice.
+    private var scoringProfile: TrainingProfile {
+        TrainingProfile(goal: intent.goal,
+                        experience: TrainingProfile(record: profiles.first).experience,
+                        volumeOverrides: vm.volumeOverrides)
     }
 
     @ViewBuilder private var qualityPanel: some View {
@@ -180,9 +294,160 @@ struct CreateSplitView: View {
         // Hold scoring until the split is meaningfully built — a half-finished week would flag
         // "low volume" on everything, which reads as nagging rather than coaching.
         if populatedDays >= 2 && report.isScored {
-            TemplateQualityPanel(report: report, guidance: guidanceLevel, title: "Split Quality")
-                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
-                .listRowBackground(Color.clear)
+            VStack(alignment: .leading, spacing: 10) {
+                // A week has no single focus, so only the goal chip appears here.
+                TrainingIntentRow(intent: $intent, showsFocus: false, showsSkip: false)
+                TemplateQualityPanel(report: report, guidance: guidanceLevel, title: "Split Quality",
+                                     scope: .weeklySplit,
+                                     onTapTip: { handle(tip: $0) },
+                                     onAutoFix: { startAutoFix(for: $0) },
+                                     onSeeFullReport: { showFullReport = true })
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
+            .listRowBackground(Color.clear)
+        }
+    }
+
+    /// Per-day headline numbers for the full report. Each day is scored on its own at session scope,
+    /// which is what makes "Monday 82 / Friday 41" meaningful.
+    private var daySummaries: [SplitDaySummary] {
+        (0..<min(7, dayExercises.count)).compactMap { i in
+            let day = dayExercises[i]
+            guard !dayIsRest[i], !day.isEmpty else { return nil }
+            let scored = day.map(ScoredExercise.init(day:))
+            let dayIntent = TrainingIntent(goal: intent.goal, focus: nil,
+                                          excludedMuscles: dayExcludedMuscles[i])
+            let r = TemplateQualityEngine.score(days: [scored], dayNames: [dayNames[i]],
+                                                scope: .singleSession,
+                                                profile: scoringProfile,
+                                                catalog: exerciseCatalog,
+                                                intent: dayIntent)
+            return SplitDaySummary(
+                id: i,
+                name: dayNames[i].isEmpty ? dayLabels[i] : dayNames[i],
+                exerciseCount: day.count,
+                sets: day.reduce(0) { $0 + $1.sets },
+                score: r.isScored ? r.overall : nil,
+                report: r)
+        }
+    }
+
+    // MARK: - Suggestion actions
+
+    private func handle(tip: QualityTip) {
+        switch tip.action {
+        case .addMuscle(let payload), .addPattern(let payload):
+            // Open the emptiest non-rest day, biased toward the muscle the tip names.
+            let target = firstOpenDayIndex()
+            pendingBiasMuscles = MuscleTaxonomy.targetMuscles(forPayload: payload)
+            activePicker = .exercise(dayIndex: target)
+        case .reorder(let dayIndex):
+            guard dayExercises.indices.contains(dayIndex) else { return }
+            withAnimation(.elosEmphasis) {
+                dayExercises[dayIndex] = ExerciseOrderer.order(dayExercises[dayIndex],
+                                                              catalog: exerciseCatalog)
+            }
+        case .retuneReps, .retuneRest:
+            // Auto-fix only for now (Task 11) — no manual affordance for a rep/rest retune yet.
+            break
+        case .noAction:
+            break
+        }
+    }
+
+    /// The day most in need of another exercise — fewest exercises among non-rest days.
+    private func firstOpenDayIndex() -> Int {
+        let candidates = (0..<min(7, dayExercises.count)).filter { !dayIsRest[$0] }
+        return candidates.min { dayExercises[$0].count < dayExercises[$1].count } ?? 0
+    }
+
+    // MARK: - Auto-fix
+
+    private func currentContext() -> QualityFixEngine.Context {
+        QualityFixEngine.Context(
+            days: dayExercises.map { $0.map(ScoredExercise.init(day:)) },
+            dayNames: dayNames, dayIsRest: dayIsRest, dayExcludedMuscles: dayExcludedMuscles,
+            scope: .weeklySplit, profile: scoringProfile, intent: intent, catalog: exerciseCatalog,
+            personalization: PersonalizationProvider(signals: .init()),
+            equipmentPreference: equipmentPreference)
+    }
+
+    private func startAutoFix(for tip: QualityTip) {
+        if let proposal = QualityFixEngine.propose(for: tip, context: currentContext()) {
+            pendingFix = proposal
+        } else {
+            // No eligible day / no candidate / nothing worth offering — fall back to the manual path.
+            handle(tip: tip)
+        }
+    }
+
+    /// Applies fix operations directly in `DayExercise` terms — never by converting a pre-existing
+    /// element through `ScoredExercise` and back, which would silently drop `equipmentDedupeKey`/
+    /// `equipmentBrandName` (fields `ScoredExercise` doesn't carry at all).
+    private func apply(_ operations: [FixOperation]) {
+        withAnimation(.elosEmphasis) {
+            for op in operations {
+                switch op {
+                case .insertExercise(let spec):
+                    guard dayExercises.indices.contains(spec.dayIndex) else { continue }
+                    let insertAt = min(max(0, spec.insertAt), dayExercises[spec.dayIndex].count)
+                    let new = DayExercise(id: spec.candidate.id, name: spec.candidate.name,
+                                         sets: spec.sets, reps: spec.reps)
+                    dayExercises[spec.dayIndex].insert(new, at: insertAt)
+                case .reorderDay(let dayIndex, let permutation):
+                    guard dayExercises.indices.contains(dayIndex) else { continue }
+                    let day = dayExercises[dayIndex]
+                    guard permutation.count == day.count,
+                          Set(permutation) == Set(0..<day.count) else { continue }
+                    dayExercises[dayIndex] = permutation.map { day[$0] }
+                case .setReps(let dayIndex, let exerciseIndex, let reps):
+                    guard dayExercises.indices.contains(dayIndex),
+                          dayExercises[dayIndex].indices.contains(exerciseIndex) else { continue }
+                    dayExercises[dayIndex][exerciseIndex].reps = reps
+                case .setRest:
+                    // DayExercise has no rest field, and rr-rest only fires at single-session
+                    // scope on exercises with non-nil rest — a split-sourced day always has
+                    // restSeconds nil, so this case is unreachable here. Intentional no-op.
+                    continue
+                }
+            }
+        }
+    }
+
+    /// The exercise a pending muscle-edit points at, or nil if the row has since gone.
+    private func exercise(at edit: MuscleEdit) -> DayExercise? {
+        guard dayExercises.indices.contains(edit.dayIndex),
+              dayExercises[edit.dayIndex].indices.contains(edit.exerciseIndex)
+        else { return nil }
+        return dayExercises[edit.dayIndex][edit.exerciseIndex]
+    }
+
+    /// What one day-exercise is credited to, via the shared precedence chain.
+    private func resolvedTargets(for ex: DayExercise) -> MuscleTargets {
+        ExerciseResolver.resolve([[ScoredExercise(day: ex)]], catalog: exerciseCatalog)
+            .first?.first?.targets ?? MuscleTargets()
+    }
+
+    /// The day's inferred context, plus any muscles a suggestion just asked for.
+    private func biasedContext(dayIndex i: Int) -> DayContext {
+        let base = DayContextInferrer.infer(dayName: dayNames[i], added: dayExercises[i],
+                                            catalog: exerciseCatalog)
+        guard !pendingBiasMuscles.isEmpty else { return base }
+        return DayContext(dayName: base.dayName, archetype: base.archetype,
+                          targetMuscles: base.targetMuscles.union(pendingBiasMuscles),
+                          addedPrimaryMuscles: base.addedPrimaryMuscles,
+                          addedExerciseIDs: base.addedExerciseIDs,
+                          addedExerciseNames: base.addedExerciseNames,
+                          addedTargets: base.addedTargets)
+    }
+
+    /// Applies one priority to every non-rest, non-empty day in the split at once — separate from the
+    /// per-day "Sort" button inside `dayRow`, which stays a single-day, no-priority action.
+    private func autoOrderAllDays(priority: MuscleGroup?) {
+        withAnimation(.elosEmphasis) {
+            for i in dayExercises.indices where !dayIsRest[i] && !dayExercises[i].isEmpty {
+                dayExercises[i] = ExerciseOrderer.order(dayExercises[i], catalog: exerciseCatalog, priority: priority)
+            }
         }
     }
 
@@ -229,6 +494,26 @@ struct CreateSplitView: View {
                     .buttonStyle(.plain)
                 }
 
+                HStack(spacing: 8) {
+                    Button {
+                        skipMusclesDay = SkipMusclesDay(dayIndex: i)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "eye.slash")
+                                .font(.caption2)
+                            Text(dayExcludedMuscles[i].isEmpty
+                                 ? "Skip muscles" : "Skip muscles (\(dayExcludedMuscles[i].count))")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(Color.tint)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.tint.opacity(0.1))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    Spacer()
+                }
+
                 if dayExercises[i].isEmpty, MuscleTaxonomy.archetype(forDayName: dayNames[i]) != nil {
                     Button {
                         if let arch = MuscleTaxonomy.archetype(forDayName: dayNames[i]) {
@@ -237,6 +522,7 @@ struct CreateSplitView: View {
                                     archetype: arch, catalog: exerciseCatalog,
                                     personalization: PersonalizationProvider(signals: .init()),
                                     isEquipmentAvailable: { equipmentPreference.isAvailable(equipment: $0) })
+                                dayTemplateIDs[i] = ""
                             }
                         }
                     } label: {
@@ -286,6 +572,11 @@ struct CreateSplitView: View {
                                     }
                                     if j > 0 { Button { withAnimation { dayExercises[i].swapAt(j, j - 1) } } label: { Label("Move left", systemImage: "arrow.left") } }
                                     if j < dayExercises[i].count - 1 { Button { withAnimation { dayExercises[i].swapAt(j, j + 1) } } label: { Label("Move right", systemImage: "arrow.right") } }
+                                    Button {
+                                        muscleEdit = MuscleEdit(dayIndex: i, exerciseIndex: j)
+                                    } label: {
+                                        Label("Muscles worked…", systemImage: "figure.strengthtraining.traditional")
+                                    }
                                 } label: {
                                     HStack(spacing: 4) {
                                         Text(ex.name)
@@ -295,7 +586,7 @@ struct CreateSplitView: View {
                                             .font(.caption2).fontWeight(.semibold)
                                             .foregroundStyle(Color.tint.opacity(0.7))
                                         Image(systemName: "ellipsis.circle.fill")
-                                            .font(.system(size: 13))
+                                            .font(.footnote)
                                             .foregroundStyle(Color.tint.opacity(0.8))
                                     }
                                 }
@@ -303,8 +594,9 @@ struct CreateSplitView: View {
                                     dayExercises[i].removeAll { $0.id == ex.id }
                                 } label: {
                                     Image(systemName: "xmark")
-                                        .font(.system(size: 8, weight: .bold))
+                                        .font(.system(.caption2, weight: .bold))
                                 }
+                                .accessibilityLabel("Remove exercise")
                             }
                             .foregroundStyle(Color.tint)
                             .padding(.horizontal, 8).padding(.vertical, 4)
@@ -337,36 +629,38 @@ struct CreateSplitView: View {
         templates.first { $0.id == id }?.name ?? "Template"
     }
 
+    /// A day the lifter never touched — no exercises, no template, no name — is a rest day, not a
+    /// training day with nothing in it. `dayIsRest` starts all-false, so without this a 2-day
+    /// split saved seven *training* days and pinned all seven into the schedule: the split card
+    /// said "2 Days" while the week strip showed five more days labelled "Train", and "Start
+    /// Today's Workout" on one of them opened an empty session. A day that was given a name is
+    /// left alone — that's a deliberate placeholder the lifter still intends to fill.
+    private func isEffectivelyRest(_ i: Int) -> Bool {
+        SplitDayPersistence.isEffectivelyRest(i, dayIsRest: dayIsRest, dayExercises: dayExercises,
+                                              dayTemplateIDs: dayTemplateIDs, dayNames: dayNames)
+    }
+
     private func saveSplit() {
         let trimmed = splitName.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
 
-        let encoder = JSONEncoder()
         let indexToWeekday = [2, 3, 4, 5, 6, 7, 1]
 
-        func buildDays(for splitID: String) {
-            for (i, label) in dayLabels.enumerated() {
-                let exData = try? encoder.encode(dayExercises[i])
-                let exJSON = exData.flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
-                modelContext.insert(UserSplitDayRecord(
-                    splitID: splitID,
-                    orderIndex: i,
-                    dayLabel: label,
-                    dayName: dayIsRest[i] ? "Rest" : (dayNames[i].isEmpty ? label : dayNames[i]),
-                    templateID: dayIsRest[i] ? "" : dayTemplateIDs[i],
-                    isRest: dayIsRest[i],
-                    exercisesJSON: dayIsRest[i] ? "[]" : exJSON
-                ))
-            }
+        func upsertDays(for splitID: String, existing: [UserSplitDayRecord]) {
+            SplitDayPersistence.upsertDays(
+                splitID: splitID, dayLabels: dayLabels, dayNames: dayNames,
+                dayTemplateIDs: dayTemplateIDs, dayIsRest: dayIsRest,
+                dayExercises: dayExercises, dayExcludedMuscles: dayExcludedMuscles,
+                existing: existing, modelContext: modelContext)
         }
 
         if let existing = editSplit {
-            // Edit mode — update in place then push to server
+            // Edit mode — update in place, then push to server.
             existing.name = trimmed
-            existing.pinnedWeekdays = (0..<7).filter { !dayIsRest[$0] }.map { indexToWeekday[$0] }
+            existing.pinnedWeekdays = (0..<7).filter { !isEffectivelyRest($0) }.map { indexToWeekday[$0] }
+            existing.intent = intent
             existing.syncPending = true
-            for day in editDays { modelContext.delete(day) }
-            buildDays(for: existing.id)
+            upsertDays(for: existing.id, existing: editDays)
             try? modelContext.save()
             vm.loadActiveSplit()
             let record = existing
@@ -380,13 +674,26 @@ struct CreateSplitView: View {
         } else {
             // Create mode — insert new record and push immediately
             let split = UserSplitRecord(ownerID: vm.currentUserID, name: trimmed)
-            split.pinnedWeekdays = (0..<7).filter { !dayIsRest[$0] }.map { indexToWeekday[$0] }
+            split.pinnedWeekdays = (0..<7).filter { !isEffectivelyRest($0) }.map { indexToWeekday[$0] }
+            split.intent = intent
             split.syncPending = true
             modelContext.insert(split)
-            buildDays(for: split.id)
+            upsertDays(for: split.id, existing: [])
             try? modelContext.save()
             let record = split
-            Task.detached { await vm.pushSplitToServer(record) }
+            // Only "Customize & Subscribe" (entered with a `template`) implies replacing the active
+            // split — the blank "Create Split" button elsewhere just adds to My Splits, unactivated,
+            // same as any split the user browses in and hasn't tapped Activate on.
+            let shouldActivate = template != nil
+            if shouldActivate {
+                vm.setActiveSplit(record)
+            }
+            Task.detached {
+                await vm.pushSplitToServer(record)
+                if shouldActivate {
+                    await vm.activateSplitOnServer(serverID: record.serverID)
+                }
+            }
         }
         onSave()
     }
@@ -404,7 +711,7 @@ private struct TemplatePickerSheet: View {
             Group {
                 if templates.isEmpty {
                     VStack(spacing: 12) {
-                        Image(systemName: "list.bullet.clipboard").font(.system(size: 36)).foregroundStyle(.secondary)
+                        Image(systemName: "list.bullet.clipboard").font(.largeTitle).foregroundStyle(.secondary)
                         Text("No templates yet").font(.subheadline).foregroundStyle(.secondary)
                         Text("Create templates in the Templates tab to link them to split days.")
                             .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)

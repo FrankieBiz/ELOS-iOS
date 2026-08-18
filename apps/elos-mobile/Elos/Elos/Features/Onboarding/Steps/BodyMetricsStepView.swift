@@ -35,7 +35,7 @@ struct BodyMetricsStepView: View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Your body stats")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(.title, weight: .bold))
                 Text("Used to calculate personalized nutrition and training targets.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -86,7 +86,7 @@ struct BodyMetricsStepView: View {
                 }
                 .frame(height: 120)
                 .background(Color(.secondarySystemGroupedBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
 
             // Weight + Age side by side
@@ -103,7 +103,7 @@ struct BodyMetricsStepView: View {
                     .pickerStyle(.wheel)
                     .frame(height: 120)
                     .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -115,7 +115,7 @@ struct BodyMetricsStepView: View {
                     .pickerStyle(.wheel)
                     .frame(height: 120)
                     .background(Color(.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
             }
 

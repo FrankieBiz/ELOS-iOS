@@ -1745,4 +1745,11 @@ enum EquipmentDatabase {
     static func find(dedupeKey: String) -> EquipmentRecord? {
         all.first { $0.dedupeKey == dedupeKey }
     }
+
+    /// O(1) lookup by equipment id. Coverage resolves a machine-backed exercise on every keystroke in
+    /// the builder, so this can't be a linear scan of 1,700 records.
+    static func find(equipmentId: String) -> EquipmentRecord? { byId[equipmentId] }
+
+    private static let byId: [String: EquipmentRecord] =
+        Dictionary(all.map { ($0.equipmentId, $0) }, uniquingKeysWith: { a, _ in a })
 }

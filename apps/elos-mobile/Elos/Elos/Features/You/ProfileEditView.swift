@@ -282,7 +282,7 @@ struct ProfileEditView: View {
                     }
                 }
 
-                Section("Equipment") {
+                Section {
                     Picker("Available", selection: $editVM.equipmentPosture) {
                         ForEach(EquipmentPosture.allCases, id: \.self) { posture in
                             Text(postureLabel(posture)).tag(posture)
@@ -300,6 +300,13 @@ struct ProfileEditView: View {
                             ))
                         }
                     }
+                } header: {
+                    Text("Equipment")
+                } footer: {
+                    // Mirror of the footnote in Settings > Training > Gyms — this is your general
+                    // access, not any one specific gym's inventory.
+                    Text("Manage the specific gyms you train at in Settings > Training > Gyms.")
+                        .font(.elosMicro)
                 }
 
                 Section("Body Metrics") {

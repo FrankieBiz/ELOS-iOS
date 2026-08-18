@@ -27,13 +27,12 @@ enum NotificationManager {
     static func scheduleDailyNotifications(_ days: [DayInfo], hour: Int = 20, minute: Int = 0) {
         let center = UNUserNotificationCenter.current()
         let cal    = Calendar.current
-        let fmt    = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"
-
+        
         // Cancel the legacy repeating reminder + all existing per-day slots (±90 day window).
         var idsToCancel = [habitReminderID]
         for offset in -30..<90 {
             if let d = cal.date(byAdding: .day, value: offset, to: Date()) {
-                idsToCancel.append("\(dayPrefix)\(fmt.string(from: d))")
+                idsToCancel.append("\(dayPrefix)\(Formatters.isoDay.string(from: d))")
             }
         }
         center.removePendingNotificationRequests(withIdentifiers: idsToCancel)
@@ -47,7 +46,7 @@ enum NotificationManager {
             (content.title, content.body) = notificationText(for: day)
             content.sound = .default
 
-            let id      = "\(dayPrefix)\(fmt.string(from: day.date))"
+            let id      = "\(dayPrefix)\(Formatters.isoDay.string(from: day.date))"
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
             center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
         }
@@ -57,22 +56,25 @@ enum NotificationManager {
         // No split configured
         guard day.hasSplit else {
             return (
-                "Elos Check-In 📋",
-                "Don't break your streak — log your habits today."
+                // Notification copy carried an emoji on every title (📋 🛌 🏋️ 💪) and coach-speak
+                // in the bodies. A lock-screen notification is the app's most public surface —
+                // plain, specific text reads as a product, not a hype account.
+                "Check in with Elos",
+                "Log today's habits to keep your streak."
             )
         }
         // Rest / off day
         if day.dayName.isEmpty {
             return (
-                "Rest Day 🛌",
+                "Rest day",
                 "Recovery is part of the program. Log your sleep and habits tonight."
             )
         }
         // Training day
         let name = day.dayName
         return (
-            "\(name) 🏋️",
-            "Your \(name) session is loaded in Elos. Let's get after it."
+            name,
+            "Your \(name) session is ready."
         )
     }
 
@@ -83,8 +85,8 @@ enum NotificationManager {
         guard seconds > 0 else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "Rest Complete"
-        content.body  = "Time to hit the next set 💪"
+        content.title = "Rest complete"
+        content.body  = "Time for your next set."
         content.sound = .default
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: TimeInterval(seconds), repeats: false)

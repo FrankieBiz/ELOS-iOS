@@ -5,6 +5,8 @@ struct ProgramsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \UserSplitRecord.createdAt, order: .reverse) private var userSplits: [UserSplitRecord]
     @Query private var allSplitDays: [UserSplitDayRecord]
+    @Query(sort: \ExerciseDefinitionRecord.name) private var exerciseDefs: [ExerciseDefinitionRecord]
+    @Query private var profiles: [UserProfileRecord]
     @EnvironmentObject var vm: AppViewModel
     @EnvironmentObject var feedVM: FeedViewModel
 
@@ -230,10 +232,10 @@ struct ProgramsView: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 6) {
                     Image(systemName: "person.3.fill")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(.footnote, weight: .semibold))
                         .foregroundStyle(Color.cyan)
                     Text("Community")
-                        .font(.system(size: 17, weight: .bold))
+                        .font(.system(.callout, weight: .bold))
                     Text("\(communityVM.splits.count)")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -278,10 +280,10 @@ struct ProgramsView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(.footnote, weight: .semibold))
                     .foregroundStyle(color)
                 Text(title)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(.callout, weight: .bold))
                 Text("\(splits.count)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -300,6 +302,7 @@ struct ProgramsView: View {
                             SplitLibraryCard(
                                 split: split,
                                 isFavorite: vm.favoriteSplitKeys.contains(split.id),
+                                showsCategory: false,
                                 onFavoriteTap: { vm.toggleFavorite(split.id) }
                             )
                         }
@@ -318,7 +321,7 @@ struct ProgramsView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("My Splits")
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(.callout, weight: .bold))
                 Spacer()
                 Button { showCreateSplit = true } label: {
                     HStack(spacing: 4) {
@@ -339,13 +342,18 @@ struct ProgramsView: View {
                     .font(.subheadline).foregroundStyle(.secondary)
                     .padding(.horizontal, 16).padding(.bottom, 16)
             } else {
+                // Computed once for the whole list — TemplateQualityEngine.score is cheap but
+                // not free, and calling it per row inside the ForEach would re-run it on every
+                // render instead of once per split, the exact mistake the engine's own doc
+                // comment warns callers against.
+                let scores = mySplitsScores
                 VStack(spacing: 8) {
                     ForEach(userSplits) { split in
                         Button {
                             if split.isActive { selectedSplit = split }
                             else { requestActivate(split) }
                         } label: {
-                            mySplitRow(split)
+                            mySplitRow(split, score: scores[split.id])
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
@@ -398,7 +406,27 @@ struct ProgramsView: View {
         .padding(.top, 8)
     }
 
-    private func mySplitRow(_ split: UserSplitRecord) -> some View {
+    private var exerciseCatalog: [ExerciseCandidate] { exerciseDefs.map(ExerciseCandidate.init(record:)) }
+
+    /// One score per split, computed once for the whole "My Splits" list rather than per row.
+    /// Omits a split entirely when it doesn't have enough built out to score — same gate
+    /// `SavedSplitScoring`'s callers already use elsewhere (`report.isScored`).
+    private var mySplitsScores: [String: Int] {
+        Dictionary(uniqueKeysWithValues: userSplits.compactMap { split -> (String, Int)? in
+            let days = daysFor(split: split)
+            let intent = split.intent ?? TrainingIntent(profile: TrainingProfile(record: profiles.first))
+            let profile = TrainingProfile(goal: intent.goal,
+                                          experience: TrainingProfile(record: profiles.first).experience,
+                                          volumeOverrides: vm.volumeOverrides)
+            let report = SavedSplitScoring.report(days: days,
+                                                  templateExercises: { vm.fetchTemplateExercises(templateID: $0) },
+                                                  catalog: exerciseCatalog, profile: profile, intent: intent)
+            guard report.isScored else { return nil }
+            return (split.id, report.overall)
+        })
+    }
+
+    private func mySplitRow(_ split: UserSplitRecord, score: Int?) -> some View {
         let days = daysFor(split: split)
         let isActive = split.isActive
         let descriptor = SplitDescriptor.describe(dayRecords: days)
@@ -412,6 +440,12 @@ struct ProgramsView: View {
                 SplitPatternStrip(descriptor: descriptor, compact: true)
             }
             Spacer()
+            if let score {
+                Text("\(score)")
+                    .font(.system(.subheadline, weight: .bold))
+                    .foregroundStyle(QualityPalette.color(forScore: score))
+                    .padding(.trailing, 2)
+            }
             if isActive {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.tint)
             } else {
@@ -464,13 +498,28 @@ struct ProgramsView: View {
 
 // MARK: - User Split Detail
 
+/// Wraps a plain string for `.alert(item:)`, which needs `Identifiable`.
+private struct IdentifiableString: Identifiable {
+    let value: String
+    var id: String { value }
+    init(_ value: String) { self.value = value }
+}
+
 struct UserSplitDetailView: View {
     @EnvironmentObject var vm: AppViewModel
     @Environment(\.modelContext) private var modelContext
     let split: UserSplitRecord
 
     @Query private var splitDays: [UserSplitDayRecord]
+    @Query(sort: \ExerciseDefinitionRecord.name) private var exerciseDefs: [ExerciseDefinitionRecord]
+    @Query private var profiles: [UserProfileRecord]
+    @Query(sort: \GymRecord.createdAt) private var gyms: [GymRecord]
     @State private var showEdit = false
+    @State private var showFullReport = false
+    @State private var selectedDaySummary: SplitDaySummary? = nil
+    @State private var pendingFix: FixProposal? = nil
+    @State private var declinedFixMessage: IdentifiableString? = nil
+    @State private var variantSheetDay: UserSplitDayRecord? = nil
 
     init(split: UserSplitRecord) {
         self.split = split
@@ -479,6 +528,43 @@ struct UserSplitDetailView: View {
             filter: #Predicate<UserSplitDayRecord> { $0.splitID == id },
             sort: \.orderIndex
         )
+    }
+
+    private var sortedDays: [UserSplitDayRecord] { splitDays.sorted { $0.orderIndex < $1.orderIndex } }
+    private var exerciseCatalog: [ExerciseCandidate] { exerciseDefs.map(ExerciseCandidate.init(record:)) }
+    private var guidanceLevel: GuidanceLevel { GuidanceLevel(trainingExperience: profiles.first?.trainingExperience ?? "") }
+    private var equipmentPreference: EquipmentPreference { profiles.first?.equipmentPreference ?? .fullGym }
+
+    /// `UserSplitRecord.intent` is nil for a split saved before intents existed — same fallback
+    /// `CreateSplitView.onAppear` uses when seeding its own `@State` intent.
+    private var splitIntent: TrainingIntent {
+        split.intent ?? TrainingIntent(profile: TrainingProfile(record: profiles.first))
+    }
+
+    /// Same construction as `CreateSplitView.scoringProfile` — dropping `volumeOverrides` here
+    /// would make the Volume Targets screen silently stop affecting this split's score.
+    private var scoringProfile: TrainingProfile {
+        TrainingProfile(goal: splitIntent.goal,
+                        experience: TrainingProfile(record: profiles.first).experience,
+                        volumeOverrides: vm.volumeOverrides)
+    }
+
+    private var qualityReport: QualityReport {
+        SavedSplitScoring.report(days: sortedDays,
+                                 templateExercises: { vm.fetchTemplateExercises(templateID: $0) },
+                                 catalog: exerciseCatalog,
+                                 profile: scoringProfile,
+                                 intent: splitIntent)
+    }
+
+    /// Also the definition of "populated days" for the panel's gate — a day only appears here
+    /// once it actually resolves to exercises, matching `CreateSplitView`'s own gate.
+    private var daySummaries: [SplitDaySummary] {
+        SavedSplitScoring.daySummaries(days: sortedDays,
+                                       templateExercises: { vm.fetchTemplateExercises(templateID: $0) },
+                                       catalog: exerciseCatalog,
+                                       profile: scoringProfile,
+                                       splitGoal: splitIntent.goal)
     }
 
     var body: some View {
@@ -501,13 +587,22 @@ struct UserSplitDetailView: View {
                     }
                 }
             }
+
+            Section {
+                GymSwitcherControl(split: split)
+            }
+
+            if vm.showQualityRater {
+                qualityPanelSection
+            }
+
             if !splitDays.isEmpty {
                 let arrays = weeklyTargetArrays(from: splitDays)
                 Section {
                     MuscleGroupPanelWeekly(
                         dayTemplateIDs: arrays.templateIDs,
                         dayIsRest: arrays.isRest,
-                        dayExerciseNames: arrays.exerciseNames
+                        dayExercises: arrays.exercises
                     )
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     .listRowBackground(Color.clear)
@@ -535,34 +630,217 @@ struct UserSplitDetailView: View {
             CreateSplitView(editSplit: split, editDays: splitDays) { showEdit = false }
                 .environmentObject(vm)
         }
+        .sheet(isPresented: $showFullReport) {
+            SplitQualityReportView(
+                report: qualityReport,
+                days: daySummaries,
+                onAutoFix: { tip in
+                    showFullReport = false
+                    startAutoFix(for: tip)
+                },
+                onSelectDay: { selectedDaySummary = $0 })
+        }
+        .sheet(item: $selectedDaySummary) { day in
+            DayQualityReportView(dayName: day.name, report: day.report)
+        }
+        .sheet(item: $pendingFix) { proposal in
+            QualityFixPreviewSheet(
+                proposal: proposal,
+                onConfirm: { apply($0) },
+                onDeny: {},
+                onTryAnother: { candidate in
+                    QualityFixEngine.propose(for: proposal.tip, context: currentContext(), using: candidate)
+                },
+                // No manual-add UI in this read-mostly view (that's what Edit is for) — route
+                // there instead of a dead button. The sheet already dismissed itself before this
+                // runs (its own Button calls `dismiss()` then `onChooseManually()`).
+                onChooseManually: { showEdit = true })
+        }
+        .alert(item: $declinedFixMessage) { item in
+            Alert(title: Text("Can't auto-fix this"), message: Text(item.value))
+        }
+        .sheet(item: $variantSheetDay) { day in
+            DayVariantSheet(day: day,
+                           defaultVariantName: day.dayName.isEmpty ? day.dayLabel : day.dayName,
+                           gyms: gyms,
+                           onStartEditingNewVersion: { showEdit = true })
+        }
+    }
+
+    // MARK: - Quality panel
+
+    @ViewBuilder private var qualityPanelSection: some View {
+        // Same gate as the builder — a half-built week reads as nagging, not coaching.
+        if daySummaries.count >= 2 && qualityReport.isScored {
+            Section {
+                TemplateQualityPanel(report: qualityReport, guidance: guidanceLevel,
+                                     title: "Split Quality", scope: .weeklySplit,
+                                     onAutoFix: { startAutoFix(for: $0) },
+                                     onSeeFullReport: { showFullReport = true })
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    .listRowBackground(Color.clear)
+            }
+        }
+    }
+
+    // MARK: - Auto-fix
+    //
+    // Unlike the builder, there is no Save button here — Confirm writes straight to SwiftData.
+    // There is also no manual-add UI in this view (that's what Edit is for), so a fix that can't
+    // be auto-applied is declined outright rather than falling back to a manual path.
+
+    private func currentContext() -> QualityFixEngine.Context {
+        QualityFixEngine.Context(
+            days: sortedDays.map { SavedSplitScoring.dayExercises(for: $0) { vm.fetchTemplateExercises(templateID: $0) } .map(ScoredExercise.init(day:)) },
+            dayNames: sortedDays.map(\.dayName),
+            dayIsRest: sortedDays.map(\.isRest),
+            dayExcludedMuscles: sortedDays.map(\.excludedMuscles),
+            scope: .weeklySplit, profile: scoringProfile, intent: splitIntent, catalog: exerciseCatalog,
+            personalization: PersonalizationProvider(signals: .init()),
+            equipmentPreference: equipmentPreference)
+    }
+
+    private func startAutoFix(for tip: QualityTip) {
+        guard let proposal = QualityFixEngine.propose(for: tip, context: currentContext()) else {
+            // No eligible day / no candidate / nothing worth offering. There's no manual
+            // fallback in this view (unlike the builder), so this is simply a dead end here —
+            // the tip stays visible as information; fixing it means opening Edit.
+            return
+        }
+        // "Template-backed" per SavedSplitScoring.isTemplateBacked, not a bare `!templateID.isEmpty`
+        // check — a day can carry both a templateID and its own exercisesJSON, and ad-hoc wins.
+        let touchedTemplateBackedDay = proposal.operations
+            .map(\.dayIndex)
+            .contains { sortedDays.indices.contains($0) && SavedSplitScoring.isTemplateBacked(sortedDays[$0]) }
+        guard !touchedTemplateBackedDay else {
+            declinedFixMessage = IdentifiableString(
+                "This day's exercises come from a shared template. Edit the split to change them.")
+            return
+        }
+        pendingFix = proposal
+    }
+
+    /// Writes fix operations straight into the affected days' `exercisesJSON` — there is no
+    /// `@State` copy to mutate and no Save button, so this IS the save. Operations are grouped by
+    /// day so each day's exercises are decoded, mutated, and re-encoded exactly once.
+    private func apply(_ operations: [FixOperation]) {
+        let byDay = Dictionary(grouping: operations, by: \.dayIndex)
+        for (dayIndex, ops) in byDay {
+            guard sortedDays.indices.contains(dayIndex) else { continue }
+            let day = sortedDays[dayIndex]
+            guard !SavedSplitScoring.isTemplateBacked(day) else { continue }
+            var exercises = SavedSplitScoring.dayExercises(for: day) { vm.fetchTemplateExercises(templateID: $0) }
+            for op in ops {
+                switch op {
+                case .insertExercise(let spec):
+                    let insertAt = min(max(0, spec.insertAt), exercises.count)
+                    let new = DayExercise(id: spec.candidate.id, name: spec.candidate.name,
+                                         sets: spec.sets, reps: spec.reps)
+                    exercises.insert(new, at: insertAt)
+                case .reorderDay(_, let permutation):
+                    guard permutation.count == exercises.count,
+                          Set(permutation) == Set(0..<exercises.count) else { continue }
+                    exercises = permutation.map { exercises[$0] }
+                case .setReps(_, let exerciseIndex, let reps):
+                    guard exercises.indices.contains(exerciseIndex) else { continue }
+                    exercises[exerciseIndex].reps = reps
+                case .setRest:
+                    // DayExercise has no rest field, and rr-rest only fires at single-session
+                    // scope on exercises with non-nil rest — a split day always has restSeconds
+                    // nil, so this case is unreachable here. Intentional no-op.
+                    continue
+                }
+            }
+            guard let data = try? JSONEncoder().encode(exercises),
+                  let json = String(data: data, encoding: .utf8) else { continue }
+            day.exercisesJSON = json
+            // Same reasoning as SplitDayPersistence.upsertDays: this just wrote a new wire field
+            // for the day, same as a builder save or a remote sync would — if it has an active
+            // variant, that variant's cached copy must catch up or the next switch-away silently
+            // reverts this fix.
+            DayVariants.syncActiveVariantToWireFields(day: day)
+        }
+        split.syncPending = true
+        try? modelContext.save()
+        let record = split
+        Task.detached {
+            if !record.serverID.isEmpty {
+                await vm.updateSplitOnServer(serverID: record.serverID, record: record)
+            } else {
+                await vm.pushSplitToServer(record)
+            }
+        }
     }
 
     private func weeklyTargetArrays(from days: [UserSplitDayRecord]) -> (
-        templateIDs: [String], isRest: [Bool], exerciseNames: [[String]]
+        templateIDs: [String], isRest: [Bool], exercises: [[DayExercise]]
     ) {
         var templateIDs = Array(repeating: "", count: 7)
         var isRest = Array(repeating: false, count: 7)
-        var exerciseNames = Array(repeating: [String](), count: 7)
+        var exercises = Array(repeating: [DayExercise](), count: 7)
         for day in days.sorted(by: { $0.orderIndex < $1.orderIndex }) where day.orderIndex < 7 {
             templateIDs[day.orderIndex] = day.templateID
             isRest[day.orderIndex] = day.isRest
             let exs = (try? JSONDecoder().decode([DayExercise].self,
                        from: Data(day.exercisesJSON.utf8))) ?? []
-            exerciseNames[day.orderIndex] = exs.map { $0.name }
+            exercises[day.orderIndex] = exs
         }
-        return (templateIDs, isRest, exerciseNames)
+        return (templateIDs, isRest, exercises)
+    }
+
+    /// The day's own report, if it resolves to any exercises — a rest day or a day that hasn't
+    /// been built out yet has none, and the row stays non-interactive for "look at this."
+    private func summary(for day: UserSplitDayRecord) -> SplitDaySummary? {
+        daySummaries.first { $0.id == day.orderIndex }
     }
 
     private func dayRow(_ day: UserSplitDayRecord) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(day.dayLabel)
-                    .font(.caption).foregroundStyle(.secondary)
-                Text(day.isRest ? "Rest" : (day.dayName.isEmpty ? day.dayLabel : day.dayName))
-                    .font(.subheadline).fontWeight(.semibold)
-                    .foregroundStyle(day.isRest ? .secondary : .primary)
+        let daySummary = summary(for: day)
+        let variantName = day.isRest ? nil : DayVariants.activeVariantName(for: day)
+
+        return HStack(spacing: 12) {
+            Button {
+                guard let daySummary else { return }
+                selectedDaySummary = daySummary
+            } label: {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(day.dayLabel)
+                            .font(.caption).foregroundStyle(.secondary)
+                        Text(day.isRest ? "Rest" : (day.dayName.isEmpty ? day.dayLabel : day.dayName))
+                            .font(.subheadline).fontWeight(.semibold)
+                            .foregroundStyle(day.isRest ? .secondary : .primary)
+                    }
+                    if let score = daySummary?.score {
+                        Text("\(score)")
+                            .font(.system(.subheadline, weight: .bold))
+                            .foregroundStyle(QualityPalette.color(forScore: score))
+                    }
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .disabled(daySummary == nil)
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let variantName {
+                Button {
+                    variantSheetDay = day
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "building.2").font(.caption2)
+                        Text(variantName).font(.caption2).fontWeight(.semibold).lineLimit(1)
+                    }
+                    .foregroundStyle(Color.tint)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Color.tint.opacity(0.1))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Day version")
+                .accessibilityValue(variantName)
+                .accessibilityHint("Double tap to switch or manage versions")
+            }
 
             if !day.isRest {
                 Button {
@@ -580,5 +858,19 @@ struct UserSplitDetailView: View {
             }
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(daySummary != nil ? "Double tap to view this day's coverage" : "")
+        .swipeActions(edge: .leading) {
+            // Available regardless of today's variant count — this is also how a day gets its
+            // FIRST additional version; the chip above only appears once there are already two.
+            if !day.isRest {
+                Button {
+                    variantSheetDay = day
+                } label: {
+                    Label("Versions", systemImage: "building.2")
+                }
+                .tint(Color.tint)
+            }
+        }
     }
 }

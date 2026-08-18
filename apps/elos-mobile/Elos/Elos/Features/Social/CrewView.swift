@@ -1,15 +1,22 @@
 import SwiftUI
 import SwiftData
 
+/// Friends and the leaderboard.
+///
+/// The feed used to be this view's first segment, which meant the app's most browsable screen was
+/// buried two taps deep inside a modal. It's `FeedTabView` now, and this is what's left: the two
+/// things you go looking for deliberately rather than scroll. Presented as a sheet from the Feed
+/// tab's toolbar, and still from Train and Me.
 struct CrewView: View {
     @EnvironmentObject private var socialVM: SocialViewModel
     @EnvironmentObject private var vm: AppViewModel
-    @EnvironmentObject private var feedVM: FeedViewModel
 
-    @State private var tab = 0
+    private enum Segment: Int { case friends, leaderboard }
+
+    @State private var segment: Segment = .friends
     @State private var showSearch = false
     @State private var friendPendingRemove: FriendProfileResponse?
-    @State private var splitShared = false
+    @State private var emptyStatePulse = false
     @Environment(\.dismiss) private var dismiss
 
     private var inviteURL: URL? {
@@ -19,28 +26,28 @@ struct CrewView: View {
     }
 
     private var inviteMessage: String {
+        // This text lands in someone else's messages app, so it's the app's most externally visible
+        // copy. The flex emoji and exclamation made it read like an ad the user didn't write.
         if let uname = vm.userProfile?.username, !uname.isEmpty {
-            return "Add me on Elos — @\(uname) 💪"
+            return "Add me on Elos — @\(uname)"
         }
-        return "Join my crew on Elos! 💪"
+        return "Join my crew on Elos"
     }
 
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                Picker("", selection: $tab) {
-                    Text("Feed").tag(0)
-                    Text("Friends").tag(1)
-                    Text("Leaderboard").tag(2)
+                Picker("", selection: $segment) {
+                    Text("Friends").tag(Segment.friends)
+                    Text("Leaderboard").tag(Segment.leaderboard)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
 
-                switch tab {
-                case 0:  FeedView()
-                case 1:  friendsTab
-                default: LeaderboardView()
+                switch segment {
+                case .friends:     friendsTab
+                case .leaderboard: LeaderboardView()
                 }
             }
             .background(Color(.systemGroupedBackground))
@@ -51,22 +58,10 @@ struct CrewView: View {
                     Button("Done") { dismiss() }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    if tab == 1 {
+                    // Sharing a split is a posting action; it moved to the Feed tab's toolbar
+                    // alongside the thing it posts to.
+                    if segment == .friends {
                         HStack(spacing: 16) {
-                            if let serverID = vm.activeSplit?.serverID, !serverID.isEmpty {
-                                Button {
-                                    HapticManager.success()
-                                    Task {
-                                        let ok = await feedVM.shareSplit(serverID: serverID)
-                                        if ok { splitShared = true }
-                                    }
-                                } label: {
-                                    Image(systemName: splitShared ? "checkmark.circle.fill" : "calendar.badge.plus")
-                                        .foregroundStyle(splitShared ? Color.good : Color.tint)
-                                }
-                                .accessibilityLabel("Share my split to crew feed")
-                                .disabled(splitShared)
-                            }
                             if let url = inviteURL {
                                 ShareLink(item: url, message: Text(inviteMessage)) {
                                     Image(systemName: "square.and.arrow.up")
@@ -86,6 +81,7 @@ struct CrewView: View {
             .sheet(isPresented: $showSearch) {
                 FriendSearchView()
                     .environmentObject(socialVM)
+                    .environmentObject(vm)
             }
             .confirmationDialog(
                 "Remove friend?",
@@ -246,6 +242,7 @@ struct CrewView: View {
                         Image(systemName: "chevron.right")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
+                    .accessibilityLabel("View profile")
                 }
                 .padding(12)
                 .elosCard()
@@ -256,8 +253,10 @@ struct CrewView: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "person.2")
-                .font(.system(size: 40))
+                .font(.largeTitle)
                 .foregroundStyle(.secondary)
+                .symbolEffect(.pulse, options: .nonRepeating, value: emptyStatePulse)
+                .onAppear { emptyStatePulse.toggle() }
             Text("No friends yet")
                 .font(.headline)
             Text("Search for people to compete with each week")

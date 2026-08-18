@@ -27,12 +27,12 @@ struct RestTimerBar: View {
                     .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .rotationEffect(.degrees(-90)).frame(width: 30, height: 30)
                 Image(systemName: paused ? "pause.fill" : "timer")
-                    .font(.system(size: 11, weight: .bold)).foregroundStyle(color)
+                    .font(.system(.caption, weight: .bold)).foregroundStyle(color)
             }
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(formatted)
-                    .font(.system(size: 20, weight: .bold, design: .monospaced))
+                    .font(.elosNumeric(.title3, weight: .bold))
                     .foregroundStyle(color)
                     .monospacedDigit()
                 Text(nextLabel.map { "Next: \($0)" } ?? "Resting")
@@ -44,13 +44,14 @@ struct RestTimerBar: View {
             stepButton("−15", action: onMinus)
             Button(action: onPauseToggle) {
                 Image(systemName: paused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(.caption, weight: .bold))
                     .frame(width: 34, height: 34)
                     .background(Color(.tertiarySystemBackground))
                     .foregroundStyle(.secondary)
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(paused ? "Resume rest timer" : "Pause rest timer")
             stepButton("+15", action: onPlus)
 
             Button(action: onSkip) {
@@ -61,8 +62,8 @@ struct RestTimerBar: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
         .background(.regularMaterial)
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(color.opacity(0.3), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(color.opacity(0.3), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.horizontal, 12).padding(.bottom, 6)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
@@ -70,13 +71,14 @@ struct RestTimerBar: View {
     private func stepButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(.footnote, weight: .semibold))
                 .frame(width: 42, height: 34)
                 .background(Color(.tertiarySystemBackground))
                 .foregroundStyle(.secondary)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title.hasPrefix("−") ? "Subtract 15 seconds from rest" : "Add 15 seconds to rest")
     }
 }
 

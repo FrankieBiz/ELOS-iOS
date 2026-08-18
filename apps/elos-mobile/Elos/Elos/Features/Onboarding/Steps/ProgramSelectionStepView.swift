@@ -10,7 +10,7 @@ struct ProgramSelectionStepView: View {
         VStack(alignment: .leading, spacing: 32) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("School & Nutrition")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(.title, weight: .bold))
                 Text("Track assignments, exams, and hit your macro targets.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -26,7 +26,7 @@ struct ProgramSelectionStepView: View {
                     TextField("e.g. University High School", text: $vm.schoolName)
                         .padding(14)
                         .background(Color(.secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
 
                 // School year
@@ -47,7 +47,7 @@ struct ProgramSelectionStepView: View {
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
                                     .background(vm.schoolYear == years[i] ? Color.tint : Color(.secondarySystemBackground))
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             }
                             .buttonStyle(.plain)
                         }
@@ -74,7 +74,7 @@ struct ProgramSelectionStepView: View {
 
                     HStack {
                         Text("\(vm.useAutoCalc ? vm.autoCalcCalories : vm.calGoal) kcal")
-                            .font(.system(size: 22, weight: .semibold, design: .monospaced))
+                            .font(.elosNumeric(.title2, weight: .semibold))
                             .foregroundStyle(Color.mNutri)
                         Spacer()
                         if !vm.useAutoCalc {
@@ -85,7 +85,7 @@ struct ProgramSelectionStepView: View {
                 }
                 .padding(14)
                 .background(Color(.secondarySystemGroupedBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 Text("These are general estimates for educational use, not medical or dietary advice. Talk to a doctor or registered dietitian before changing how you eat — especially if you're still growing.")
                     .font(.caption2)
@@ -97,7 +97,9 @@ struct ProgramSelectionStepView: View {
         .padding(.horizontal, 24)
         .padding(.top, 24)
         .onAppear {
-            vm.applyAutoCalc()
+            // Only (re-)derive from auto-calc; a Back-then-Next revisit must not clobber a value
+            // the user already set by hand with the Stepper while auto-calc was off.
+            if vm.useAutoCalc { vm.applyAutoCalc() }
         }
     }
 }

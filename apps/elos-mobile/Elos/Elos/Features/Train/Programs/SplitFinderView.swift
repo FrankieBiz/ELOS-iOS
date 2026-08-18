@@ -20,7 +20,7 @@ struct SplitFinderView: View {
                         .transition(.move(edge: .leading).combined(with: .opacity))
                 }
             }
-            .animation(.easeInOut(duration: 0.3), value: vm.showResults)
+            .animation(.elosStandard, value: vm.showResults)
             .navigationTitle("Split Finder")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -55,7 +55,7 @@ struct SplitFinderView: View {
                 Rectangle().fill(Color.secondary.opacity(0.15)).frame(height: 3)
                 Rectangle().fill(Color.tint)
                     .frame(width: geo.size.width * CGFloat(vm.currentStep) / CGFloat(vm.totalSteps), height: 3)
-                    .animation(.easeInOut(duration: 0.25), value: vm.currentStep)
+                    .animation(.elosStandard, value: vm.currentStep)
             }
         }
         .frame(height: 3)
@@ -66,7 +66,7 @@ struct SplitFinderView: View {
             if vm.currentStep > 1 {
                 Button(action: { withAnimation { vm.back() } }) {
                     Text("Back")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(.callout, weight: .semibold))
                         .foregroundStyle(Color.primary)
                         .frame(maxWidth: .infinity).frame(height: 50)
                         .background(Color(.secondarySystemBackground))
@@ -76,7 +76,7 @@ struct SplitFinderView: View {
             }
             Button(action: { withAnimation { vm.next() } }) {
                 Text(vm.currentStep == vm.totalSteps ? "Find My Split" : "Next")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(.callout, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity).frame(height: 50)
                     .background(vm.canGoNext ? Color.tint : Color.secondary)
@@ -201,7 +201,7 @@ struct SplitFinderView: View {
         let disabled = vm.autoSelectEquipment
         return HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 16))
+                .font(.callout)
                 .foregroundStyle(disabled ? .secondary : color)
                 .frame(width: 20)
             Text(label)
@@ -226,7 +226,7 @@ struct SplitFinderView: View {
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .opacity(disabled ? 0.5 : 1.0)
-        .animation(.easeInOut(duration: 0.2), value: disabled)
+        .animation(.elosQuick, value: disabled)
     }
 
     // MARK: Step 5 — Program Structure
@@ -240,7 +240,7 @@ struct SplitFinderView: View {
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "sparkles")
-                        .font(.system(size: 20))
+                        .font(.title3)
                         .foregroundStyle(vm.preferredStructure == nil ? .white : Color.tint)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Let the app decide")
@@ -313,10 +313,10 @@ struct SplitFinderView: View {
                 } label: {
                     VStack(spacing: 4) {
                         Image(systemName: sport.icon)
-                            .font(.system(size: 20))
+                            .font(.title3)
                             .foregroundStyle(vm.input.sport == sport ? .white : Color.tint)
                         Text(sport.displayName)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(.system(.caption2, weight: .medium))
                             .foregroundStyle(vm.input.sport == sport ? .white : .primary)
                             .multilineTextAlignment(.center)
                             .lineLimit(2)
@@ -423,7 +423,7 @@ struct SplitFinderView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Step \(vm.currentStep) of \(vm.totalSteps)")
                 .font(.caption).foregroundStyle(.secondary).fontWeight(.semibold)
-            Text(title).font(.system(size: 22, weight: .bold))
+            Text(title).font(.system(.title2, weight: .bold))
             Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
         }
     }
@@ -440,10 +440,10 @@ struct SFGoalCard: View {
         Button(action: action) {
             VStack(spacing: 10) {
                 Image(systemName: goal.icon)
-                    .font(.system(size: 28))
+                    .font(.title)
                     .foregroundStyle(isSelected ? .white : Color.tint)
                 Text(goal.displayName)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(.footnote, weight: .semibold))
                     .foregroundStyle(isSelected ? .white : .primary)
                     .multilineTextAlignment(.center)
             }
@@ -465,10 +465,10 @@ struct SFSelectionCard: View {
         Button(action: action) {
             VStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 24))
+                    .font(.title2)
                     .foregroundStyle(isSelected ? .white : Color.tint)
                 Text(label)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(.caption, weight: .semibold))
                     .foregroundStyle(isSelected ? .white : .primary)
                     .multilineTextAlignment(.center)
             }
@@ -490,21 +490,21 @@ private struct SFStructureCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Image(systemName: style.icon)
-                        .font(.system(size: 18))
+                        .font(.title3)
                         .foregroundStyle(isSelected ? .white : Color.tint)
                     Spacer()
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 14))
+                            .font(.subheadline)
                             .foregroundStyle(.white)
                     }
                 }
                 Text(style.displayName)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(.footnote, weight: .semibold))
                     .foregroundStyle(isSelected ? .white : .primary)
                     .multilineTextAlignment(.leading)
                 Text(style.structureDescription)
-                    .font(.system(size: 11))
+                    .font(.caption)
                     .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary)
                     .multilineTextAlignment(.leading)
             }

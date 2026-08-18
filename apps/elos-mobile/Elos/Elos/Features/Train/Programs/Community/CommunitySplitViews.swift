@@ -5,13 +5,13 @@ import SwiftUI
 func dayFocusColor(_ focus: DayFocus) -> Color {
     switch focus {
     case .push, .chest:  return Color.bad
-    case .pull, .back:   return Color(hex: "007AFF")
-    case .legs:          return Color(hex: "FFD60A")
-    case .upper, .arms:  return Color(hex: "AF52DE")
-    case .lower:         return Color(hex: "FF9F0A")
+    case .pull, .back:   return Color.mBack
+    case .legs:          return Color.mQuads
+    case .upper, .arms:  return Color.mBiceps
+    case .lower:         return Color.mHamstrings
     case .fullBody:      return Color.good
     case .shoulders:     return Color.warn
-    case .core:          return Color(hex: "32ADE6")
+    case .core:          return Color.mCore
     case .rest:          return Color.secondary
     case .other:         return Color.tint
     }
@@ -75,7 +75,7 @@ struct CommunitySplitCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(split.name)
-                .font(.system(size: 14, weight: .bold))
+                .font(.system(.subheadline, weight: .bold))
                 .foregroundStyle(.primary)
                 .lineLimit(2, reservesSpace: true)
                 .multilineTextAlignment(.leading)
@@ -90,7 +90,7 @@ struct CommunitySplitCard: View {
                     .frame(width: 14, height: 14)
                     .overlay(
                         Text(split.author.avatarInitial)
-                            .font(.system(size: 8, weight: .bold))
+                            .font(.system(.caption2, weight: .bold))
                             .foregroundStyle(.white)
                     )
                 Text(split.author.displayName)
@@ -101,7 +101,7 @@ struct CommunitySplitCard: View {
                 if split.imports_count > 0 {
                     HStack(spacing: 2) {
                         Image(systemName: "square.and.arrow.down")
-                            .font(.system(size: 8, weight: .semibold))
+                            .font(.system(.caption2, weight: .semibold))
                         Text("\(split.imports_count)")
                             .font(.caption2.weight(.semibold))
                     }
@@ -125,7 +125,9 @@ struct CommunityBrowseView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 10) {
-                if communityVM.splits.isEmpty && communityVM.hasLoadedOnce {
+                if communityVM.splits.isEmpty && communityVM.loadFailed {
+                    errorState
+                } else if communityVM.splits.isEmpty && communityVM.hasLoadedOnce {
                     emptyState
                 }
                 ForEach(communityVM.splits) { split in
@@ -149,6 +151,28 @@ struct CommunityBrowseView: View {
         .navigationTitle("Community Splits")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await communityVM.load() }
+    }
+
+    private var errorState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "wifi.exclamationmark").font(.title2).foregroundStyle(.secondary)
+            Text("Couldn't load community splits").font(.subheadline).fontWeight(.semibold)
+            Text("Check your connection and try again.")
+                .font(.caption).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                Task { await communityVM.load() }
+            } label: {
+                Label("Retry", systemImage: "arrow.clockwise")
+                    .font(.subheadline).fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20).padding(.vertical, 10)
+                    .background(Color.tint)
+                    .clipShape(Capsule())
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
     }
 
     private var emptyState: some View {

@@ -25,15 +25,14 @@ struct PlanView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(.vertical) {
-                VStack(spacing: 20) {
-                    Picker("", selection: $segment) {
-                        ForEach(PlanSegmentExtended.allCases, id: \.self) { s in
-                            Text(s.rawValue).tag(s)
-                        }
-                    }
-                    .pickerStyle(.segmented)
+                VStack(spacing: Space.xl) {
+                    ElosSegmentedControl(
+                        tabs: PlanSegmentExtended.allCases,
+                        label: \.rawValue,
+                        selection: $segment
+                    )
 
                     switch segment {
                     case .schedule:    scheduleTab
@@ -42,77 +41,163 @@ struct PlanView: View {
                     case .courses:     coursesTab
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
+                .padding(.horizontal, Space.gutter)
+                .padding(.top, Space.m)
                 .padding(.bottom, 120)
             }
             .scrollIndicators(.hidden)
+            .elosPageBackground()
             .navigationTitle("Plan")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    // Only the Schedule tab is arrangeable — Assignments, Exams and Courses are each
+                    // a single filtered list, so there's nothing in them to move.
+                    if segment == .schedule {
+                        CustomizeScreenButton(screen: .plan)
+                    }
+                }
+            }
         }
     }
 
     // MARK: - Schedule Tab
 
     private var scheduleTab: some View {
-        VStack(spacing: 16) {
-            dayPicker
-            scheduleTimeline
-            loadSummaryCard
+        SectionStack(screen: .plan, spacing: Space.l) { section in
+            switch section {
+            case .planDayPicker:    dayPicker
+            case .planTimeline:     scheduleTimeline
+            case .planLoadSummary:  loadSummaryCard
+            case .planThisWeek:     thisWeekCard
+            default: EmptyView()
+            }
         }
     }
 
+    /// A rest day's timeline is legitimately short — one line, one card — which used to leave the
+    /// rest of the tab a bare black void below it. Real, already-available data instead of padding:
+    /// how much training and schoolwork actually lands this week, glanceable without switching tabs.
+    private var thisWeekCard: some View {
+        let workoutDays = vm.weekLoadMap(daysAhead: 7).filter { $0.loadType == "gym" }.count
+        let dueThisWeek = vm.assignments.filter { assign -> Bool in
+            guard !assign.done else { return false }
+            let daysUntil = Formatters.daysFromToday(toISODay: assign.due)
+            return daysUntil >= 0 && daysUntil <= 6
+        }.count
+        let nextExam = vm.exams.filter { $0.daysAway >= 0 && $0.daysAway <= 7 }
+            .min(by: { $0.daysAway < $1.daysAway })
+
+        return VStack(alignment: .leading, spacing: 0) {
+            Text("This Week").elosSectionLabel()
+                .padding(.horizontal, Space.gutter)
+                .padding(.top, Space.l)
+                .padding(.bottom, Space.m)
+
+            Divider()
+
+            weekStatRow(icon: "dumbbell.fill", tint: .good,
+                        text: workoutDays == 0 ? "No workouts scheduled" : "\(workoutDays) workout\(workoutDays == 1 ? "" : "s") scheduled")
+            Divider().padding(.leading, 44)
+
+            weekStatRow(icon: "doc.text.fill", tint: .tint,
+                        text: dueThisWeek == 0 ? "Nothing due" : "\(dueThisWeek) assignment\(dueThisWeek == 1 ? "" : "s") due")
+
+            if let exam = nextExam {
+                Divider().padding(.leading, 44)
+                weekStatRow(icon: "exclamationmark.triangle.fill", tint: .warn,
+                            text: "\(exam.title) in \(exam.daysAway) day\(exam.daysAway == 1 ? "" : "s")")
+            }
+        }
+        .elosCard()
+    }
+
+    private func weekStatRow(icon: String, tint: Color, text: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.callout)
+                .foregroundStyle(tint)
+                .frame(width: 20)
+            Text(text)
+                .font(.subheadline)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, Space.gutter)
+        .padding(.vertical, 12)
+    }
+
     private var dayPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+        // `weekLoadMap` is one call per day inside the loop otherwise — hoisted so the strip
+        // computes the week once instead of seven times.
+        let loadMap = vm.weekLoadMap(daysAhead: 7)
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Space.s) {
                 ForEach(0..<7, id: \.self) { offset in
                     let date = Calendar.current.date(byAdding: .day, value: offset, to: Calendar.current.startOfDay(for: Date())) ?? Date()
                     let comps = Calendar.current.dateComponents([.weekday, .day], from: date)
                     let letters = ["S", "M", "T", "W", "T", "F", "S"]
                     let letter = letters[(comps.weekday ?? 1) - 1]
                     let number = comps.day ?? 0
-                    let loadType = vm.weekLoadMap(daysAhead: 7)[safe: offset]?.loadType ?? "rest"
-                    let dotColor = dotColor(for: loadType)
+                    let loadType = loadMap[safe: offset]?.loadType ?? "rest"
+                    let isSelected = selectedDayOffset == offset
 
                     Button {
-                        withAnimation { selectedDayOffset = offset }
+                        withAnimation(.elosStandard) { selectedDayOffset = offset }
                     } label: {
-                        VStack(spacing: 2) {
-                            Text(letter).font(.system(size: 10))
-                            Text("\(number)").font(.system(size: 15, weight: .bold))
-                            Circle().fill(dotColor).frame(width: 5, height: 5)
+                        VStack(spacing: 3) {
+                            Text(letter)
+                                .font(.system(.caption2, weight: .semibold))
+                                .foregroundStyle(isSelected ? .white.opacity(0.8) : .secondary)
+                            Text("\(number)")
+                                .font(.elosNumeric(.callout, weight: .bold))
+                            // On the selected day the dot sat grey-on-orange and read as a
+                            // rendering artefact; white keeps the load cue visible there.
+                            Circle()
+                                .fill(isSelected ? Color.white.opacity(0.9) : dotColor(for: loadType))
+                                .frame(width: 5, height: 5)
                         }
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .foregroundStyle(selectedDayOffset == offset ? Color.white : Color.primary)
-                        .background(selectedDayOffset == offset ? Color.tint : Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .frame(minWidth: 40)
+                        .padding(.horizontal, Space.m).padding(.vertical, Space.s)
+                        .foregroundStyle(isSelected ? Color.white : Color.primary)
+                        .background {
+                            RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                                .fill(isSelected ? Color.tint : Color(.secondarySystemGroupedBackground))
+                        }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(date.formatted(.dateTime.weekday(.wide).month().day()))
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
             }
+            .padding(.horizontal, Space.gutter)
         }
+        .padding(.horizontal, -Space.gutter)
+        .scrollClipDisabled()
     }
 
     private var scheduleTimeline: some View {
         let rows = vm.buildScheduleRows(for: selectedDate)
         return Group {
             if rows.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "calendar").font(.system(size: 28)).foregroundStyle(.secondary)
+                VStack(spacing: Space.s) {
+                    Image(systemName: "calendar")
+                        .font(.title)
+                        .foregroundStyle(.tertiary)
                     Text("Nothing scheduled")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(.elosHeadline).foregroundStyle(.secondary)
                     Text("Set an active split or sync Canvas to see your schedule.")
-                        .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        .font(.elosCaption).foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(40)
+                .padding(.vertical, 32).padding(.horizontal, Space.xxl)
                 .elosCard()
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
                         HStack(spacing: 12) {
                             Text(row.time == "—" ? "  —  " : row.time)
-                                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                                .font(.elosNumeric(.caption, weight: .regular))
                                 .foregroundStyle(.secondary)
                                 .frame(width: 44, alignment: .leading)
                             ModuleBarView(color: moduleColor(for: row.moduleType), opacity: row.isDone ? 0.5 : 1)
@@ -123,7 +208,7 @@ struct PlanView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             if row.durationMinutes > 0 {
                                 Text("\(row.durationMinutes)m")
-                                    .font(.system(size: 11, design: .monospaced))
+                                    .font(.elosNumeric(.caption, weight: .bold))
                                     .foregroundStyle(.secondary)
                             }
                         }
@@ -141,55 +226,98 @@ struct PlanView: View {
         let hasExam = vm.exams.contains { examDateString($0) == dayString(selectedDate) }
         let gymDay  = vm.gymDay(for: selectedDate)
 
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Load: \(loadLabel(loadType))").font(.subheadline).fontWeight(.semibold)
-                Spacer()
-            }
+        let detail: String = {
             if hasExam {
-                Text("Gym shifted — exam detected. Split advances to next available day.")
-                    .font(.caption).foregroundStyle(.secondary)
+                if vm.isOrdinalRotationSplit {
+                    // This is the one scheduling path that actually holds the rotation index back,
+                    // so the workout genuinely lands on a later date instead of being dropped.
+                    return "Gym shifted — exam detected. Split advances to next available day."
+                }
+                if let sd = vm.scheduledGymDayIgnoringExam(for: selectedDate), !sd.isRest {
+                    // Fixed-weekday splits have no "next available day" to push into — be honest
+                    // that the day is cleared rather than claiming a reschedule that isn't happening.
+                    let name = sd.dayName.isEmpty ? "Training" : sd.dayName
+                    return "Exam today — \(name) is cleared. No makeup needed."
+                }
+                return "Exam today."
             } else if let gd = gymDay, !gd.isRest {
-                Text("Training day: \(gd.dayName.isEmpty ? "Workout" : gd.dayName). Tap Start in the Train tab when ready.")
-                    .font(.caption).foregroundStyle(.secondary)
+                let name = gd.dayName.isEmpty ? "Workout" : gd.dayName
+                let variantSuffix = DayVariants.activeVariantName(for: gd).map { " (\($0))" } ?? ""
+                return "Training day: \(name)\(variantSuffix). Tap Start in the Train tab when ready."
             } else if vm.activeSplit == nil {
-                Text("No active split. Set one in Programs to see dynamic gym scheduling.")
-                    .font(.caption).foregroundStyle(.secondary)
+                return "No active split. Set one in Programs to see dynamic gym scheduling."
             } else {
-                Text("Rest or recovery day.")
-                    .font(.caption).foregroundStyle(.secondary)
+                return "Rest or recovery day."
             }
+        }()
+
+        // "Load: Rest" as one run-on subheadline buried the value in the label. Splitting the
+        // label off as a section header lets the load itself carry the weight and colour.
+        return HStack(alignment: .top, spacing: Space.m) {
+            Circle()
+                .fill(dotColor(for: loadType).opacity(0.15))
+                .frame(width: 34, height: 34)
+                .overlay {
+                    Image(systemName: hasExam ? "exclamationmark.triangle.fill" : "gauge.medium")
+                        .font(.elosCaption)
+                        .foregroundStyle(dotColor(for: loadType))
+                }
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Load").elosSectionLabel()
+                Text(loadLabel(loadType))
+                    .font(.elosHeadline)
+                    .foregroundStyle(dotColor(for: loadType))
+                Text(detail)
+                    .font(.elosCaption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
         }
-        .padding(16)
+        .padding(Space.gutter)
         .elosCard()
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Assignments Tab
 
     private var assignmentsTab: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 8) {
+        VStack(spacing: Space.l) {
+            HStack(spacing: Space.s) {
                 ForEach(AssignFilter.allCases, id: \.self) { f in
-                    Button { assignFilter = f } label: {
+                    let isSelected = assignFilter == f
+                    Button {
+                        withAnimation(.elosQuick) { assignFilter = f }
+                    } label: {
                         Text(f.rawValue)
-                            .font(.subheadline).fontWeight(.semibold)
-                            .foregroundStyle(assignFilter == f ? .white : .primary)
-                            .padding(.horizontal, 16).padding(.vertical, 8)
-                            .background(assignFilter == f ? Color.tint : Color(.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .font(.system(.footnote, weight: .semibold))
+                            .foregroundStyle(isSelected ? .white : .secondary)
+                            .padding(.horizontal, Space.l).padding(.vertical, 7)
+                            .background {
+                                Capsule().fill(isSelected ? Color.tint : Color(.secondarySystemGroupedBackground))
+                            }
+                            .overlay {
+                                Capsule().strokeBorder(
+                                    isSelected ? .clear : Color.primary.opacity(0.07), lineWidth: 1
+                                )
+                            }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
                 Spacer()
             }
 
             let filtered = filteredAssignments
             if filtered.isEmpty {
-                VStack(spacing: 8) {
-                    Text(assignFilter == .done ? "No completed assignments." : "All caught up!")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                VStack(spacing: Space.s) {
+                    Image(systemName: assignFilter == .done ? "tray" : "checkmark.circle")
+                        .font(.title).foregroundStyle(.tertiary)
+                    Text(assignFilter == .done ? "No completed assignments" : "All caught up")
+                        .font(.elosHeadline).foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity).padding(40)
+                .frame(maxWidth: .infinity).padding(.vertical, 32)
+                .elosCard()
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(filtered.enumerated()), id: \.element.id) { i, a in
@@ -200,11 +328,12 @@ struct PlanView: View {
                 .elosCard()
             }
 
-            Button("+ Add assignment") { showingAddAssignment = true }
-                .font(.subheadline).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity).padding(.vertical, 14)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+            Button { showingAddAssignment = true } label: {
+                Label("Add assignment", systemImage: "plus")
+                    .font(.system(.subheadline, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+            }
+                .buttonStyle(ElosSecondaryButtonStyle())
                 .sheet(isPresented: $showingAddAssignment) {
                     AddAssignmentSheet { name, subject, due in
                         vm.addAssignment(name: name, subject: subject, due: due)
@@ -224,11 +353,16 @@ struct PlanView: View {
     // MARK: - Exams Tab
 
     private var examsTab: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Space.m) {
             if vm.exams.isEmpty {
-                Text("No upcoming exams")
-                    .font(.subheadline).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity).padding(40)
+                VStack(spacing: Space.s) {
+                    Image(systemName: "graduationcap")
+                        .font(.title).foregroundStyle(.tertiary)
+                    Text("No upcoming exams")
+                        .font(.elosHeadline).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 32)
+                .elosCard()
             } else {
                 ForEach(vm.exams) { exam in ExamCard(exam: exam) }
             }
@@ -275,8 +409,7 @@ struct PlanView: View {
     }
 
     private func dayString(_ date: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-        return f.string(from: date)
+        Formatters.isoDay.string(from: date)
     }
 
     private func examDateString(_ exam: Exam) -> String { exam.date }
@@ -298,7 +431,7 @@ private struct CoursesTabView: View {
         VStack(spacing: 12) {
             if ownerCourses.isEmpty {
                 VStack(spacing: 12) {
-                    Image(systemName: "books.vertical").font(.system(size: 32)).foregroundStyle(.secondary)
+                    Image(systemName: "books.vertical").font(.title).foregroundStyle(.secondary)
                     Text("No courses synced yet")
                         .font(.subheadline).fontWeight(.semibold).foregroundStyle(.secondary)
                     Text("Sync Canvas in Settings to import your courses and schedule.")
@@ -381,7 +514,7 @@ private struct PlanAssignmentRow: View {
                     Circle().stroke(assign.done ? Color.good : Color.secondary.opacity(0.3), lineWidth: 1.5).frame(width: 24, height: 24)
                     if assign.done {
                         Circle().fill(Color.good).frame(width: 24, height: 24)
-                        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                        Image(systemName: "checkmark").font(.system(.caption2, weight: .bold)).foregroundStyle(.white)
                     }
                 }
                 VStack(alignment: .leading, spacing: 2) {
@@ -406,6 +539,10 @@ private struct PlanAssignmentRow: View {
 // MARK: - Exam Card
 
 private struct ExamCard: View {
+    /// The days-away number is the card's hero. `.largeTitle` is 34pt, which visibly shrank it from the
+    /// authored 42 — pin the size and scale it instead, so Dynamic Type works without redesigning the card.
+    @ScaledMetric(relativeTo: .largeTitle) private var countdownSize: CGFloat = 42
+
     let exam: Exam
 
     private var urgencyColor: Color {
@@ -416,14 +553,14 @@ private struct ExamCard: View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(exam.subject).font(.caption).foregroundStyle(.secondary)
-                Text(exam.title).font(.system(size: 17, weight: .semibold))
+                Text(exam.title).font(.system(.callout, weight: .semibold))
                 Text(DateDisplay.friendly(exam.date)).font(.caption).foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(spacing: 0) {
                 Text("\(exam.daysAway)")
-                    .font(.system(size: 42, weight: .bold, design: .monospaced))
+                    .font(.system(size: countdownSize, weight: .bold, design: .rounded).monospacedDigit())
                     .foregroundStyle(urgencyColor)
                 Text("days").font(.caption).foregroundStyle(.secondary)
             }
@@ -444,16 +581,8 @@ private struct AddAssignmentSheet: View {
     @State private var hasDueDate = false
     @State private var dueDate = Date()
 
-    private static let isoDay: DateFormatter = {
-        let f = DateFormatter()
-        f.calendar = Calendar(identifier: .gregorian)
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
-
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Assignment") {
                     TextField("Name (e.g. Essay draft)", text: $name)
@@ -472,7 +601,7 @@ private struct AddAssignmentSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
                         guard !name.isEmpty else { return }
-                        let due = hasDueDate ? Self.isoDay.string(from: dueDate) : "—"
+                        let due = hasDueDate ? Formatters.isoDay.string(from: dueDate) : "—"
                         onAdd(name, subject.isEmpty ? "General" : subject, due)
                         dismiss()
                     }
