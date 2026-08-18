@@ -27,7 +27,9 @@ struct FeedView: View {
                 }
             }
             .padding(16)
-            .padding(.bottom, 40)
+            // Clears the custom tab bar, which floats over the content rather than insetting it.
+            // Matches Today and Train, the other tab roots that scroll.
+            .padding(.bottom, 120)
         }
         .scrollIndicators(.hidden)
         .refreshable { await feedVM.load() }
@@ -132,12 +134,35 @@ struct FeedPostCard: View {
         }
     }
 
-    private var header: some View {
+    /// Avatar + name + "shared a workout · 2h". Split out so it can be used bare on your own posts
+    /// and wrapped in a link on everyone else's.
+    private var authorIdentity: some View {
         HStack(spacing: 10) {
             AvatarCircle(initials: post.author.initials, hex: post.author.avatarHex, size: 36)
             VStack(alignment: .leading, spacing: 1) {
                 Text(post.author.displayName).font(.subheadline).fontWeight(.semibold)
+                    .foregroundStyle(.primary)
                 Text(headerSubtitle).font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            // Tapping whoever posted opens their profile. The card was inert before, because it
+            // only ever rendered inside a sheet with no navigation stack to push onto — the Feed
+            // tab has one, so the obvious gesture finally does the obvious thing.
+            if post.is_mine {
+                authorIdentity
+            } else {
+                NavigationLink {
+                    FriendProfileView(userId: post.author.user_id,
+                                      displayName: post.author.displayName)
+                } label: {
+                    authorIdentity
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("View \(post.author.displayName)'s profile")
             }
             Spacer()
             if post.is_mine {

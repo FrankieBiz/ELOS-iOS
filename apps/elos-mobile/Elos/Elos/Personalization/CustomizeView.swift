@@ -337,7 +337,7 @@ struct CustomizeView: View {
 
     private var tabsTab: some View {
         Group {
-            group("Tab bar", "Reorder the bar, hide what you don't use, and pick where the app opens.") {
+            group("Tab bar", "The bar fits five. Reorder it, hide what you don't use, and pick where the app opens.") {
                 VStack(spacing: 0) {
                     let tabs = layout.orderedTabs
                     ForEach(Array(tabs.enumerated()), id: \.element) { index, appTab in
@@ -570,7 +570,7 @@ private struct TabEditorRow: View {
                         .font(.elosMicro)
                         .foregroundStyle(Color.tint)
                 } else if isHidden {
-                    Text("Hidden")
+                    Text(layout.canShowTab(tab) ? "Hidden" : "Hidden · bar is full")
                         .font(.elosMicro)
                         .foregroundStyle(.secondary)
                 }
@@ -601,7 +601,9 @@ private struct TabEditorRow: View {
         .opacity(isHidden ? 0.55 : 1)
     }
 
-    private var canToggle: Bool { isHidden || layout.canHideTab(tab) }
+    /// Both directions can be refused now: hiding would strand you, showing would overflow the
+    /// bar. A disabled eye with no explanation reads as a bug, so the row says which it is.
+    private var canToggle: Bool { isHidden ? layout.canShowTab(tab) : layout.canHideTab(tab) }
 
     private func moveArrow(_ icon: String, delta: Int) -> some View {
         let order = layout.orderedTabs

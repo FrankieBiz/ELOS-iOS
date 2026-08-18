@@ -96,6 +96,7 @@ struct ContentView: View {
         switch vm.selectedTab {
         case .today: TodayView()
         case .train: TrainView()
+        case .feed:  FeedTabView()
         case .stats: StatsView()
         case .plan:  PlanView()
         case .me:    MeView()

@@ -31,18 +31,101 @@ struct ScreenLayout: Codable, Hashable {
 }
 
 /// Which tabs exist, in what order, and where the app opens.
+///
+/// The resolving logic lives here rather than on the store because every interesting case — an
+/// order saved before a tab existed, a bar that would draw six columns, a launch tab someone
+/// hid — is a stored-state problem, and stored state is far easier to assert on than to walk a
+/// simulator into. `LayoutStore` just persists what this decides.
 struct TabLayout: Codable, Hashable {
+    /// The bar draws at most five columns. This is not a style preference: five labels already
+    /// share one row without reflowing, and at large Dynamic Type "TRAIN" and "STATS" collided
+    /// with no gap between them. A sixth makes that worse, so something has to come off.
+    static let maxVisible = 5
+
+    /// Plan ships hidden. It's a course planner — schedule, assignments, exams — carried over
+    /// from a different app, and it's the tab that loses its slot when Feed takes one. Hidden,
+    /// never deleted: its records stay in SwiftData and switching it back on restores them.
+    static let defaultHidden: Set<AppTab> = [.plan]
+
+    /// Bumped when a shipped default changes in a way already-saved arrangements have to be
+    /// reconciled with. `0` means "saved before this field existed".
+    static let currentVersion = 1
+
     var order: [AppTab] = AppTab.allCases
-    var hidden: Set<AppTab> = []
+    var hidden: Set<AppTab> = TabLayout.defaultHidden
     var launchTab: AppTab = .today
+    var version: Int = TabLayout.currentVersion
 
     init() {}
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         order     = try c.decodeIfPresent([AppTab].self, forKey: .order) ?? AppTab.allCases
-        hidden    = try c.decodeIfPresent(Set<AppTab>.self, forKey: .hidden) ?? []
+        hidden    = try c.decodeIfPresent(Set<AppTab>.self, forKey: .hidden) ?? TabLayout.defaultHidden
         launchTab = try c.decodeIfPresent(AppTab.self, forKey: .launchTab) ?? .today
+        // Absent means this was written before versioning, which is exactly what needs migrating.
+        version   = try c.decodeIfPresent(Int.self, forKey: .version) ?? 0
+    }
+
+    // MARK: Resolving
+
+    /// Every tab exactly once, in the user's order, with anything the catalog gained since this
+    /// was saved appended. Deduped: a duplicate would render the same tab twice and hand
+    /// `ForEach` two rows with one id.
+    var resolvedOrder: [AppTab] {
+        var seen = Set<AppTab>()
+        var ordered = order.filter { AppTab.allCases.contains($0) && seen.insert($0).inserted }
+        for tab in AppTab.allCases where !ordered.contains(tab) { ordered.append(tab) }
+        return ordered
+    }
+
+    /// The tabs the bar actually draws: non-empty, capped at `maxVisible`, and always containing
+    /// the launch tab. This is the app's only navigation, so it has to return something usable
+    /// however mangled the stored value gets.
+    var resolvedVisible: [AppTab] {
+        var visible = resolvedOrder.filter { !hidden.contains($0) }
+        // Launching into a tab that isn't in the bar is a dead end. `setLaunchTab` and
+        // `canHideTab` both prevent it; this covers a value that got there some other way.
+        if !visible.contains(launchTab) { visible.append(launchTab) }
+        // Trim from the end, never the launch tab.
+        while visible.count > Self.maxVisible,
+              let last = visible.lastIndex(where: { $0 != launchTab }) {
+            visible.remove(at: last)
+        }
+        return visible.isEmpty ? [launchTab] : visible
+    }
+
+    // MARK: Migration
+
+    /// Reconcile a stored arrangement with the shipped defaults.
+    ///
+    /// Runs once per version bump, on load. Everything it touches is a case you cannot reach by
+    /// tapping around — an arrangement saved before Feed existed, a bar that would overflow — so
+    /// it is covered by unit tests rather than by hand.
+    static func migrated(_ stored: TabLayout) -> TabLayout {
+        guard stored.version < currentVersion else { return stored }
+        var out = stored
+
+        // An order saved before Feed existed would otherwise append it last, past Me. Slot it
+        // where it ships instead: straight after Train.
+        if !out.order.contains(.feed) {
+            if let i = out.order.firstIndex(of: .train) {
+                out.order.insert(.feed, at: out.order.index(after: i))
+            } else {
+                out.order.append(.feed)
+            }
+        }
+
+        // Adding Feed pushes an untouched bar to six. Plan is the one that gives up its slot —
+        // unless the lifter already curated theirs down to something that fits, or they launch
+        // into Plan, in which case taking it away would strand them.
+        let wouldOverflow = out.resolvedOrder.filter { !out.hidden.contains($0) }.count > maxVisible
+        if wouldOverflow && out.launchTab != .plan {
+            out.hidden.insert(.plan)
+        }
+
+        out.version = currentVersion
+        return out
     }
 }
 
@@ -94,7 +177,12 @@ final class LayoutStore: ObservableObject {
         self.defaults = defaults
         if let data = defaults.data(forKey: Self.storageKey),
            let decoded = try? JSONDecoder().decode(LayoutConfig.self, from: data) {
-            config = decoded
+            var migrated = decoded
+            migrated.tabs = TabLayout.migrated(decoded.tabs)
+            config = migrated
+            // `config`'s `didSet` doesn't run from an initialiser, so a migration would sit in
+            // memory and re-run on every launch. Write it back once, here.
+            if migrated != decoded { persist() }
         } else {
             config = LayoutConfig()
         }
@@ -274,21 +362,12 @@ final class LayoutStore: ObservableObject {
 
     // MARK: Tabs
 
-    /// Visible tabs in the user's order. Guaranteed non-empty and guaranteed to contain every tab
-    /// exactly once — the tab bar is the app's only navigation, so this can never return nothing
-    /// however mangled the stored value is.
-    var visibleTabs: [AppTab] {
-        var ordered = config.tabs.order.filter { AppTab.allCases.contains($0) }
-        for tab in AppTab.allCases where !ordered.contains(tab) { ordered.append(tab) }
-        let visible = ordered.filter { !config.tabs.hidden.contains($0) }
-        return visible.isEmpty ? [config.tabs.launchTab] : visible
-    }
+    /// Visible tabs in the user's order. Non-empty, duplicate-free, and capped at
+    /// `TabLayout.maxVisible` — the tab bar is the app's only navigation, so this can never
+    /// return nothing however mangled the stored value is. The rules live on `TabLayout`.
+    var visibleTabs: [AppTab] { config.tabs.resolvedVisible }
 
-    var orderedTabs: [AppTab] {
-        var ordered = config.tabs.order.filter { AppTab.allCases.contains($0) }
-        for tab in AppTab.allCases where !ordered.contains(tab) { ordered.append(tab) }
-        return ordered
-    }
+    var orderedTabs: [AppTab] { config.tabs.resolvedOrder }
 
     func isTabHidden(_ tab: AppTab) -> Bool { config.tabs.hidden.contains(tab) }
 
@@ -300,8 +379,15 @@ final class LayoutStore: ObservableObject {
         return visibleTabs.count > 2
     }
 
+    /// Showing is refused when the bar is already full. There are six tabs and room for five, so
+    /// adding one back means taking one off first — the alternative is a silently ignored tap.
+    func canShowTab(_ tab: AppTab) -> Bool {
+        if !isTabHidden(tab) { return true }
+        return visibleTabs.count < TabLayout.maxVisible
+    }
+
     func setTabHidden(_ tab: AppTab, _ hidden: Bool) {
-        guard hidden ? canHideTab(tab) : true else { return }
+        guard hidden ? canHideTab(tab) : canShowTab(tab) else { return }
         mutate { config in
             if hidden { config.tabs.hidden.insert(tab) } else { config.tabs.hidden.remove(tab) }
         }
@@ -309,8 +395,7 @@ final class LayoutStore: ObservableObject {
 
     func moveTabs(fromOffsets: IndexSet, toOffset: Int) {
         mutate { config in
-            var ordered = config.tabs.order.filter { AppTab.allCases.contains($0) }
-            for tab in AppTab.allCases where !ordered.contains(tab) { ordered.append(tab) }
+            var ordered = config.tabs.resolvedOrder
             ordered.move(fromOffsets: fromOffsets, toOffset: toOffset)
             config.tabs.order = ordered
         }

@@ -5,6 +5,7 @@ struct SettingsView: View {
     @EnvironmentObject var authStore: AuthStore
     @EnvironmentObject var theme: ThemeStore
     @EnvironmentObject var layout: LayoutStore
+    @EnvironmentObject var feedVM: FeedViewModel
     @Environment(\.dismiss) private var dismiss
     @StateObject private var authVM = AuthViewModel()
     @State private var showingSignOutAlert      = false
@@ -154,6 +155,24 @@ struct SettingsView: View {
                     // Gyms tracks WHERE you train, not WHAT equipment you generally have — that's a
                     // separate setting, cross-linked here so checking one screen surfaces the other.
                     Text("General equipment access is set in Edit Profile.")
+                        .font(.elosMicro)
+                }
+
+                Section {
+                    // Reads and writes the same three-state preference the post-session prompt
+                    // sets. Answering here counts as being asked: switching it off from `unasked`
+                    // stores an explicit `off`, so the prompt won't come back later.
+                    Toggle(isOn: Binding(
+                        get: { feedVM.autoShare.isOn },
+                        set: { feedVM.autoShare = $0 ? .on : .off }
+                    )) {
+                        Label("Auto-share workouts", systemImage: "square.stack.3d.up")
+                    }
+                    .tint(Color.tint)
+                } header: {
+                    Text("Feed")
+                } footer: {
+                    Text("Posts your workout and any PRs to the Feed when you finish a session. Friends only — nothing is public.")
                         .font(.elosMicro)
                 }
 

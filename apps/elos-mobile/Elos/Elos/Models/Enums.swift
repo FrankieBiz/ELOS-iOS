@@ -3,8 +3,16 @@ import SwiftData
 
 // MARK: - Navigation Enums
 // `Codable` so the tab bar's order, hidden set and launch tab can be persisted by `LayoutStore`.
+//
+// Declaration order is the *shipped* order of the bar — `TabLayout.order` defaults to
+// `allCases` — so moving a case here changes where it sits for anyone who never rearranged
+// theirs. Feed goes third because the bar reads as: what's today, what am I lifting, what are
+// my friends doing.
+//
+// There are six cases but the bar only ever draws five (`LayoutStore.maxVisibleTabs`); Plan
+// ships hidden. See `TabLayout.defaultHidden`.
 enum AppTab: String, Hashable, CaseIterable, Codable, Identifiable {
-    case today, train, stats, plan, me
+    case today, train, feed, stats, plan, me
 
     var id: String { rawValue }
 
@@ -12,6 +20,7 @@ enum AppTab: String, Hashable, CaseIterable, Codable, Identifiable {
         switch self {
         case .today: return "Today"
         case .train: return "Train"
+        case .feed:  return "Feed"
         case .stats: return "Stats"
         case .plan:  return "Plan"
         case .me:    return "Me"
@@ -22,6 +31,8 @@ enum AppTab: String, Hashable, CaseIterable, Codable, Identifiable {
         switch self {
         case .today: return "sun.max"
         case .train: return "dumbbell"
+        // Same glyph the feed's own empty state uses, so the tab and the screen it opens agree.
+        case .feed:  return "square.stack.3d.up"
         case .stats: return "chart.line.uptrend.xyaxis"
         case .plan:  return "list.clipboard"
         case .me:    return "person.circle"
@@ -32,6 +43,7 @@ enum AppTab: String, Hashable, CaseIterable, Codable, Identifiable {
         switch self {
         case .today: return "sun.max.fill"
         case .train: return "dumbbell.fill"
+        case .feed:  return "square.stack.3d.up.fill"
         case .stats: return "chart.line.uptrend.xyaxis"
         case .plan:  return "list.clipboard.fill"
         case .me:    return "person.circle.fill"

@@ -275,9 +275,11 @@ struct TabLayoutTests {
         LayoutStore(defaults: UserDefaults(suiteName: UUID().uuidString)!)
     }
 
-    @Test func defaultsToEveryTabInOrder() {
+    /// Six tabs exist, five fit. Plan is the one that ships hidden — see `TabLayout.defaultHidden`.
+    @Test func defaultsToTheShippedBar() {
         let store = makeStore()
-        #expect(store.visibleTabs == AppTab.allCases)
+        #expect(store.visibleTabs == [.today, .train, .feed, .stats, .me])
+        #expect(store.orderedTabs == AppTab.allCases)
         #expect(store.config.tabs.launchTab == .today)
     }
 

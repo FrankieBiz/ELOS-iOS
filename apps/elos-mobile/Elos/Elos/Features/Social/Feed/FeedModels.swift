@@ -141,3 +141,32 @@ enum FeedDateParser {
         return nil
     }
 }
+
+// MARK: - Auto-share
+
+/// Whether finishing a workout posts it to the feed.
+///
+/// Three states rather than a `Bool`, because the third one is the whole point: `unasked` is what
+/// lets the app ask once, on the first workout after the update, instead of guessing. Defaulting a
+/// `Bool` to `true` would start publishing someone's training to their friends on the back of a
+/// release note they never read; defaulting it to `false` leaves every feed as empty as it is
+/// today, which is the problem the Feed tab exists to fix.
+enum FeedAutoShare: String, Codable {
+    case unasked, on, off
+
+    var isOn: Bool { self == .on }
+}
+
+/// The PR line that rides along on a workout post.
+///
+/// One post per workout, never one per PR. A good session hits three, and three cards from one
+/// person in a row is how a feed turns into something you scroll past. The workout payload carries
+/// a single `pr` string which the card renders on one line with `lineLimit(1)`, so additional PRs
+/// are counted rather than listed — "Bench Press +2 more" survives that truncation, a joined list
+/// of three exercise names does not.
+enum FeedPRSummary {
+    static func label(for prs: [String]) -> String? {
+        guard let first = prs.first else { return nil }
+        return prs.count > 1 ? "\(first) +\(prs.count - 1) more" : first
+    }
+}
