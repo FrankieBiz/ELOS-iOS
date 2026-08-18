@@ -66,6 +66,7 @@ extension DashboardTile where Accessory == EmptyView {
 
 struct StreakWidget: View {
     @EnvironmentObject private var vm: AppViewModel
+    @Environment(\.openTab) private var openTab
 
     var body: some View {
         let days = vm.trainingStreakDays
@@ -75,7 +76,7 @@ struct StreakWidget: View {
             value: days == 0 ? "—" : "\(days)",
             sub: days == 0 ? "Train today to start one"
                            : (days == 1 ? "day in a row" : "days in a row"),
-            onTap: { vm.selectedTab = .train }
+            onTap: { openTab(.train) }
         ) {
             if days > 0 {
                 Image(systemName: "flame.fill")
@@ -90,6 +91,7 @@ struct StreakWidget: View {
 
 struct SessionsThisWeekWidget: View {
     @EnvironmentObject private var vm: AppViewModel
+    @Environment(\.openTab) private var openTab
 
     var body: some View {
         let done = vm.sessionsThisWeek
@@ -101,7 +103,7 @@ struct SessionsThisWeekWidget: View {
             // than inventing a denominator for someone with no split.
             value: planned > 0 ? "\(done)/\(planned)" : "\(done)",
             sub: planned > 0 ? "trained this week" : "in the last 7 days",
-            onTap: { vm.selectedTab = .train }
+            onTap: { openTab(.train) }
         )
     }
 }
@@ -110,6 +112,7 @@ struct SessionsThisWeekWidget: View {
 
 struct WeeklyVolumeWidget: View {
     @EnvironmentObject private var vm: AppViewModel
+    @Environment(\.openTab) private var openTab
 
     var body: some View {
         let volume = vm.weightUnit.fromKg(vm.weeklyVolumeKg)
@@ -119,7 +122,7 @@ struct WeeklyVolumeWidget: View {
             label: "WEEK VOLUME",
             value: volume >= 1000 ? String(format: "%.1fk", volume / 1000) : String(format: "%.0f", volume),
             sub: "\(vm.weightUnit.label) over 7 days",
-            onTap: { vm.selectedTab = .stats }
+            onTap: { openTab(.stats) }
         ) {
             if let change, abs(change) >= 1 {
                 HStack(spacing: 1) {
@@ -139,6 +142,7 @@ struct WeeklyVolumeWidget: View {
 
 struct NextWorkoutWidget: View {
     @EnvironmentObject private var vm: AppViewModel
+    @Environment(\.openTab) private var openTab
     @EnvironmentObject private var trainingContext: TrainingContext
 
     /// "Tomorrow" / "Thursday" / "Mar 4" — `DateDisplay.friendly` takes the app's stored ISO day
@@ -183,7 +187,7 @@ struct NextWorkoutWidget: View {
                     } else {
                         // Nothing to start yet — take them to the tab that can plan it instead of
                         // silently doing nothing.
-                        vm.selectedTab = .train
+                        openTab(.train)
                     }
                 } label: {
                     Text(isToday ? "Start" : "View")
@@ -206,6 +210,7 @@ struct NextWorkoutWidget: View {
 
 struct LatestPRWidget: View {
     @EnvironmentObject private var vm: AppViewModel
+    @Environment(\.openTab) private var openTab
 
     var body: some View {
         if let pr = vm.personalRecords.first {
@@ -214,7 +219,7 @@ struct LatestPRWidget: View {
                 label: "LATEST PR",
                 value: pr.weight.isEmpty ? pr.reps : pr.weight,
                 sub: pr.reps.isEmpty ? pr.lift : "\(pr.lift) · \(pr.reps)",
-                onTap: { vm.selectedTab = .stats }
+                onTap: { openTab(.stats) }
             ) {
                 Image(systemName: "trophy.fill")
                     .font(.caption)
@@ -228,6 +233,7 @@ struct LatestPRWidget: View {
 
 struct ReadinessWidget: View {
     @EnvironmentObject private var vm: AppViewModel
+    @Environment(\.openTab) private var openTab
 
     var body: some View {
         let score = vm.todayReadiness.map { Int($0.overallScore.rounded()) }
@@ -238,7 +244,7 @@ struct ReadinessWidget: View {
             // The check-in itself lives behind the Train tab's flow, so this points there rather
             // than trying to present a sheet from a screen that doesn't own it.
             sub: score == nil ? "Check in on Train" : descriptor(for: score ?? 0),
-            onTap: { vm.selectedTab = .train }
+            onTap: { openTab(.train) }
         ) {
             Image(systemName: "gauge.medium")
                 .font(.caption)
@@ -269,6 +275,7 @@ struct ReadinessWidget: View {
 
 struct BodyWeightWidget: View {
     @EnvironmentObject private var vm: AppViewModel
+    @Environment(\.openTab) private var openTab
 
     var body: some View {
         if let kg = vm.healthSnapshot.bodyWeightKg, kg > 0 {
@@ -277,7 +284,7 @@ struct BodyWeightWidget: View {
                 label: "BODY WEIGHT",
                 value: vm.weightUnit.formatValue(kg: kg),
                 sub: vm.healthKitEnabled ? "from Apple Health" : "latest logged",
-                onTap: { vm.selectedTab = .me }
+                onTap: { openTab(.me) }
             )
         }
     }
@@ -289,6 +296,7 @@ struct BodyWeightWidget: View {
 /// without opening the Train tab's full panel.
 struct MuscleFocusWidget: View {
     @EnvironmentObject private var vm: AppViewModel
+    @Environment(\.openTab) private var openTab
 
     private var top: [MuscleVolume] {
         vm.muscleVolume
@@ -304,7 +312,7 @@ struct MuscleFocusWidget: View {
                     Text("MUSCLE FOCUS")
                         .elosSectionLabel()
                     Spacer()
-                    Button("See all") { vm.selectedTab = .train }
+                    Button("See all") { openTab(.train) }
                         .font(.elosCaption)
                         .foregroundStyle(Color.tint)
                         .buttonStyle(.plain)

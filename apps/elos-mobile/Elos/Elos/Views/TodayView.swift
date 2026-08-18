@@ -19,10 +19,7 @@ struct TodayView: View {
     @EnvironmentObject var vm: AppViewModel
     @EnvironmentObject var trainingContext: TrainingContext
     @EnvironmentObject var layout: LayoutStore
-
-    /// Set when the assignments link is followed while Plan isn't in the tab bar. See the note on
-    /// the button itself.
-    @State private var showingPlanSheet = false
+    @Environment(\.openTab) private var openTab
     // Existence check only (not the switching logic itself, which GymSwitcherControl owns) — needed
     // so an empty gym list doesn't leave a blank padded card floating in the middle of the screen.
     @Query private var gyms: [GymRecord]
@@ -84,9 +81,6 @@ struct TodayView: View {
         // pinned over the top safe area lets content pass *behind* it, which is what the system
         // toolbar would have done.
         .overlay(alignment: .top) { statusBarScrim }
-        .sheet(isPresented: $showingPlanSheet) {
-            PlanView().environmentObject(vm)
-        }
     }
 
     @ViewBuilder
@@ -293,15 +287,9 @@ struct TodayView: View {
                 }
                 Divider()
                 Button {
-                    // Plan ships hidden, so this link usually points at a tab that isn't in the
-                    // bar. Switching to it anyway renders the screen but leaves nothing
-                    // highlighted and no obvious way back, so a hidden destination opens as a
-                    // sheet instead — the assignments are still there either way.
-                    if layout.isTabHidden(.plan) {
-                        showingPlanSheet = true
-                    } else {
-                        vm.selectedTab = .plan
-                    }
+                    // Plan ships hidden, so this usually points at a tab that isn't in the bar.
+                    // `openTab` decides what that means; see `OpenTabAction`.
+                    openTab(.plan)
                 } label: {
                     HStack {
                         Text("View all assignments")
@@ -374,7 +362,7 @@ struct TodayView: View {
                      if vm.todayVolumeKg > 0   { return "\(vm.weightUnit.label) today" }
                      return "\(vm.weightUnit.label) — tap to train"
                  }()) {
-            vm.selectedTab = .train
+            openTab(.train)
         }
     }
 

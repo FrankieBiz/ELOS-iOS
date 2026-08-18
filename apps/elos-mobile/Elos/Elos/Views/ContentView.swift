@@ -4,6 +4,9 @@ struct ContentView: View {
     @EnvironmentObject var vm: AppViewModel
     @EnvironmentObject var trainVM: TrainViewModel
     @EnvironmentObject var trainingContext: TrainingContext
+
+    /// Set when a cross-screen link points at a tab the lifter has hidden. See `OpenTabAction`.
+    @State private var tabAsSheet: AppTab?
     @EnvironmentObject var theme: ThemeStore
     @EnvironmentObject var layout: LayoutStore
     @Environment(\.dynamicTypeSize) private var systemTypeSize
@@ -75,6 +78,22 @@ struct ContentView: View {
                 .environmentObject(theme)
                 .environmentObject(layout)
         }
+        // A tab that isn't in the bar still has content worth reaching — hiding Plan doesn't delete
+        // your assignments. Switching the bar to it would leave nothing highlighted and no way
+        // back, so it opens as a detour with an obvious exit instead.
+        .sheet(item: $tabAsSheet) { tab in
+            screen(for: tab)
+                .presentationDragIndicator(.visible)
+        }
+        .environment(\.openTab, OpenTabAction { tab in
+            if layout.isTabHidden(tab) {
+                tabAsSheet = tab
+            } else {
+                // Following a link out of the detour closes it on the way.
+                tabAsSheet = nil
+                withAnimation(.elosQuick) { vm.selectedTab = tab }
+            }
+        })
         .preferredColorScheme(theme.colorScheme)
         // Relative to the system setting, never instead of it.
         .dynamicTypeSize(systemTypeSize.shifted(by: theme.config.textScale.steps))
@@ -92,8 +111,13 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private var tabContent: some View {
-        switch vm.selectedTab {
+    private var tabContent: some View { screen(for: vm.selectedTab) }
+
+    /// The one mapping from a tab to its screen, shared by the tab bar and the hidden-tab sheet so
+    /// the two can't disagree about what a tab shows.
+    @ViewBuilder
+    private func screen(for tab: AppTab) -> some View {
+        switch tab {
         case .today: TodayView()
         case .train: TrainView()
         case .feed:  FeedTabView()

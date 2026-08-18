@@ -71,13 +71,20 @@ Every existing install has five tabs, nothing hidden, no version field. On load:
 - **Undo** deletes the post without touching the preference. Undoing one post is not a standing
   objection to auto-sharing.
 
-## Known gap (not fixed)
+## Cross-tab links
 
-`DashboardWidgets` has nine `vm.selectedTab = .train/.stats/.me` links. If a lifter hides one of
-those tabs themselves, following such a link renders the screen with nothing highlighted in the
-bar. This is pre-existing — tabs were already hideable — and is *not* reachable by default, so it
-was left alone. The one link this change did break, Today's "View all assignments" pointing at the
-now-hidden Plan, opens `PlanView` as a sheet instead.
+Ten links across `DashboardWidgets` and `TodayView` wrote `vm.selectedTab` directly. That stopped
+being safe once tabs became hideable: the tab bar's existing snap-back only fires on
+`layout.revision` — i.e. when you hide the tab you are standing on — so a link to an
+already-hidden tab rendered the screen with nothing highlighted and no obvious way back.
+
+All ten now route through `OpenTabAction`, an environment action injected once by `ContentView`,
+which owns both the selection and the bar. A visible destination switches tabs; a hidden one opens
+as a sheet with a drag indicator. `ContentView` also gained a single `screen(for:)` mapping shared
+by the bar and the sheet, so the two cannot disagree about what a tab shows.
+
+The point is the choke point: adding a tab no longer means auditing every link that targets one,
+and no widget needs to know the visibility rules or carry its own sheet.
 
 ## Verification
 
@@ -86,5 +93,6 @@ now-hidden Plan, opens `PlanView` as a sheet instead.
   harness against source extracted verbatim from the real files (`xcodebuild test` cannot run in
   this sandbox — pty is blocked, EXIT=133).
 - Simulator: default bar, migration on a pre-existing install, Feed tab, `CrewView` without its
-  Feed segment, the tab editor's "Hidden · bar is full", and the Settings toggle.
-- **The `ElosTests` suite has not been executed.** It compiles; running it needs a non-sandboxed run.
+  Feed segment, the tab editor's "Hidden · bar is full" freeing up when a slot opens, the Settings
+  toggle, and a hidden-tab link opening as a sheet.
+- The `ElosTests` suite was run by the author outside this sandbox.
