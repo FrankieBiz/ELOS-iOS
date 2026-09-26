@@ -39,7 +39,25 @@ struct ExercisePickerView: View {
     @StateObject private var vm = ExercisePickerViewModel()
     @Query(sort: \ExerciseDefinitionRecord.name) private var dbExercises: [ExerciseDefinitionRecord]
     @Query private var profiles: [UserProfileRecord]
+    @Query(sort: \GymRecord.createdAt) private var gyms: [GymRecord]
     private var equipmentPreference: EquipmentPreference { profiles.first?.equipmentPreference ?? .fullGym }
+
+    /// Read through `@AppStorage` rather than `AppViewModel` so the picker keeps its current
+    /// dependency surface — it's presented from a dozen places, several of which don't already
+    /// carry that environment object. `AppViewModel` owns the published value; the key is shared
+    /// via `GymDefaultsKey` so the two can't drift.
+    @AppStorage(GymDefaultsKey.activeGymID) private var activeGymID: String = ""
+    @AppStorage(GymDefaultsKey.learningEnabled) private var learningEnabled: Bool = false
+
+    /// What the app has learned the active gym has. Loaded ONCE per picker session in `.task`,
+    /// never as a recomputed `private var` — this view re-renders on every keystroke, and a
+    /// derived-per-render inventory is exactly the perf trap that kept the earlier version of this
+    /// feature unwired.
+    @State private var gymInventory: GymInventory = .unknown
+
+    /// True only when the feature is on, a gym is selected, AND we've actually learned something
+    /// about it. An unknown gym must bias nothing — see `GymInventory`.
+    private var gymAware: Bool { learningEnabled && gymInventory.isKnown }
 
     @State private var tab: Tab = .all
     @State private var query = ""
@@ -82,6 +100,46 @@ struct ExercisePickerView: View {
 
     private var localBrands: [String] {
         Array(Set(EquipmentDatabase.all.map(\.brandName))).sorted()
+    }
+
+    /// The machines the app has learned the active gym actually has, honoring whatever the lifter
+    /// is currently filtering by.
+    ///
+    /// Deliberately shown even on a plain browse with no query, unlike `prominentMachineResults` —
+    /// answering "what can I build here" without typing anything is the entire point of learning an
+    /// inventory. Built by walking the (small) stored inventory and resolving each entry through the
+    /// catalog's O(1) index, never by scanning all 1,697 records per render.
+    private var gymMachineResults: [EquipmentRecord] {
+        guard gymAware, tab == .all, localBrandFilter == nil else { return [] }
+        // Free-weight and bodyweight browsing belongs to the generic exercise list; a learned
+        // inventory has nothing useful to add there.
+        guard equipFilter == .all || equipFilter == .machine || equipFilter == .cable else { return [] }
+
+        let ordered = gymInventory.entries.sorted {
+            $0.timesSeen == $1.timesSeen ? $0.displayName < $1.displayName : $0.timesSeen > $1.timesSeen
+        }
+        var pool = ordered.compactMap { EquipmentDatabase.find(dedupeKey: $0.dedupeKey) }
+            .filter { !Self.excludedEquipmentTypes.contains($0.equipmentType) }
+
+        if equipFilter == .machine {
+            pool = pool.filter { !$0.equipmentType.lowercased().contains("cable") }
+        } else if equipFilter == .cable {
+            pool = pool.filter { $0.equipmentType.lowercased().contains("cable") }
+        }
+        if bodyPartFilter != .all {
+            let keywords = Self.bodyPartKeywords(bodyPartFilter)
+            pool = pool.filter { record in
+                record.bodyParts.contains { part in
+                    keywords.contains { part.lowercased().contains($0) }
+                }
+            }
+        }
+        if query.count >= 2 {
+            let tokens = ExerciseSearch.tokens(from: query)
+            let nq = ExerciseSearch.normalizedQuery(query)
+            pool = pool.filter { Self.machineScore($0, tokens: tokens, normalizedQuery: nq) != nil }
+        }
+        return pool
     }
 
     // EquipmentDatabase records are ONLY shown for Machine filter or when a brand is selected.
@@ -135,6 +193,15 @@ struct ExercisePickerView: View {
                 ? $0.machineName < $1.machineName
                 : $0.brandName < $1.brandName
         }
+    }
+
+    /// `prominentMachineResults` minus everything already listed under "At <gym>", so one machine
+    /// never shows up twice in the same list.
+    private var otherMachineResults: [EquipmentRecord] {
+        let gymShown = gymMachineResults
+        guard !gymShown.isEmpty else { return prominentMachineResults }
+        let shown = Set(gymShown.map(\.equipmentId))
+        return prominentMachineResults.filter { !shown.contains($0.equipmentId) }
     }
 
     private static func bodyPartKeywords(_ filter: BodyPartFilter) -> [String] {
@@ -197,11 +264,14 @@ struct ExercisePickerView: View {
                 if let preMachine = prefilterMachineName {
                     query = preMachine
                 }
+                loadGymInventory()
             }
             .sheet(item: $machinePick) { pick in
                 MachineSelectionSheet(
                     exerciseName: pick.row.name,
-                    variants: pick.variants
+                    variants: pick.variants,
+                    gymDedupeKeys: gymAware ? gymInventory.dedupeKeys : [],
+                    gymName: gymInventory.gymName
                 ) { machine in
                     if pick.isMultiPick {
                         confirmMultiPick(row: pick.row, machine: machine)
@@ -504,7 +574,8 @@ struct ExercisePickerView: View {
         let inputs = RankingInputs(context: dayContext,
                                    personalization: PersonalizationProvider(signals: personalizationSignals),
                                    isEquipmentAvailable: { equipmentPreference.isAvailable(equipment: $0) },
-                                   query: query)
+                                   query: query,
+                                   gymEquipmentTypes: gymAware ? gymInventory.equipmentTypes : [])
         let rankedIDs = ExerciseRankingEngine.rank(candidates, inputs: inputs, mode: sortMode).map { $0.id }
         let byID = Dictionary(result.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         return rankedIDs.compactMap { byID[$0] }
@@ -558,13 +629,13 @@ struct ExercisePickerView: View {
                 emptyState(icon: "clock", title: "No recent exercises", subtitle: "Log a set to see exercises here.")
             } else if tab == .favorites && vm.favorites.isEmpty && !vm.isLoadingFavorites {
                 emptyState(icon: "star", title: "No favorites yet", subtitle: "Tap the star on any exercise to add it here.")
-            } else if (filtered.isEmpty || localBrandFilter != nil) && prominentMachineResults.isEmpty && query.isEmpty {
+            } else if (filtered.isEmpty || localBrandFilter != nil) && prominentMachineResults.isEmpty && gymMachineResults.isEmpty && query.isEmpty {
                 emptyState(
                     icon: "magnifyingglass",
                     title: "No exercises match your filters.",
                     subtitle: "Try clearing filters or searching by name."
                 )
-            } else if (filtered.isEmpty || localBrandFilter != nil) && prominentMachineResults.isEmpty && !query.isEmpty {
+            } else if (filtered.isEmpty || localBrandFilter != nil) && prominentMachineResults.isEmpty && gymMachineResults.isEmpty && !query.isEmpty {
                 emptyState(
                     icon: "magnifyingglass",
                     title: "No results for \"\(query)\"",
@@ -574,7 +645,29 @@ struct ExercisePickerView: View {
                 List {
                     // Machine filter = EquipmentDatabase only; all other filters = generic exercises
                     let machineMode = equipFilter == .machine
-                    let hasMachines = !prominentMachineResults.isEmpty
+                    let gymMachines = gymMachineResults
+                    let otherMachines = otherMachineResults
+                    let hasMachines = !otherMachines.isEmpty
+
+                    // What this gym is known to have, pinned above everything else. Only rendered
+                    // when the feature is on and something has actually been learned — an unknown
+                    // gym shows nothing rather than an empty "your gym has:" promise.
+                    if !gymMachines.isEmpty {
+                        Section {
+                            ForEach(gymMachines) { machine in machineRowView(machine, atGym: true) }
+                        } header: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "building.2")
+                                Text("At \(gymInventory.gymName.isEmpty ? "your gym" : gymInventory.gymName)")
+                                    .lineLimit(1)
+                                Spacer()
+                                Text("\(gymMachines.count)")
+                            }
+                            .font(.caption2).fontWeight(.semibold)
+                            .foregroundStyle(Color.tint)
+                            .textCase(nil)
+                        }
+                    }
 
                     // Generic exercise rows (cable/free weight/bodyweight/all modes)
                     // Hidden when a brand is selected — brand mode shows only that brand's machines.
@@ -596,7 +689,7 @@ struct ExercisePickerView: View {
                     // Equipment records (Machine filter, or brand selected in any mode)
                     if hasMachines {
                         Section {
-                            ForEach(prominentMachineResults) { machine in
+                            ForEach(otherMachines) { machine in
                                 machineRowView(machine)
                             }
                         } header: {
@@ -629,7 +722,10 @@ struct ExercisePickerView: View {
         }
     }
 
-    private func machineRowView(_ machine: EquipmentRecord) -> some View {
+    /// `atGym` is passed explicitly by the "At <gym>" section rather than recomputed from the
+    /// inventory per row: rows in the lower section can also be at the gym in principle, but they're
+    /// filtered out of it, so a lookup here would only ever confirm what the caller already knows.
+    private func machineRowView(_ machine: EquipmentRecord, atGym: Bool = false) -> some View {
         // Deselecting has to short-circuit before the muscle sheet — otherwise tapping a selected
         // ambiguous machine would re-ask instead of removing it.
         let isSelected = selectedIDs.contains(machine.equipmentId)
@@ -662,6 +758,7 @@ struct ExercisePickerView: View {
                         .font(.subheadline)
                     HStack(spacing: 6) {
                         machineBadge(machine.equipmentType)
+                        if atGym { atGymBadge }
                         // What it trains, so the picker is honest before the exercise is even added.
                         if let t = EquipmentMuscleMap.targets(for: machine) {
                             Text(t.summary)
@@ -697,12 +794,51 @@ struct ExercisePickerView: View {
     /// Add the pick, no further questions. Separate from `commit` so answering the muscle sheet can't
     /// loop back into asking again.
     private func commitResolved(_ picked: PickedExercise) {
+        noteMachineForActiveGym(picked)
         if isMultiSelect {
             selectedIDs.insert(picked.id)
             selectedItems.append(picked)
         } else if onPickSingle?(picked) ?? true {
             dismiss()
         }
+    }
+
+    // MARK: - Learned gym equipment
+
+    private func loadGymInventory() {
+        guard learningEnabled, !activeGymID.isEmpty, let ownerID = profiles.first?.ownerID else {
+            gymInventory = .unknown
+            return
+        }
+        let name = gyms.first { $0.id == activeGymID }?.name ?? ""
+        gymInventory = GymEquipmentStore.inventory(gymID: activeGymID, gymName: name,
+                                                   ownerID: ownerID, context: modelContext)
+    }
+
+    /// Picking a specific machine while a gym is selected is the app's main way of learning what
+    /// that gym has — this is the single choke point every pick in this view funnels through, so
+    /// templates, splits, and mid-session adds are all covered without chasing each save site.
+    ///
+    /// Recorded as `planned`, the weakest source: putting a machine in a plan says you intend to use
+    /// it there, which is good evidence but not proof. Actually completing a set on it promotes the
+    /// same entry to `logged`.
+    private func noteMachineForActiveGym(_ picked: PickedExercise) {
+        guard learningEnabled, !activeGymID.isEmpty,
+              let key = picked.equipmentDedupeKey, !key.isEmpty,
+              let ownerID = profiles.first?.ownerID, !ownerID.isEmpty else { return }
+        GymEquipmentStore.record(dedupeKey: key, equipmentId: picked.equipmentId,
+                                 gymID: activeGymID, source: .planned,
+                                 ownerID: ownerID, context: modelContext)
+        loadGymInventory()
+    }
+
+    private var atGymBadge: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "checkmark.circle.fill")
+            Text("At your gym")
+        }
+        .font(.caption2).fontWeight(.semibold)
+        .foregroundStyle(Color.good)
     }
 
     private func machineBadge(_ type: String) -> some View {

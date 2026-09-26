@@ -232,6 +232,7 @@ struct TemplateBuilderView: View {
     }
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \ExerciseDefinitionRecord.name) private var exerciseDefs: [ExerciseDefinitionRecord]
     /// Both presenters of this sheet (TemplatesView, SessionDetailView) already hold `vm`, and a sheet
     /// inherits the presenter's environment — needed here so the lifter's volume overrides reach the
@@ -317,6 +318,15 @@ struct TemplateBuilderView: View {
         }
     }
 
+
+    /// Coarse equipment the active gym is known to have, so auto-fix leans toward what's actually on
+    /// the floor there. A function, not a computed property: it reads the store, and the only call
+    /// site is on-demand.
+    private func activeGymEquipmentTypes() -> Set<String> {
+        GymEquipmentStore.activeGymInventory(ownerID: vm.currentUserID, activeGymID: vm.activeGymID,
+                                             context: modelContext).equipmentTypes
+    }
+
     // MARK: - Auto-fix
 
     private func currentContext() -> QualityFixEngine.Context {
@@ -325,7 +335,8 @@ struct TemplateBuilderView: View {
             dayIsRest: [false], dayExcludedMuscles: [[]],
             scope: .singleSession, profile: scoringProfile, intent: intent, catalog: exerciseCatalog,
             personalization: PersonalizationProvider(signals: .init()),
-            equipmentPreference: equipmentPreference)
+            equipmentPreference: equipmentPreference,
+            gymEquipmentTypes: activeGymEquipmentTypes())
     }
 
     private func startAutoFix(for tip: QualityTip) {

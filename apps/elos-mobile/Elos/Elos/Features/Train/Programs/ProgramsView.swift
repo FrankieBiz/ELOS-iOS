@@ -683,6 +683,15 @@ struct UserSplitDetailView: View {
         }
     }
 
+
+    /// Coarse equipment the active gym is known to have, so auto-fix leans toward what's actually on
+    /// the floor there. A function, not a computed property: it reads the store, and the only call
+    /// site is on-demand.
+    private func activeGymEquipmentTypes() -> Set<String> {
+        GymEquipmentStore.activeGymInventory(ownerID: vm.currentUserID, activeGymID: vm.activeGymID,
+                                             context: modelContext).equipmentTypes
+    }
+
     // MARK: - Auto-fix
     //
     // Unlike the builder, there is no Save button here — Confirm writes straight to SwiftData.
@@ -697,7 +706,8 @@ struct UserSplitDetailView: View {
             dayExcludedMuscles: sortedDays.map(\.excludedMuscles),
             scope: .weeklySplit, profile: scoringProfile, intent: splitIntent, catalog: exerciseCatalog,
             personalization: PersonalizationProvider(signals: .init()),
-            equipmentPreference: equipmentPreference)
+            equipmentPreference: equipmentPreference,
+            gymEquipmentTypes: activeGymEquipmentTypes())
     }
 
     private func startAutoFix(for tip: QualityTip) {

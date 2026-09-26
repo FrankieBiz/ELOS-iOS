@@ -12,6 +12,16 @@ struct CreateSplitView: View {
     private var guidanceLevel: GuidanceLevel { GuidanceLevel(trainingExperience: profiles.first?.trainingExperience ?? "") }
     @EnvironmentObject var vm: AppViewModel
 
+    /// Coarse equipment the active gym is known to have, so auto-fill and auto-fix lean toward
+    /// what's actually on the floor there. A function, not a computed property: it reads the store,
+    /// and both call sites are on-demand (a button tap), never per render.
+    private func activeGymEquipmentTypes() -> Set<String> { activeGymInventory().equipmentTypes }
+
+    private func activeGymInventory() -> GymInventory {
+        GymEquipmentStore.activeGymInventory(ownerID: vm.currentUserID, activeGymID: vm.activeGymID,
+                                             context: modelContext)
+    }
+
     let onSave: () -> Void
     let template: WorkoutSplit?
     private let editSplit: UserSplitRecord?
@@ -369,7 +379,8 @@ struct CreateSplitView: View {
             dayNames: dayNames, dayIsRest: dayIsRest, dayExcludedMuscles: dayExcludedMuscles,
             scope: .weeklySplit, profile: scoringProfile, intent: intent, catalog: exerciseCatalog,
             personalization: PersonalizationProvider(signals: .init()),
-            equipmentPreference: equipmentPreference)
+            equipmentPreference: equipmentPreference,
+            gymEquipmentTypes: activeGymEquipmentTypes())
     }
 
     private func startAutoFix(for tip: QualityTip) {
@@ -518,10 +529,18 @@ struct CreateSplitView: View {
                     Button {
                         if let arch = MuscleTaxonomy.archetype(forDayName: dayNames[i]) {
                             withAnimation {
-                                dayExercises[i] = SplitScaffolds.recommend(
-                                    archetype: arch, catalog: exerciseCatalog,
-                                    personalization: PersonalizationProvider(signals: .init()),
-                                    isEquipmentAvailable: { equipmentPreference.isAvailable(equipment: $0) })
+                                // Recommend generically, then bind each pick to the machine this
+                                // gym actually has — so an auto-filled day arrives already carrying
+                                // the right `equipmentDedupeKey` and starts tracking overload on the
+                                // real machine instead of a generic name.
+                                let inventory = activeGymInventory()
+                                dayExercises[i] = GymMachineBinder.bind(
+                                    SplitScaffolds.recommend(
+                                        archetype: arch, catalog: exerciseCatalog,
+                                        personalization: PersonalizationProvider(signals: .init()),
+                                        isEquipmentAvailable: { equipmentPreference.isAvailable(equipment: $0) },
+                                        gymEquipmentTypes: inventory.equipmentTypes),
+                                    inventory: inventory)
                                 dayTemplateIDs[i] = ""
                             }
                         }

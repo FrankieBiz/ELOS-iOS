@@ -723,6 +723,62 @@ final class GymRecord {
     }
 }
 
+/// One machine the app believes a gym has. This is the *learned inventory* — written as the lifter
+/// logs sets and plans workouts, never typed in up front, which is the whole point: the gym's
+/// equipment list maintains itself.
+///
+/// Why a stored record rather than deriving it from set history on demand: the derivation scans the
+/// full history against the 1,697-record equipment database, which is far too expensive to run from
+/// a view that re-renders per keystroke (the exact reason the earlier derive-only version was left
+/// unwired). Recording once at the moment of observation turns that into a cheap indexed `@Query`.
+///
+/// `equipmentDedupeKey` is the identity — machine *model* level, the same key progressive overload
+/// already dedupes by. `(ownerID, gymID, equipmentDedupeKey)` is the logical unique key.
+@Model
+final class GymEquipmentRecord {
+    var id: String
+    var ownerID: String
+    var gymID: String
+    /// Machine-model identity, matching `ExerciseSetRecord.equipmentDedupeKey`.
+    var equipmentDedupeKey: String
+    /// Catalog id when known (`EquipmentRecord.equipmentId`); "" for a record seen only by dedupe key.
+    var equipmentId: String
+    /// Denormalized so the list stays readable even if a catalog entry disappears in a later import.
+    var displayName: String
+    var brandName: String
+    var equipmentType: String
+    /// How this was learned: `logged` (a set was recorded on it), `planned` (added to a template or
+    /// split day), or `manual` (the lifter added it themselves). Highest-confidence source wins on
+    /// merge — see `GymEquipmentSource.rank`.
+    var source: String
+    var timesSeen: Int
+    var firstSeenAt: Date
+    var lastSeenAt: Date
+    /// The lifter said this gym does *not* have this machine. Kept as a tombstone rather than
+    /// deleted so a later observation can't silently resurrect it.
+    var isExcluded: Bool
+
+    init(id: String = UUID().uuidString, ownerID: String, gymID: String,
+         equipmentDedupeKey: String, equipmentId: String = "", displayName: String = "",
+         brandName: String = "", equipmentType: String = "",
+         source: String = "logged", timesSeen: Int = 1,
+         firstSeenAt: Date = Date(), lastSeenAt: Date = Date(), isExcluded: Bool = false) {
+        self.id = id
+        self.ownerID = ownerID
+        self.gymID = gymID
+        self.equipmentDedupeKey = equipmentDedupeKey
+        self.equipmentId = equipmentId
+        self.displayName = displayName
+        self.brandName = brandName
+        self.equipmentType = equipmentType
+        self.source = source
+        self.timesSeen = timesSeen
+        self.firstSeenAt = firstSeenAt
+        self.lastSeenAt = lastSeenAt
+        self.isExcluded = isExcluded
+    }
+}
+
 @Model
 final class SavedLibraryWorkoutRecord {
     var id: String

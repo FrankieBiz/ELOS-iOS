@@ -17,6 +17,9 @@ enum QualityFixEngine {
         let catalog: [ExerciseCandidate]
         let personalization: PersonalizationProvider
         let equipmentPreference: EquipmentPreference
+        /// See `FixExercisePicker.Context.gymEquipmentTypes`. Defaulted so every existing call site
+        /// (and every test) keeps compiling and behaving exactly as before.
+        var gymEquipmentTypes: Set<String> = []
     }
 
     /// Cheap whitelist for the UI's auto-fix affordance — a tip can carry an actionable
@@ -66,7 +69,8 @@ enum QualityFixEngine {
             let pickerContext = FixExercisePicker.Context(
                 catalog: context.catalog, dayName: context.dayNames[dayIndex],
                 addedDay: context.days[dayIndex], personalization: context.personalization,
-                equipmentPreference: context.equipmentPreference)
+                equipmentPreference: context.equipmentPreference,
+                gymEquipmentTypes: context.gymEquipmentTypes)
 
             let isPattern: Bool = { if case .addPattern = tip.action { return true }; return false }()
             let candidates = isPattern

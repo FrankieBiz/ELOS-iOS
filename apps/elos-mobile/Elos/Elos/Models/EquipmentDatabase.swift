@@ -1742,9 +1742,14 @@ enum EquipmentDatabase {
         }
     }
 
-    static func find(dedupeKey: String) -> EquipmentRecord? {
-        all.first { $0.dedupeKey == dedupeKey }
-    }
+    /// O(1) lookup by dedupe key. The learned gym inventory resolves every stored machine through
+    /// this while the picker re-renders per keystroke, so — like `find(equipmentId:)` — it can't be
+    /// a linear scan of 1,700 records. `dedupeKey` is not guaranteed unique (brand + machine +
+    /// series still collides occasionally); first-wins, matching the previous `first {}` behavior.
+    static func find(dedupeKey: String) -> EquipmentRecord? { byDedupeKey[dedupeKey] }
+
+    private static let byDedupeKey: [String: EquipmentRecord] =
+        Dictionary(all.map { ($0.dedupeKey, $0) }, uniquingKeysWith: { a, _ in a })
 
     /// O(1) lookup by equipment id. Coverage resolves a machine-backed exercise on every keystroke in
     /// the builder, so this can't be a linear scan of 1,700 records.

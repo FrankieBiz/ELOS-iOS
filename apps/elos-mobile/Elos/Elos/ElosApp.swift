@@ -53,6 +53,7 @@ struct ElosApp: App {
             UserSplitRecord.self,
             UserSplitDayRecord.self,
             GymRecord.self,
+            GymEquipmentRecord.self,
             ScheduleEventRecord.self,
             CourseRecord.self,
         ])

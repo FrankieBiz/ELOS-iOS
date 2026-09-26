@@ -134,8 +134,17 @@ class AppViewModel: ObservableObject {
     /// Which gym's day-variants are currently active. Empty = no gym selected — every day just
     /// shows its default/original version, exactly like before this feature existed. Local-only,
     /// same as `volumeOverrides`: nothing about which gym you're at needs to sync across devices.
-    @Published var activeGymID: String = UserDefaults.standard.string(forKey: "elos.activeGymID") ?? "" {
-        didSet { UserDefaults.standard.set(activeGymID, forKey: "elos.activeGymID") }
+    @Published var activeGymID: String = UserDefaults.standard.string(forKey: GymDefaultsKey.activeGymID) ?? "" {
+        didSet { UserDefaults.standard.set(activeGymID, forKey: GymDefaultsKey.activeGymID) }
+    }
+
+    /// Opt-in: let the app learn which machines each gym has from what gets logged and planned
+    /// there, and lean on that when suggesting exercises. Off by default — it changes what the
+    /// picker and the builders recommend, so it's the lifter's call, not a silent default.
+    /// Local-only, same call as `activeGymID` above.
+    @Published var gymEquipmentLearningEnabled: Bool =
+        UserDefaults.standard.bool(forKey: GymDefaultsKey.learningEnabled) {
+        didSet { UserDefaults.standard.set(gymEquipmentLearningEnabled, forKey: GymDefaultsKey.learningEnabled) }
     }
 
     // MARK: - Init

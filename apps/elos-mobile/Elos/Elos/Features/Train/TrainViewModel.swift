@@ -106,7 +106,25 @@ class TrainViewModel: ObservableObject {
                          equipmentDedupeKey: equipmentDedupeKey,
                          equipmentBrandName: equipmentBrandName)
 
+        learnGymEquipment(dedupeKey: equipmentDedupeKey, equipmentId: equipmentId,
+                          gymID: session.gymID, ownerID: ownerID, at: now)
+
         syncSet(record, session: session, ownerID: ownerID)
+    }
+
+    /// Teach the gym-equipment inventory that this machine exists at the gym this session was
+    /// tagged with. The strongest evidence there is: a set was actually completed on it there.
+    ///
+    /// Ordered so the store is only touched for a set that could possibly teach us something — a
+    /// machine-specific set during a gym-tagged session, with the feature on. Generic lifts and
+    /// untagged sessions bail on a string check, which keeps the hot logging path unchanged for
+    /// everyone who hasn't turned this on.
+    private func learnGymEquipment(dedupeKey: String?, equipmentId: String?, gymID: String,
+                                   ownerID: String, at: Date) {
+        guard let key = dedupeKey, !key.isEmpty, !gymID.isEmpty, !ownerID.isEmpty,
+              GymEquipmentStore.isLearningEnabled else { return }
+        GymEquipmentStore.record(dedupeKey: key, equipmentId: equipmentId, gymID: gymID,
+                                 source: .logged, ownerID: ownerID, context: context, at: at)
     }
 
     func unlogCompletedSet(

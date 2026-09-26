@@ -16,6 +16,10 @@ enum FixExercisePicker {
         let addedDay: [ScoredExercise]
         let personalization: PersonalizationProvider
         let equipmentPreference: EquipmentPreference
+        /// Coarse equipment tokens the lifter's active gym is known to have
+        /// (`GymInventory.equipmentTypes`). A soft nudge only — empty means unknown, and a hard
+        /// filter here would make auto-fix refuse to suggest anything at a gym we haven't learned.
+        var gymEquipmentTypes: Set<String> = []
     }
 
     /// - Parameter muscles: catalog-vocabulary strings (the output of
@@ -75,7 +79,8 @@ enum FixExercisePicker {
                                     addedExerciseIDs: addedIDs, addedExerciseNames: addedNames,
                                     addedTargets: addedTargetsList)
         let inputs = RankingInputs(context: dayContext, personalization: context.personalization,
-                                   isEquipmentAvailable: { context.equipmentPreference.isAvailable(equipment: $0) })
+                                   isEquipmentAvailable: { context.equipmentPreference.isAvailable(equipment: $0) },
+                                   gymEquipmentTypes: context.gymEquipmentTypes)
         return Array(ExerciseRankingEngine.rank(filteredPool, inputs: inputs).prefix(limit))
     }
 }

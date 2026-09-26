@@ -9,14 +9,35 @@ struct GymsView: View {
     @EnvironmentObject var vm: AppViewModel
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \GymRecord.createdAt) private var gyms: [GymRecord]
-
     @State private var newGymName = ""
+    @State private var isBackfilling = false
+    @State private var backfillNote: String? = nil
     @State private var renamingGym: GymRecord? = nil
     @State private var renameText = ""
     @State private var gymPendingDelete: GymRecord? = nil
 
     var body: some View {
         List {
+            Section {
+                Toggle(isOn: $vm.gymEquipmentLearningEnabled) {
+                    Label("Learn my equipment", systemImage: "sparkles")
+                }
+                .tint(Color.tint)
+                .onChange(of: vm.gymEquipmentLearningEnabled) { _, isOn in
+                    backfillOnEnable(isOn)
+                }
+                if let note = backfillNote {
+                    Text(note)
+                        .font(.elosMicro)
+                        .foregroundStyle(Color.tint)
+                }
+            } footer: {
+                // Says plainly what turning this on does and what it changes, because it changes
+                // what the app recommends — that shouldn't be a surprise discovered later.
+                Text("Elos remembers which machines each gym has as you pick them and log sets, then puts those first when you're building a workout there. Off by default; nothing leaves your phone.")
+                    .font(.elosMicro)
+            }
+
             Section {
                 HStack {
                     TextField("Gym name", text: $newGymName)
@@ -34,16 +55,26 @@ struct GymsView: View {
             } else {
                 Section("Your gyms") {
                     ForEach(gyms) { gym in
-                        HStack {
-                            Text(gym.name)
-                            Spacer()
-                            if vm.activeGymID == gym.id {
-                                Text("Active")
-                                    .font(.elosCaption)
-                                    .foregroundStyle(Color.tint)
+                        NavigationLink {
+                            GymEquipmentView(gym: gym).environmentObject(vm)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(gym.name)
+                                    if learningEnabled, let count = machineCount(for: gym), count > 0 {
+                                        Text("\(count) machine\(count == 1 ? "" : "s") known")
+                                            .font(.elosMicro)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                if vm.activeGymID == gym.id {
+                                    Text("Active")
+                                        .font(.elosCaption)
+                                        .foregroundStyle(Color.tint)
+                                }
                             }
                         }
-                        .contentShape(Rectangle())
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) { gymPendingDelete = gym } label: {
                                 Label("Delete", systemImage: "trash")
@@ -83,6 +114,9 @@ struct GymsView: View {
             Button("Delete", role: .destructive) {
                 guard let gym = gymPendingDelete else { return }
                 if vm.activeGymID == gym.id { vm.activeGymID = "" }
+                // Learned equipment is keyed by gym id, so leaving it behind would orphan rows that
+                // nothing can ever show or clean up.
+                GymEquipmentStore.forgetAll(gymID: gym.id, ownerID: vm.currentUserID, context: modelContext)
                 modelContext.delete(gym)
                 try? modelContext.save()
                 gymPendingDelete = nil
@@ -93,6 +127,29 @@ struct GymsView: View {
             // deleting a gym only removes it from the list and the "which gym am I at" switcher.
             Text("Any day versions you've built for this gym stay as they are — they'll just show their own name instead of the gym's.")
         }
+    }
+
+    private var learningEnabled: Bool { vm.gymEquipmentLearningEnabled }
+
+    /// Flipping this on immediately replays existing history so the feature has something to show
+    /// straight away — months of logged machine sets already say where you train and on what, and
+    /// starting from zero would make a working feature look broken.
+    private func backfillOnEnable(_ isOn: Bool) {
+        backfillNote = nil
+        guard isOn, !isBackfilling else { return }
+        isBackfilling = true
+        let found = GymEquipmentStore.backfillFromHistory(ownerID: vm.currentUserID,
+                                                          context: modelContext)
+        isBackfilling = false
+        backfillNote = found > 0
+            ? "Caught up on your history — check each gym below."
+            : "Nothing to catch up on yet. Tag a session with a gym and it'll start learning."
+    }
+
+    private func machineCount(for gym: GymRecord) -> Int? {
+        let entries = GymEquipmentStore.entries(gymID: gym.id, ownerID: vm.currentUserID,
+                                                context: modelContext)
+        return entries.filter { !$0.isExcluded }.count
     }
 
     private func addGym() {
