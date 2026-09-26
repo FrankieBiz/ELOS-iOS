@@ -57,7 +57,12 @@ struct CreatorProfileView: View {
                         sourcesCard(creator.source_urls)
                     }
                 } else {
-                    Text("Could not load creator.").foregroundStyle(.secondary).padding(.top, 40)
+                    VStack(spacing: 12) {
+                        Text("Could not load creator.").foregroundStyle(.secondary)
+                        Button("Retry") { vm.load(slug: slug) }
+                            .font(.subheadline).fontWeight(.semibold).foregroundStyle(Color.tint)
+                    }
+                    .padding(.top, 40)
                 }
             }
             .padding(16)
@@ -72,12 +77,7 @@ struct CreatorProfileView: View {
 
     private func creatorHeader(_ c: CreatorDetailResponse) -> some View {
         VStack(spacing: 12) {
-            ZStack {
-                Circle().fill(Color.tint.opacity(0.15)).frame(width: 72, height: 72)
-                Text(c.name.prefix(2).uppercased())
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(Color.tint)
-            }
+            RemoteThumbnail(urlString: c.image_url, shape: .circle, size: 72, tint: .tint, fallbackSystemImage: "person.fill")
             HStack(spacing: 6) {
                 Text(c.name).font(.title3).fontWeight(.bold)
                 if c.is_verified {

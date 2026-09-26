@@ -22,11 +22,11 @@ struct SignupView: View {
                             .fill(Color.tint)
                             .frame(width: 72, height: 72)
                         Image(systemName: "bolt.fill")
-                            .font(.system(size: 30, weight: .bold))
+                            .font(.system(.title, weight: .bold))
                             .foregroundStyle(.white)
                     }
                     Text("Create Account")
-                        .font(.system(size: 32, weight: .bold))
+                        .font(.system(.title, weight: .bold))
                     Text("Start your ELOS journey")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -106,7 +106,7 @@ struct SignupView: View {
                         Task { await authVM.register(authStore: authStore) }
                     } label: {
                         Group {
-                            if authVM.isLoading {
+                            if authVM.isRegistering {
                                 ProgressView().tint(.white)
                             } else {
                                 Text("Create Account")
@@ -114,7 +114,7 @@ struct SignupView: View {
                         }
                     }
                     .buttonStyle(ElosFilledButtonStyle())
-                    .disabled(authVM.isLoading)
+                    .disabled(authVM.isBusy)
                     .padding(.top, 4)
 
                     HStack(spacing: 12) {
@@ -132,7 +132,7 @@ struct SignupView: View {
                     .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
                     .frame(height: 50)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .disabled(authVM.isLoading)
+                    .disabled(authVM.isBusy)
                 }
                 .padding(.horizontal, 24)
 

@@ -46,6 +46,7 @@ struct ExerciseHowToImage: View {
                 .scaledToFit()
                 .frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .accessibilityLabel("How to perform \(key.replacingOccurrences(of: "_", with: " "))")
         }
     }
 }

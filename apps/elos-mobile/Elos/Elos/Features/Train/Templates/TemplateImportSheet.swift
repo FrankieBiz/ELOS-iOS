@@ -72,7 +72,7 @@ struct TemplateImportSheet: View {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(template.template_name)
-                        .font(.system(size: 26, weight: .bold))
+                        .font(.system(.title, weight: .bold))
                     Text("by \(template.owner_name)")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -83,14 +83,14 @@ struct TemplateImportSheet: View {
                     ForEach(Array(template.exercises.sorted { $0.order_index < $1.order_index }.enumerated()), id: \.offset) { _, ex in
                         HStack {
                             Text(ex.exercise_name)
-                                .font(.system(size: 15))
+                                .font(.subheadline)
                             Spacer()
                             Text("\(ex.target_sets)×\(ex.target_reps)")
-                                .font(.system(size: 13))
+                                .font(.footnote)
                                 .foregroundStyle(.secondary)
                             if let rpe = ex.target_rpe, rpe > 0 {
                                 Text("RPE \(Int(rpe))")
-                                    .font(.system(size: 11))
+                                    .font(.caption)
                                     .foregroundStyle(.tertiary)
                                     .padding(.leading, 4)
                             }
@@ -107,7 +107,7 @@ struct TemplateImportSheet: View {
                     importVM.importTemplate(template: template)
                 } label: {
                     Text("Copy to My Templates")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(.callout, weight: .semibold))
                         .frame(maxWidth: .infinity)
                 }
                 .elosPrimaryButton()
@@ -134,7 +134,7 @@ struct TemplateImportSheet: View {
     private func errorView(message: String) -> some View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.circle")
-                .font(.system(size: 44))
+                .font(.largeTitle)
                 .foregroundStyle(.secondary)
 
             if message == "404" {

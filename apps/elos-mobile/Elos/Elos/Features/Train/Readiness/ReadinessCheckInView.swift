@@ -2,6 +2,14 @@ import SwiftUI
 import SwiftData
 import Combine
 
+/// Pre-session readiness capture.
+///
+/// Redesigned away from an emoji-driven layout: 😴/💪/🧠/🔥 stood in for icons and 🟢/🟡/🔴 for a
+/// status light, which was the only place in the app not using SF Symbols and read as a mock-up.
+/// The score was printed as the literal string "🟡 3.0/5"; it is now a ring gauge with a plain-word
+/// verdict, since "Ready" is what the user actually wants to know and "3.0/5" is not self-evident.
+/// The four stock `Slider`s — five discrete stops each, dragged to snap — became tap-anywhere level
+/// meters, which are quicker, more precise, and stop the sheet looking like a settings screen.
 struct ReadinessCheckInView: View {
     @EnvironmentObject var vm: AppViewModel
     @Environment(\.modelContext) private var modelContext
@@ -19,104 +27,237 @@ struct ReadinessCheckInView: View {
         (sleepQuality + soreness + stress + motivation) / 4.0
     }
 
-    private var scoreColor: Color {
-        overallScore >= 4.0 ? .good : overallScore >= 2.5 ? .warn : .bad
+    /// One banded scale for the whole gauge.
+    ///
+    /// The colour, the verdict word and the advice line used to come from three separate `switch`es
+    /// with three different sets of breakpoints (4.0/2.5, 4.5/3.5/2.5/1.5, and 4.0/3.0/2.0). They
+    /// disagreed in the middle of the range: at 3.5 the sheet said "Ready" — a green-sounding word —
+    /// painted amber, over advice from the band below it. Derive all three from one enum so the
+    /// gauge cannot contradict itself, and match the per-metric ladder's good/tint/warn/bad scale.
+    private enum ReadinessBand {
+        case primed, ready, moderate, depleted, runDown
+
+        init(score: Double) {
+            switch score {
+            case 4.5...:    self = .primed
+            case 3.5..<4.5: self = .ready
+            case 2.5..<3.5: self = .moderate
+            case 1.5..<2.5: self = .depleted
+            default:        self = .runDown
+            }
+        }
+
+        var verdict: String {
+            switch self {
+            case .primed:   return "Primed"
+            case .ready:    return "Ready"
+            case .moderate: return "Moderate"
+            case .depleted: return "Depleted"
+            case .runDown:  return "Run down"
+            }
+        }
+
+        var guidance: String {
+            switch self {
+            case .primed:   return "Good day to push for a PR."
+            case .ready:    return "Train as planned."
+            case .moderate: return "Train as planned, but don't chase a PR."
+            case .depleted: return "Hold intensity, trim volume."
+            case .runDown:  return "Consider a light or recovery session."
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .primed, .ready: return Color.good
+            case .moderate:       return Color.tint
+            case .depleted:       return Color.warn
+            case .runDown:        return Color.bad
+            }
+        }
     }
 
-    private var scoreEmoji: String {
-        overallScore >= 4.0 ? "🟢" : overallScore >= 2.5 ? "🟡" : "🔴"
-    }
+    private var band: ReadinessBand { ReadinessBand(score: overallScore) }
+    private var scoreColor: Color   { band.color }
+    /// The number alone doesn't tell you what to do with it. A verdict does.
+    private var verdict: String     { band.verdict }
+    private var guidance: String    { band.guidance }
 
     var body: some View {
-        VStack(spacing: 20) {
-            // Header
-            VStack(spacing: 4) {
-                Text("Morning Check-In")
-                    .font(.title2).fontWeight(.bold)
-                Text("How are you feeling today?")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            }
-            .padding(.top, 12)
-
-            // Score
-            Text("\(scoreEmoji) \(String(format: "%.1f", overallScore))/5")
-                .font(.system(size: 32, weight: .bold, design: .monospaced))
-                .foregroundStyle(scoreColor)
-
-            // Apple Health recovery context (resting HR / steps / weight + hint)
-            if vm.healthKitEnabled, vm.healthSnapshot.hasAnyMetric {
-                healthMetricsCard
-            }
-
-            // Sliders
-            VStack(spacing: 16) {
-                ReadinessSlider(label: "Sleep Quality", emoji: "😴",
-                                value: $sleepQuality, lowLabel: "Poor", highLabel: "Great")
-                ReadinessSlider(label: "Soreness", emoji: "💪",
-                                value: $soreness, lowLabel: "Very sore", highLabel: "Fresh")
-                ReadinessSlider(label: "Stress", emoji: "🧠",
-                                value: $stress, lowLabel: "High stress", highLabel: "Calm")
-                ReadinessSlider(label: "Motivation", emoji: "🔥",
-                                value: $motivation, lowLabel: "Low", highLabel: "Pumped")
-            }
-            .padding(.horizontal, 20)
-
-            // Save button
-            Button {
-                save()
-            } label: {
-                Group {
-                    if checkInVM.saved {
-                        Label("Saved!", systemImage: "checkmark.circle.fill")
-                    } else if checkInVM.isSaving {
-                        ProgressView()
-                    } else {
-                        Text("Log Check-In")
-                    }
+        ScrollView {
+            VStack(spacing: Space.xl) {
+                header
+                gauge
+                if vm.healthKitEnabled, vm.healthSnapshot.hasAnyMetric {
+                    healthMetricsCard
                 }
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(checkInVM.saved ? Color.good : Color.tint)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                metrics
+                saveButton
+            }
+            .padding(.bottom, Space.xl)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    // MARK: Header
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                // Was hardcoded "Morning Check-In" — shown at 12:41pm during testing, which is the
+                // kind of detail that makes an app feel unfinished. The name is time-neutral now.
+                Text("Readiness")
+                    .font(.title2).fontWeight(.bold)
+                Text("Before you train")
+                    .font(.elosCaption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: Space.s)
+            Button { onDismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(.footnote, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 30, height: 30)
+                    .background(Color(.secondarySystemGroupedBackground), in: Circle())
             }
             .buttonStyle(.plain)
-            .disabled(checkInVM.isSaving || checkInVM.saved)
-            .padding(.horizontal, 20)
-
-            Spacer()
+            .accessibilityLabel("Skip check-in")
         }
-        .presentationDetents([.fraction(0.65)])
+        .padding(.horizontal, Space.xl)
+        .padding(.top, Space.l)
+    }
+
+    // MARK: Gauge
+
+    private var gauge: some View {
+        HStack(spacing: Space.xl) {
+            ZStack {
+                Circle()
+                    .stroke(Color.secondary.opacity(0.14), lineWidth: 9)
+                Circle()
+                    .trim(from: 0, to: max(0.02, overallScore / 5))
+                    .stroke(scoreColor, style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                Text(String(format: "%.1f", overallScore))
+                    .font(.elosNumeric(.title2, weight: .bold))
+                    .contentTransition(.numericText())
+            }
+            .frame(width: 86, height: 86)
+            .animation(.elosStandard, value: overallScore)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(verdict)
+                    .font(.title3).fontWeight(.bold)
+                    .foregroundStyle(scoreColor)
+                    .contentTransition(.opacity)
+                Text(guidance)
+                    .font(.elosCaption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .animation(.elosStandard, value: verdict)
+        .padding(.horizontal, Space.xl)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Readiness \(String(format: "%.1f", overallScore)) of 5, \(verdict)")
+    }
+
+    // MARK: Metrics
+
+    private var metrics: some View {
+        VStack(spacing: Space.l) {
+            ReadinessMetricRow(
+                label: "Sleep", icon: "moon.zzz.fill", value: $sleepQuality,
+                scale: ["Poor", "Fair", "Average", "Good", "Great"])
+            ReadinessMetricRow(
+                label: "Soreness", icon: "figure.cooldown", value: $soreness,
+                scale: ["Very sore", "Sore", "Manageable", "Mostly fresh", "Fresh"])
+            ReadinessMetricRow(
+                label: "Stress", icon: "brain.head.profile", value: $stress,
+                scale: ["High", "Elevated", "Moderate", "Low", "Calm"])
+            ReadinessMetricRow(
+                label: "Motivation", icon: "flame.fill", value: $motivation,
+                scale: ["Low", "Flat", "Steady", "Keen", "Pumped"])
+        }
+        .padding(Space.gutter)
+        .elosCard()
+        .padding(.horizontal, Space.gutter)
+    }
+
+    // MARK: Save
+
+    private var saveButton: some View {
+        Button {
+            save()
+        } label: {
+            Group {
+                if checkInVM.saved {
+                    Label("Logged", systemImage: "checkmark")
+                } else if checkInVM.isSaving {
+                    ProgressView().tint(.white)
+                } else {
+                    Text("Log Check-In")
+                }
+            }
+            .font(.system(.headline, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, Space.l)
+            .background(
+                checkInVM.saved ? Color.good : Color.tint,
+                in: RoundedRectangle(cornerRadius: Radius.button, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(checkInVM.isSaving || checkInVM.saved)
+        .animation(.elosQuick, value: checkInVM.saved)
+        .padding(.horizontal, Space.xl)
     }
 
     @ViewBuilder private var healthMetricsCard: some View {
         let snap = vm.healthSnapshot
-        VStack(spacing: 8) {
-            HStack(spacing: 12) {
-                if let rhr = snap.restingHeartRate { metricStat("Resting HR", "\(Int(rhr)) bpm") }
-                if let steps = snap.steps { metricStat("Steps", "\(steps)") }
-                if let w = snap.bodyWeightKg { metricStat("Weight", vm.weightUnit.formatWeight(kg: w)) }
+        VStack(spacing: Space.s) {
+            HStack(spacing: 0) {
+                if let rhr = snap.restingHeartRate {
+                    metricStat("Resting HR", "\(Int(rhr))", unit: "bpm", icon: "heart.fill", tint: .bad)
+                }
+                if let steps = snap.steps {
+                    metricStat("Steps", "\(steps)", unit: "", icon: "shoeprints.fill", tint: .tint)
+                }
+                if let w = snap.bodyWeightKg {
+                    metricStat("Weight", vm.weightUnit.formatValue(kg: w, decimals: 1),
+                               unit: vm.weightUnit.label, icon: "scalemass.fill", tint: .good)
+                }
             }
             if let hint = snap.recoveryHint {
                 Text(hint)
-                    .font(.caption2).foregroundStyle(Color.warn)
+                    .font(.elosCaption).foregroundStyle(Color.warn)
                     .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(12)
+        .padding(Space.gutter)
         .frame(maxWidth: .infinity)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .padding(.horizontal, 20)
+        .elosCard()
+        .padding(.horizontal, Space.gutter)
     }
 
-    private func metricStat(_ label: String, _ value: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value).font(.system(size: 16, weight: .bold, design: .rounded))
-            Text(label).font(.caption2).foregroundStyle(.secondary)
+    private func metricStat(_ label: String, _ value: String, unit: String,
+                            icon: String, tint: Color) -> some View {
+        VStack(spacing: 3) {
+            Image(systemName: icon).font(.elosMicro).foregroundStyle(tint)
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value).font(.elosNumeric(.subheadline, weight: .bold))
+                if !unit.isEmpty {
+                    Text(unit).font(.elosMicro).foregroundStyle(.secondary)
+                }
+            }
+            Text(label).font(.elosMicro).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 
     private func save() {
@@ -177,36 +318,80 @@ final class ReadinessCheckInViewModel: ObservableObject {
     }
 }
 
-// MARK: - Readiness Slider
+// MARK: - Metric Row
 
-private struct ReadinessSlider: View {
+/// One readiness dimension as a five-stop level meter.
+///
+/// Replaces a `Slider(in: 1...5, step: 1)`: a continuous control faking five discrete stops meant
+/// dragging and waiting for a snap to set a value the user already knew. Here every level is a
+/// direct tap, and the filled-bar shape reads as a level at a glance rather than needing its number.
+private struct ReadinessMetricRow: View {
     let label: String
-    let emoji: String
+    let icon: String
     @Binding var value: Double
-    let lowLabel: String
-    let highLabel: String
+    /// One word per level, low to high.
+    ///
+    /// A "Poor … Great" pair at the ends of the track only reads as a direction, and an earlier cut
+    /// that hid those ends unless the value was extreme left the default midpoint with no cue at all
+    /// about which way the scale ran. Naming the *current* level instead is unambiguous at every
+    /// position, and costs no extra row.
+    let scale: [String]
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("\(emoji) \(label)")
-                    .font(.subheadline).fontWeight(.medium)
-                Spacer()
-                Text("\(Int(value))/5")
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-            Slider(value: $value, in: 1...5, step: 1)
-                .tint(sliderColor)
-            HStack {
-                Text(lowLabel).font(.caption2).foregroundStyle(.secondary)
-                Spacer()
-                Text(highLabel).font(.caption2).foregroundStyle(.secondary)
-            }
-        }
+    private var level: Int { Int(value) }
+    private var levelName: String { scale[min(max(level, 1), scale.count) - 1] }
+
+    private var color: Color {
+        level >= 4 ? .good : level >= 3 ? .tint : level >= 2 ? .warn : .bad
     }
 
-    private var sliderColor: Color {
-        value >= 4 ? .good : value >= 3 ? .tint : .warn
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            HStack(spacing: Space.s) {
+                Image(systemName: icon)
+                    .font(.elosCaption)
+                    .foregroundStyle(color)
+                    .frame(width: 18)
+                Text(label)
+                    .font(.system(.subheadline, weight: .semibold))
+                Spacer()
+                Text(levelName)
+                    .font(.elosCaption)
+                    .foregroundStyle(color)
+                    .contentTransition(.opacity)
+            }
+
+            HStack(spacing: Space.xs + 2) {
+                ForEach(1...5, id: \.self) { step in
+                    let filled = step <= level
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(filled ? color : Color.secondary.opacity(0.16))
+                        .frame(height: 10)
+                        .frame(maxWidth: .infinity)
+                        // The 10pt bar is the drawn height, not the target — a taller transparent
+                        // overlay keeps every stop comfortably tappable.
+                        .overlay {
+                            Rectangle()
+                                .fill(.clear)
+                                .frame(height: 40)
+                                .contentShape(.rect)
+                                .onTapGesture {
+                                    HapticManager.impact(.light)
+                                    withAnimation(.elosQuick) { value = Double(step) }
+                                }
+                        }
+                }
+            }
+        }
+        .animation(.elosQuick, value: level)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue("\(levelName), \(level) of 5")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: if level < 5 { value = Double(level + 1) }
+            case .decrement: if level > 1 { value = Double(level - 1) }
+            @unknown default: break
+            }
+        }
     }
 }

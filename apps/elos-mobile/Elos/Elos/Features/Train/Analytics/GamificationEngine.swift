@@ -105,14 +105,48 @@ struct GamificationEngine {
                 .compactMap { $0.finishedAt }
                 .map { cal.startOfDay(for: $0) }
         )
+        guard !completedDays.isEmpty else { return 0 }
+
+        // Anchor at today if it's already logged; otherwise at yesterday, so a streak stays
+        // alive through the current day until it's actually missed. Anchoring at today
+        // unconditionally would report 0 every morning before that day's workout is logged, even
+        // coming off a long streak — this matches how every other streak UI (Duolingo, Apple
+        // Fitness) reads: "still on" until a full day passes with nothing logged.
+        let today = cal.startOfDay(for: Date())
+        let anchor: Date? = completedDays.contains(today) ? today : cal.date(byAdding: .day, value: -1, to: today)
+        guard var date = anchor, completedDays.contains(date) else { return 0 }
+
         var streak = 0
-        var date = cal.startOfDay(for: Date())
         while completedDays.contains(date) {
             streak += 1
             guard let prev = cal.date(byAdding: .day, value: -1, to: date) else { break }
             date = prev
         }
         return streak
+    }
+
+    /// Longest run of consecutive logged days, anywhere in the history — not just the run that is
+    /// still alive today. `workoutStreak` answers "am I on a streak right now"; this answers
+    /// "what's my best ever", which is what a stat board labelled "Best Streak" means.
+    static func bestWorkoutStreak(sessions: [WorkoutSessionRecord]) -> Int {
+        let cal = Calendar.current
+        let days = Set(sessions.compactMap { $0.finishedAt }.map { cal.startOfDay(for: $0) })
+        guard !days.isEmpty else { return 0 }
+
+        var best = 0
+        for day in days {
+            // Only count from the start of a run, so each run is measured once.
+            guard let prev = cal.date(byAdding: .day, value: -1, to: day), !days.contains(prev) else { continue }
+            var length = 0
+            var cursor = day
+            while days.contains(cursor) {
+                length += 1
+                guard let next = cal.date(byAdding: .day, value: 1, to: cursor) else { break }
+                cursor = next
+            }
+            best = max(best, length)
+        }
+        return best
     }
 
     static func progress(totalXP xp: Int) -> UserProgress {

@@ -3,6 +3,11 @@ import SwiftUI
 struct MachineSelectionSheet: View {
     let exerciseName: String
     let variants: [EquipmentRecord]
+    /// Machine identities the app has learned the lifter's active gym has. Empty means "unknown" —
+    /// no gym selected, learning off, or nothing learned yet — and must change nothing about this
+    /// sheet, since an unknown gym is not an empty one.
+    var gymDedupeKeys: Set<String> = []
+    var gymName: String = ""
     let onPick: (EquipmentRecord?) -> Void
 
     @State private var query = ""
@@ -17,6 +22,20 @@ struct MachineSelectionSheet: View {
         }
     }
 
+    /// The variants that are actually at the lifter's gym. This is the highest-leverage place the
+    /// learned inventory pays off: "Leg Extension" can offer 30 brands, and exactly one of them is
+    /// the machine standing in front of you.
+    private var atGym: [EquipmentRecord] {
+        guard !gymDedupeKeys.isEmpty else { return [] }
+        return filtered.filter { gymDedupeKeys.contains($0.dedupeKey) }
+    }
+
+    private var elsewhere: [EquipmentRecord] {
+        guard !atGym.isEmpty else { return filtered }
+        let shown = Set(atGym.map(\.equipmentId))
+        return filtered.filter { !shown.contains($0.equipmentId) }
+    }
+
     var body: some View {
         NavigationView {
             List {
@@ -27,30 +46,16 @@ struct MachineSelectionSheet: View {
                         .listRowBackground(Color.clear)
                 }
 
-                Section(header: Text("\(variants.count) machine\(variants.count == 1 ? "" : "s") found")) {
-                    ForEach(filtered) { machine in
-                        Button {
-                            onPick(machine)
-                            dismiss()
-                        } label: {
-                            HStack(spacing: 10) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(machine.brandName)
-                                        .font(.subheadline).fontWeight(.semibold)
-                                        .foregroundStyle(.primary)
-                                    if !machine.modelSeries.isEmpty {
-                                        Text(machine.modelSeries)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                equipTypeBadge(machine.equipmentType)
-                            }
-                            .padding(.vertical, 2)
-                        }
-                        .buttonStyle(.plain)
+                if !atGym.isEmpty {
+                    Section(header: Text("At \(gymName.isEmpty ? "your gym" : gymName)")) {
+                        ForEach(atGym) { machine in machineButton(machine, atGym: true) }
                     }
+                }
+
+                Section(header: Text(atGym.isEmpty
+                                     ? "\(variants.count) machine\(variants.count == 1 ? "" : "s") found"
+                                     : "Other machines")) {
+                    ForEach(elsewhere) { machine in machineButton(machine, atGym: false) }
                 }
 
                 Section {
@@ -78,6 +83,35 @@ struct MachineSelectionSheet: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder private func machineButton(_ machine: EquipmentRecord, atGym: Bool) -> some View {
+        Button {
+            onPick(machine)
+            dismiss()
+        } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(machine.brandName)
+                        .font(.subheadline).fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                    if !machine.modelSeries.isEmpty {
+                        Text(machine.modelSeries)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if atGym {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(Color.good)
+                }
+                equipTypeBadge(machine.equipmentType)
+            }
+            .padding(.vertical, 2)
+        }
+        .buttonStyle(.plain)
     }
 
     private func equipTypeBadge(_ type: String) -> some View {

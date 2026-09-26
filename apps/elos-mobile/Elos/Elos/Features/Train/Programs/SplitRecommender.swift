@@ -17,7 +17,13 @@ struct SplitRecommender {
     static func recommend(input: SplitFinderInput) -> [SplitRecommendation] {
         var eligible = allTemplates
             .filter { $0.compatibleDays.contains(input.daysPerWeek) }
-            .filter { passes(eligibility: $0, input: input) }
+
+        // A hard eligibility gate (e.g. small gym + high barbell preference ruling out every
+        // template compatible with 6 days/week) can legitimately empty this out for a real answer
+        // combination. Same fallback shape as `preferredStructure` below: prefer eligible templates,
+        // but never let the filter alone produce a blank results screen after a full quiz.
+        let gated = eligible.filter { passes(eligibility: $0, input: input) }
+        if !gated.isEmpty { eligible = gated }
 
         if let preferred = input.preferredStructure {
             let constrained = eligible.filter { $0.style == preferred }

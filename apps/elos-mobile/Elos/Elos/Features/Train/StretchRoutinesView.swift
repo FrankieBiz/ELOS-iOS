@@ -198,7 +198,7 @@ private struct StretchRoutineCard: View {
                     .fill(Color.tint.opacity(0.12))
                     .frame(width: 48, height: 48)
                 Image(systemName: routine.icon)
-                    .font(.system(size: 20))
+                    .font(.title3)
                     .foregroundStyle(Color.tint)
             }
 
@@ -219,7 +219,7 @@ private struct StretchRoutineCard: View {
 
             VStack(alignment: .trailing, spacing: 4) {
                 Text("\(routine.durationMinutes) min")
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .font(.system(.footnote, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Image(systemName: "chevron.right")
                     .font(.caption2)
@@ -243,7 +243,7 @@ private struct StretchRoutineDetailView: View {
                 // Header card
                 VStack(spacing: 8) {
                     Image(systemName: routine.icon)
-                        .font(.system(size: 32))
+                        .font(.title)
                         .foregroundStyle(Color.tint)
                     Text(routine.name)
                         .font(.title3).fontWeight(.bold)
@@ -292,7 +292,7 @@ private struct StretchRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Text("\(number)")
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .font(.system(.footnote, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .frame(width: 24, alignment: .center)
                 .padding(.top, 2)

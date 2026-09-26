@@ -45,7 +45,7 @@ struct WorkoutSplitDetailView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(duration: 0.3), value: copiedMessage)
+        .animation(.elosEmphasis, value: copiedMessage)
         .sheet(isPresented: $showCustomize) {
             CreateSplitView(template: split) { showCustomize = false }
                 .environmentObject(vm)
@@ -196,7 +196,7 @@ struct WorkoutSplitDetailView: View {
     @ViewBuilder private func dayAccordion(_ day: SplitWorkoutDay) -> some View {
         VStack(spacing: 0) {
             Button {
-                withAnimation(.spring(duration: 0.25)) {
+                withAnimation(.elosEmphasis) {
                     if expandedDays.contains(day.focus) {
                         expandedDays.remove(day.focus)
                     } else {
@@ -209,7 +209,7 @@ struct WorkoutSplitDetailView: View {
                         .font(.subheadline).fontWeight(.semibold)
                         .foregroundStyle(.primary)
                     Spacer()
-                    Text("\(day.exercises.count) exercises")
+                    Text(day.exercises.count.pluralized("exercise"))
                         .font(.caption).foregroundStyle(.secondary)
                     Image(systemName: expandedDays.contains(day.focus) ? "chevron.up" : "chevron.down")
                         .font(.caption).foregroundStyle(.secondary)

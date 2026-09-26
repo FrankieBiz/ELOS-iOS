@@ -71,7 +71,12 @@ struct MachineDetailView: View {
                     if !m.exercises.isEmpty { exercisesCard(m.exercises) }
                     if !m.substitutions.isEmpty { substitutionsCard(m.substitutions) }
                 } else {
-                    Text("Could not load machine.").foregroundStyle(.secondary).padding(.top, 40)
+                    VStack(spacing: 12) {
+                        Text("Could not load machine.").foregroundStyle(.secondary)
+                        Button("Retry") { Task { await detailVM.loadMachine(slug: slug) } }
+                            .font(.subheadline).fontWeight(.semibold).foregroundStyle(Color.tint)
+                    }
+                    .padding(.top, 40)
                 }
             }
             .padding(16)
@@ -91,7 +96,8 @@ struct MachineDetailView: View {
 
     private func headerCard(_ m: MachineDetailAPIResponse) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(spacing: 12) {
+                RemoteThumbnail(urlString: m.image_url, shape: .rounded(10), size: 56, tint: .good, fallbackSystemImage: "dumbbell")
                 Text(m.name).font(.title3).fontWeight(.bold)
                 Spacer()
                 Text(m.equipment_type.replacingOccurrences(of: "_", with: " ").capitalized)
@@ -177,7 +183,9 @@ struct MachineDetailView: View {
             HStack {
                 Text("Exercises on This Machine").font(.subheadline).fontWeight(.semibold)
                 Spacer()
-                Text("Tap ★ to save").font(.caption2).foregroundStyle(.secondary)
+                if exercises.contains(where: { $0.exercise_id != nil }) {
+                    Text("Tap ★ to save").font(.caption2).foregroundStyle(.secondary)
+                }
             }
             ForEach(exercises, id: \.exercise_name) { ex in
                 HStack {
@@ -191,9 +199,10 @@ struct MachineDetailView: View {
                         } label: {
                             Image(systemName: detailVM.favoritedExerciseIDs.contains(id) ? "star.fill" : "star")
                                 .foregroundStyle(detailVM.favoritedExerciseIDs.contains(id) ? .yellow : .secondary)
-                                .font(.system(size: 14))
+                                .font(.subheadline)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Toggle favourite")
                     }
                 }
                 if let notes = ex.notes, !notes.isEmpty {

@@ -30,7 +30,7 @@ enum RepRestScorer {
                 tips.append(QualityTip(
                     id: "rr-reps", dimension: .repRest, severity: .info,
                     message: "Most of your rep targets don't match \(profile.goal.displayName) — train mainly in the \(repRange.low)–\(repRange.high) rep range.",
-                    action: .noAction))
+                    action: .retuneReps))
             }
         }
 
@@ -53,7 +53,7 @@ enum RepRestScorer {
                     tips.append(QualityTip(
                         id: "rr-rest", dimension: .repRest, severity: .info,
                         message: restMessage(for: profile.goal, range: restRange),
-                        action: .noAction))
+                        action: .retuneRest))
                 }
             }
         }

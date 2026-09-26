@@ -34,6 +34,7 @@ private struct BrandMachine: Decodable, Identifiable {
 private final class BrandsBrowseViewModel: ObservableObject {
     @Published var groups: [BrandGroup] = []
     @Published var isLoading = false
+    @Published var loadFailed = false
 
     func load() async {
         isLoading = true
@@ -41,7 +42,11 @@ private final class BrandsBrowseViewModel: ObservableObject {
         do {
             let response: BrandsGroupedResponse = try await ApiClient.shared.get("/machines/by-brand")
             groups = response.groups.sorted { $0.brand.name < $1.brand.name }
-        } catch {}
+            loadFailed = false
+        } catch {
+            // Distinguish a failed load from a genuinely empty catalog.
+            loadFailed = groups.isEmpty
+        }
     }
 }
 
@@ -56,9 +61,28 @@ struct BrandsBrowseView: View {
             Group {
                 if vm.isLoading && vm.groups.isEmpty {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if vm.groups.isEmpty && vm.loadFailed {
+                    VStack(spacing: 10) {
+                        Image(systemName: "wifi.exclamationmark").font(.largeTitle).foregroundStyle(.secondary)
+                        Text("Couldn't load brands").font(.headline)
+                        Text("Check your connection and try again.")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        Button {
+                            Task { await vm.load() }
+                        } label: {
+                            Label("Retry", systemImage: "arrow.clockwise")
+                                .font(.subheadline).fontWeight(.semibold)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 20).padding(.vertical, 10)
+                                .background(Color.tint)
+                                .clipShape(Capsule())
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if vm.groups.isEmpty {
                     VStack(spacing: 8) {
-                        Image(systemName: "rectangle.stack").font(.system(size: 36)).foregroundStyle(.secondary)
+                        Image(systemName: "rectangle.stack").font(.largeTitle).foregroundStyle(.secondary)
                         Text("No brands yet").font(.subheadline).foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -143,12 +167,7 @@ private struct BrandDetailView: View {
             ForEach(group.machines) { m in
                 NavigationLink(destination: MachineDetailView(slug: m.slug)) {
                     HStack(spacing: 12) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.good.opacity(0.12))
-                                .frame(width: 40, height: 40)
-                            Image(systemName: "dumbbell").foregroundStyle(Color.good)
-                        }
+                        RemoteThumbnail(urlString: m.image_url, shape: .rounded(8), size: 40, tint: .good, fallbackSystemImage: "dumbbell")
                         VStack(alignment: .leading, spacing: 2) {
                             Text(m.name).font(.subheadline).fontWeight(.semibold)
                             HStack(spacing: 4) {

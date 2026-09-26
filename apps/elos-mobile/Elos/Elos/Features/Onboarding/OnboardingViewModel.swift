@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import SwiftData
+import SwiftUI
 
 struct ProfileUpdateBody: Codable {
     var first_name: String?
@@ -95,10 +96,12 @@ final class OnboardingViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
             let available = await Self.checkAvailability(normalized)
             guard !Task.isCancelled, self.username == normalized else { return }
-            switch available {
-            case .some(true):  self.usernameStatus = .available
-            case .some(false): self.usernameStatus = .taken
-            case .none:        self.usernameStatus = .unknown   // couldn't reach the server
+            withAnimation {
+                switch available {
+                case .some(true):  self.usernameStatus = .available
+                case .some(false): self.usernameStatus = .taken
+                case .none:        self.usernameStatus = .unknown   // couldn't reach the server
+                }
             }
         }
     }

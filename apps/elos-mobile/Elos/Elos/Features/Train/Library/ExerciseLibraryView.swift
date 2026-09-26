@@ -83,8 +83,46 @@ class ExerciseLibraryViewModel: ObservableObject {
     }
 
     var filtered: [ExerciseDefinitionRecord] {
-        guard !searchText.isEmpty else { return definitions }
-        return definitions.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        let matching = searchText.isEmpty
+            ? definitions
+            : definitions.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        return Self.deduped(matching)
+    }
+
+    /// Collapse records that describe the same lift on the same equipment.
+    ///
+    /// The sync path already converges a locally seeded row with its server twin, but it can only do
+    /// that when the *server* sent one row. When the server itself holds two rows for one lift under
+    /// different ids, nothing upstream can merge them and the library listed the same exercise twice
+    /// or three times. Deduping at the point of display means DB drift can never show the user
+    /// triplicates, independent of whatever cleanup happens server-side.
+    ///
+    /// Custom (user-authored) exercises are deliberately exempt: someone may legitimately keep their
+    /// own variant alongside the catalog entry, and silently hiding a row the user created is worse
+    /// than showing two.
+    static func deduped(_ records: [ExerciseDefinitionRecord]) -> [ExerciseDefinitionRecord] {
+        var best: [String: ExerciseDefinitionRecord] = [:]
+        var custom: [ExerciseDefinitionRecord] = []
+
+        for r in records {
+            guard !r.isCustom else { custom.append(r); continue }
+            let key = "\(MuscleTaxonomy.normalize(r.name))|\(MuscleTaxonomy.normalize(r.equipment))"
+            guard let incumbent = best[key] else { best[key] = r; continue }
+            // Keep whichever copy carries more detail, so deduping never costs the user how-to
+            // content or a demo image. Ids break ties so the choice is stable across launches.
+            if richness(r) > richness(incumbent)
+                || (richness(r) == richness(incumbent) && r.id < incumbent.id) {
+                best[key] = r
+            }
+        }
+        return best.values + custom
+    }
+
+    private static func richness(_ r: ExerciseDefinitionRecord) -> Int {
+        var score = 0
+        if r.instructionsJSON != "[]" && !r.instructionsJSON.isEmpty { score += 2 }
+        if !r.imageKey.isEmpty { score += 1 }
+        return score
     }
 
     var grouped: [(key: String, exercises: [ExerciseDefinitionRecord])] {
@@ -188,6 +226,7 @@ struct ExerciseLibraryView: View {
                 ExercisePickerView(onPickSingle: { picked in
                     pickedDetail = libVM.definitions.first { $0.id == picked.id }
                     showAdvancedPicker = false
+                    return true
                 })
             }
             .navigationDestination(item: $pickedDetail) { ex in
@@ -206,7 +245,11 @@ private struct ExerciseRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack {
-                Text(exercise.name).font(.subheadline).fontWeight(.semibold)
+                // Some catalog rows carry stray interior whitespace ("Dumbbell Turkish  Get-Up"),
+                // which wrapped mid-name and rendered the second line visibly indented. Collapse it
+                // for display rather than trusting the stored string to be clean.
+                Text(exercise.name.split(whereSeparator: \.isWhitespace).joined(separator: " "))
+                    .font(.system(.subheadline, weight: .semibold))
                 if exercise.isCustom {
                     Text("Custom")
                         .font(.caption2).fontWeight(.semibold)
@@ -216,10 +259,13 @@ private struct ExerciseRow: View {
                         .clipShape(Capsule())
                 }
             }
-            Text([exercise.primaryMuscle, exercise.equipment]
+            // These were raw database keys ("traps", "rear_delts", "ez_bar"). The picker was fixed to
+            // use `muscleDisplayName` in 363ea90 but the library still showed users the schema.
+            Text([exercise.primaryMuscle.muscleDisplayName,
+                  exercise.equipment.muscleDisplayName]
                     .filter { !$0.isEmpty }
                     .joined(separator: " · "))
-                .font(.caption)
+                .font(.elosCaption)
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)

@@ -1,11 +1,33 @@
 import SwiftUI
 
+/// An annulus (ring) via the even-odd fill rule: outer circle minus a smaller concentric circle,
+/// leaving a real hole through the shape rather than an opaque disc with a fake centre dot drawn
+/// on top — whatever's behind (the card background) shows through correctly.
+private struct PlateDiscShape: Shape {
+    var holeRatio: CGFloat = 0.32
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.addEllipse(in: rect)
+        let holeSize = rect.width * holeRatio
+        let holeRect = CGRect(
+            x: rect.midX - holeSize / 2, y: rect.midY - holeSize / 2,
+            width: holeSize, height: holeSize
+        )
+        path.addEllipse(in: holeRect)
+        return path
+    }
+}
+
 struct PlateCalculatorView: View {
     @EnvironmentObject private var vm: AppViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var targetWeight: Double = 135
     @State private var useKg = false
     @State private var didInit = false
+    /// Set right before `onAppear` assigns `useKg` from the stored preference, so the unit-change
+    /// conversion below doesn't re-derive `targetWeight` from itself and mangle the just-set default.
+    @State private var suppressUnitConversion = false
 
     private let barWeightLbs: Double = 45
     private let barWeightKg: Double  = 20
@@ -14,7 +36,26 @@ struct PlateCalculatorView: View {
 
     private var barWeight: Double { useKg ? barWeightKg : barWeightLbs }
     private var availablePlates: [Double] { useKg ? platesKg : platesLbs }
-    private var unit: String { useKg ? "kg" : "lbs" }
+    /// Matches the rest of the app, which says "lb" — this screen was the only place saying "lbs".
+    private var unit: String { useKg ? "kg" : "lb" }
+
+    /// Whole numbers plain, halves with one decimal: "60", "62.5".
+    static func format(_ v: Double) -> String {
+        v == v.rounded() ? String(Int(v)) : String(format: "%.1f", v)
+    }
+
+    static func rounded(_ v: Double, toNearest step: Double) -> Double {
+        (v / step).rounded() * step
+    }
+
+    /// What the listed plates actually add up to. Shown as the total instead of echoing the target:
+    /// a calculator that reports back your own input can't tell you when it failed to hit it.
+    private var loadedTotal: Double {
+        barWeight + 2 * platesPerSide.reduce(0) { $0 + $1.weight * Double($1.count) }
+    }
+
+    /// Non-zero when no combination of available plates reaches the target.
+    private var shortfall: Double { max(0, targetWeight - loadedTotal) }
 
     private var platesPerSide: [(weight: Double, count: Int)] {
         var remaining = max(0, (targetWeight - barWeight) / 2)
@@ -51,6 +92,11 @@ struct PlateCalculatorView: View {
             .scrollIndicators(.hidden)
             .navigationTitle("Plate Calculator")
             .navigationBarTitleDisplayMode(.inline)
+            // This is a compact calculator, not a dashboard — a full-height sheet left roughly the
+            // bottom third of the screen as bare black space below the last card. `.medium` matches
+            // the container to the content; `.large` stays reachable by dragging up.
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }.fontWeight(.semibold)
@@ -59,8 +105,18 @@ struct PlateCalculatorView: View {
             .onAppear {
                 guard !didInit else { return }
                 didInit = true
+                suppressUnitConversion = true
                 useKg = vm.weightUnit == .kg
                 targetWeight = useKg ? 60 : 135
+            }
+            // Convert on unit change. Without this the *number* stayed put, so flipping lbs→kg turned a
+            // 135 lb target into a 135 kg one — nearly 300 lb, silently.
+            .onChange(of: useKg) { wasKg, nowKg in
+                if suppressUnitConversion { suppressUnitConversion = false; return }
+                guard wasKg != nowKg else { return }
+                let kg = wasKg ? targetWeight : targetWeight / 2.2046226218
+                let converted = nowKg ? kg : kg * 2.2046226218
+                targetWeight = max(barWeight, Self.rounded(converted, toNearest: nowKg ? 2.5 : 5))
             }
         }
     }
@@ -74,7 +130,7 @@ struct PlateCalculatorView: View {
                     .font(.subheadline).fontWeight(.semibold)
                 Spacer()
                 Picker("Unit", selection: $useKg) {
-                    Text("lbs").tag(false)
+                    Text("lb").tag(false)
                     Text("kg").tag(true)
                 }
                 .pickerStyle(.segmented)
@@ -87,24 +143,29 @@ struct PlateCalculatorView: View {
                     targetWeight = max(barWeight, targetWeight - (useKg ? 2.5 : 5))
                 } label: {
                     Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 38))
+                        .font(.largeTitle)
                         .foregroundStyle(Color.tint)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Decrease target weight")
 
-                Text("\(Int(targetWeight))")
-                    .font(.system(size: 52, weight: .bold, design: .monospaced))
+                // Not `Int(targetWeight)`: kg steps in 2.5s, so 62.5 rendered as "62" while the plate
+                // maths below correctly loaded for 62.5 — the headline number disagreed with the plates.
+                Text(Self.format(targetWeight))
+                    .font(.elosNumeric(.largeTitle))
                     .frame(minWidth: 100)
+                    .contentTransition(.numericText())
 
                 Button {
                     HapticManager.impact(.light)
                     targetWeight += (useKg ? 2.5 : 5)
                 } label: {
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 38))
+                        .font(.largeTitle)
                         .foregroundStyle(Color.tint)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Increase target weight")
             }
             .frame(maxWidth: .infinity)
 
@@ -125,20 +186,23 @@ struct PlateCalculatorView: View {
                 .foregroundStyle(.secondary)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 3) {
+                HStack(spacing: -14) {
                     Rectangle()
-                        .fill(Color.secondary.opacity(0.2))
-                        .frame(width: 16, height: 10)
+                        .fill(Color.secondary.opacity(0.25))
+                        .frame(width: 22, height: 12)
+                        .zIndex(1)
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.secondary.opacity(0.5))
-                        .frame(width: 6, height: 28)
+                        .fill(Color.secondary.opacity(0.6))
+                        .frame(width: 8, height: 30)
+                        .zIndex(1)
                     ForEach(Array(platesPerSide.flatMap { pair in
                         Array(repeating: pair.weight, count: pair.count)
-                    }.enumerated()), id: \.offset) { _, plate in
-                        plateBlock(plate)
+                    }.enumerated()), id: \.offset) { i, plate in
+                        plateBlock(plate).zIndex(Double(-i))
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 8)
             }
         }
         .padding(16)
@@ -146,14 +210,14 @@ struct PlateCalculatorView: View {
     }
 
     private func plateBlock(_ weight: Double) -> some View {
-        let height: CGFloat = {
+        let diameter: CGFloat = {
             switch weight {
-            case 45, 20:    return 72
-            case 35, 15:    return 62
-            case 25, 10:    return 52
-            case 5:         return 42
-            case 2.5:       return 34
-            default:        return 28
+            case 45, 20:    return 76
+            case 35, 15:    return 66
+            case 25, 10:    return 56
+            case 5:         return 46
+            case 2.5:       return 38
+            default:        return 32
             }
         }()
         let color: Color = {
@@ -166,12 +230,18 @@ struct PlateCalculatorView: View {
             }
         }()
         let label = weight.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(weight))" : String(weight)
-        return VStack(spacing: 3) {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(color)
-                .frame(width: 20, height: height)
+        return VStack(spacing: 4) {
+            // A real plate viewed edge-on is a disc with a hole through its centre for the bar —
+            // the old flat coloured bar read as a UI placeholder, not a weight plate. The even-odd
+            // fill rule punches a true hole through to whatever's behind (the card background),
+            // rather than faking it with an opaque circle that'd mismatch against any card texture.
+            PlateDiscShape()
+                .fill(color.gradient, style: FillStyle(eoFill: true))
+                .overlay(PlateDiscShape().stroke(color.opacity(0.5), lineWidth: 1))
+                .frame(width: diameter, height: diameter)
+                .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
             Text(label)
-                .font(.system(size: 8, weight: .bold))
+                .font(.system(.caption2, weight: .bold))
                 .foregroundStyle(.secondary)
         }
     }
@@ -204,7 +274,7 @@ struct PlateCalculatorView: View {
                             .font(.subheadline)
                         Spacer()
                         Text("\(pair.count * 2)")
-                            .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                            .font(.system(.subheadline, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 16).padding(.vertical, 10)
@@ -213,13 +283,25 @@ struct PlateCalculatorView: View {
                 Divider()
                 HStack {
                     Text("Total")
-                        .font(.subheadline).fontWeight(.semibold)
+                        .font(.system(.subheadline, weight: .semibold))
                     Spacer()
-                    Text("\(Int(targetWeight)) \(unit)")
-                        .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    Text("\(Self.format(loadedTotal)) \(unit)")
+                        .font(.elosNumeric(.subheadline))
                         .foregroundStyle(Color.tint)
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
+
+                if shortfall > 0 {
+                    // The smallest plate can't close the gap. Say so — silently loading less than
+                    // asked for is the one thing a plate calculator must never do.
+                    Divider()
+                    Label("\(Self.format(shortfall)) \(unit) short — no plate small enough to close the gap.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .labelStyle(.titleAndIcon)
+                        .font(.elosCaption)
+                        .foregroundStyle(Color.warn)
+                        .padding(.horizontal, 16).padding(.bottom, 12)
+                }
             }
         }
         .elosCard()

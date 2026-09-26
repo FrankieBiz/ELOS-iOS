@@ -34,6 +34,7 @@ final class TrainingContext: ObservableObject {
     @Published var showSplitFinder    = false
     @Published var showAnalytics      = false
     @Published var showLibrary        = false
+    @Published var showDiscover       = false
     @Published var showTemplates      = false
     @Published var showHistory        = false
     @Published var showStretches      = false
@@ -73,6 +74,21 @@ final class TrainingContext: ObservableObject {
 
     func readinessDidComplete(_ record: ReadinessCheckInRecord) {
         showReadinessSheet = false
+    }
+
+    /// Puts the session into warmup or straight into active, depending on the split. Shared by every
+    /// entry point that can start a session (Train tab, Today tab's quick-start) so `phase` is never
+    /// left stale from whatever the previous session ended in.
+    func startSession(activeSplit: UserSplitRecord?) {
+        if activeSplit?.includeWarmups == true {
+            let goal: TrainingGoal = activeSplit?.name.lowercased().contains("athletic") == true
+                ? .athletic : .hypertrophy
+            warmupExercises = WarmupLibrary.block(goal: goal, style: .dynamic)
+            warmupPhaseComplete = false
+            phase = .warmup
+        } else {
+            phase = .active
+        }
     }
 
     func sessionDidEnd(summary: SessionSummary) {

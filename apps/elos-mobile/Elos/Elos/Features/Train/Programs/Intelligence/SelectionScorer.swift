@@ -5,7 +5,8 @@ import Foundation
 enum SelectionScorer {
     static func score(resolvedDays: [[ResolvedExercise]],
                       scope: QualityScope,
-                      profile: TrainingProfile) -> DimensionScore {
+                      profile: TrainingProfile,
+                      movement: MovementProfile) -> DimensionScore {
         let known = resolvedDays.flatMap { $0 }.filter { $0.candidate != nil }
         guard !known.isEmpty else {
             return DimensionScore(dimension: .selection, score: 70, tips: [])
@@ -14,9 +15,11 @@ enum SelectionScorer {
         var tips: [QualityTip] = []
         var penalties = 0.0
 
-        // Compound fraction (by exercise count)
-        let compoundCount = known.filter { $0.isCompound }.count
-        let fraction = Double(compoundCount) / Double(known.count)
+        // Compound fraction, read from the shared analyzer rather than recomputed here.
+        // Deliberately the *by-count* fraction: `minCompoundFraction` was tuned against exercise
+        // counts, and switching to the by-sets fraction would silently retune a shipped score.
+        // (The by-sets figure is what the stacked bar renders — see `MovementProfile`.)
+        let fraction = movement.compoundFractionByCount
         let minFraction = TrainingScience.minCompoundFraction(for: profile.experience)
         if fraction < minFraction {
             penalties += 0.25
@@ -37,15 +40,16 @@ enum SelectionScorer {
                 action: .addPattern("hinge")))
         }
 
-        // Order: a heavy isolation before a compound, per day
-        for day in resolvedDays where day.count > 1 {
+        // Order: a heavy isolation before a compound, per day. The tip carries the day index so the
+        // split builder knows which day to reorder — at weekly scope there's no implicit "the day".
+        for (dayIndex, day) in resolvedDays.enumerated() where day.count > 1 {
             if let isoIndex = isolationBeforeCompound(day) {
                 penalties += 0.10
                 let isoName = day[isoIndex].exercise.name
                 tips.append(QualityTip(
                     id: "sel-order", dimension: .selection, severity: .info,
                     message: "Lead with compounds — \(isoName) comes before a bigger lift. Save isolations for after the heavy work.",
-                    action: .reorder))
+                    action: .reorder(dayIndex: dayIndex)))
                 break
             }
         }

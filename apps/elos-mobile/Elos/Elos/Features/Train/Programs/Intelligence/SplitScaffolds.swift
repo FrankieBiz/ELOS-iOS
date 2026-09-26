@@ -4,6 +4,7 @@ enum SplitScaffolds {
     static func recommend(archetype: SplitArchetype, catalog: [ExerciseCandidate],
                           personalization: PersonalizationProvider,
                           isEquipmentAvailable: @escaping (String) -> Bool,
+                          gymEquipmentTypes: Set<String> = [],
                           count: Int = 5) -> [DayExercise] {
         let targets = MuscleTaxonomy.targetMuscles(forArchetype: archetype)
         let pool = catalog.filter { targets.contains(MuscleTaxonomy.normalize($0.primaryMuscle)) }
@@ -11,7 +12,8 @@ enum SplitScaffolds {
                              addedPrimaryMuscles: [], addedExerciseIDs: [], addedExerciseNames: [])
         let ranked = ExerciseRankingEngine.rank(pool,
             inputs: RankingInputs(context: ctx, personalization: personalization,
-                                  isEquipmentAvailable: isEquipmentAvailable, query: ""))
+                                  isEquipmentAvailable: isEquipmentAvailable, query: "",
+                                  gymEquipmentTypes: gymEquipmentTypes))
 
         var picks: [ExerciseCandidate] = []
         var coveredPrimaries = Set<String>()

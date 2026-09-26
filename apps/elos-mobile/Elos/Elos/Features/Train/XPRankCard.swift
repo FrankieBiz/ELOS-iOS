@@ -27,38 +27,69 @@ struct XPRankCard: View {
 
     // MARK: Top row
 
+    /// Rank on the left, distance-to-next on the right — until the text is too large for both to sit
+    /// on one line, at which point they stack.
+    ///
+    /// This was a single `HStack` whose trailing block was `.fixedSize()`. At an accessibility text
+    /// size that block refused to shrink, the `Spacer` had nothing left to give, and the rank name
+    /// rendered *on top of* the XP figure, clipped by the navigation title. `ViewThatFits` picks the
+    /// stacked layout only when the row genuinely won't fit, so nothing changes at default sizes.
     private var topRow: some View {
-        HStack(alignment: .center, spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(progress.rank.color.opacity(0.15))
-                    .frame(width: 54, height: 54)
-                Image(systemName: progress.rank.icon)
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(progress.rank.color)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 14) {
+                rankMedallion
+                rankTitle
+                Spacer(minLength: Space.s)
+                nextRankBlock(alignment: .trailing)
             }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(progress.rank.rawValue.uppercased())
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(progress.rank.color)
-                Text("\(progress.totalXP) XP total")
-                    .font(.system(size: 12, design: .monospaced))
+            VStack(alignment: .leading, spacing: Space.s) {
+                HStack(alignment: .center, spacing: 14) {
+                    rankMedallion
+                    rankTitle
+                    Spacer(minLength: 0)
+                }
+                nextRankBlock(alignment: .leading)
+            }
+        }
+    }
+
+    private var rankMedallion: some View {
+        ZStack {
+            Circle()
+                .fill(progress.rank.color.opacity(0.15))
+                .frame(width: 54, height: 54)
+            // Fixed on purpose: this is a medallion graphic at a fixed diameter, not running text.
+            Image(systemName: progress.rank.icon)
+                .font(.system(.title2, weight: .semibold))
+                .foregroundStyle(progress.rank.color)
+        }
+    }
+
+    private var rankTitle: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(progress.rank.rawValue)
+                .font(.title3).fontWeight(.bold)
+                .foregroundStyle(progress.rank.color)
+            Text("\(progress.totalXP.formatted()) XP")
+                .font(.elosNumeric(.caption, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func nextRankBlock(alignment: HorizontalAlignment) -> some View {
+        if let next = progress.rank.nextRank {
+            VStack(alignment: alignment, spacing: 2) {
+                Text(progress.xpToNext.formatted())
+                    .font(.elosNumeric(.title3, weight: .bold))
+                Text("to \(next.rawValue)")
+                    .font(.elosMicro)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
-            if let next = progress.rank.nextRank {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(progress.xpToNext)")
-                        .font(.system(size: 18, weight: .bold, design: .monospaced))
-                    Text("to \(next.rawValue)")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-            } else {
-                Label("Max Rank", systemImage: "crown.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(progress.rank.color)
-            }
+        } else {
+            Label("Max Rank", systemImage: "crown.fill")
+                .font(.system(.caption2, weight: .semibold))
+                .foregroundStyle(progress.rank.color)
         }
     }
 
@@ -68,10 +99,10 @@ struct XPRankCard: View {
         VStack(alignment: .leading, spacing: 5) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 5)
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .fill(Color.secondary.opacity(0.12))
                         .frame(height: 10)
-                    RoundedRectangle(cornerRadius: 5)
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [progress.rank.color.opacity(0.7), progress.rank.color],
@@ -79,19 +110,22 @@ struct XPRankCard: View {
                             )
                         )
                         .frame(width: max(10, geo.size.width * CGFloat(progress.progress)), height: 10)
-                        .animation(.easeOut(duration: 0.9), value: progress.progress)
+                        .animation(.elosStandard, value: progress.progress)
                 }
             }
             .frame(height: 10)
-            HStack {
-                Text(progress.rank.rawValue)
-                    .font(.caption2).fontWeight(.semibold)
-                    .foregroundStyle(progress.rank.color)
-                Spacer()
-                if let next = progress.rank.nextRank {
-                    Text(next.rawValue)
-                        .font(.caption2)
+            // The bar used to be captioned with the current and next rank names at its ends — a
+            // verbatim repeat of the two labels sitting directly above it. Dropped; the row that
+            // remains is the one piece of information the header doesn't already carry.
+            if let next = progress.rank.nextRank {
+                HStack {
+                    Text("\(progress.totalXP - progress.rank.minXP) / \(next.minXP - progress.rank.minXP) XP")
+                        .font(.elosNumeric(.caption2, weight: .medium))
                         .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(Int(progress.progress * 100))%")
+                        .font(.elosNumeric(.caption2, weight: .semibold))
+                        .foregroundStyle(progress.rank.color)
                 }
             }
         }
@@ -100,42 +134,42 @@ struct XPRankCard: View {
     // MARK: Rank track (mini dot path)
 
     private var rankTrack: some View {
-        HStack(spacing: 0) {
-            ForEach(GamificationEngine.Rank.ordered, id: \.self) { rank in
-                let reached  = rank.minXP <= progress.totalXP
+        // Every dot used to be labelled with a three-letter abbreviation — ROO, CON, ATH, ELI, CHA,
+        // LEG — which reads as invented jargon and, at 6–7pt, as grey smudges. It was also the third
+        // place on this one card that named the ranks (header, progress-bar ends, here, and again in
+        // the expanded path). Each rank now shows its own symbol and nothing else: the header already
+        // says which rank you are, so the rail only has to answer "how far along the road am I".
+        HStack(spacing: Space.xs) {
+            ForEach(Array(GamificationEngine.Rank.ordered.enumerated()), id: \.element) { i, rank in
+                let reached   = rank.minXP <= progress.totalXP
                 let isCurrent = rank == progress.rank
-                VStack(spacing: 4) {
-                    ZStack {
-                        if isCurrent {
-                            Circle()
-                                .stroke(rank.color.opacity(0.35), lineWidth: 3)
-                                .frame(width: 22, height: 22)
-                        }
-                        Circle()
-                            .fill(reached ? rank.color : Color.secondary.opacity(0.12))
-                            .frame(width: isCurrent ? 16 : 11, height: isCurrent ? 16 : 11)
-                        if reached && !isCurrent {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 6, weight: .black))
-                                .foregroundStyle(.white)
-                        }
-                        if isCurrent {
-                            Image(systemName: rank.icon)
-                                .font(.system(size: 7, weight: .bold))
-                                .foregroundStyle(.white)
-                        }
-                    }
-                    .frame(width: 24, height: 24)
-                    Text(String(rank.rawValue.prefix(3)).uppercased())
-                        .font(.system(size: 7, weight: isCurrent ? .bold : .regular))
+
+                if i > 0 {
+                    Capsule()
+                        .fill(reached ? rank.color.opacity(0.5) : Color.secondary.opacity(0.14))
+                        .frame(height: 2)
+                        .frame(maxWidth: .infinity)
+                }
+
+                ZStack {
+                    Circle()
+                        .fill(reached ? rank.color.opacity(isCurrent ? 1 : 0.22)
+                                      : Color.secondary.opacity(0.12))
+                        .frame(width: isCurrent ? 32 : 24, height: isCurrent ? 32 : 24)
+                    Image(systemName: rank.icon)
+                        .font(.system(size: isCurrent ? 14 : 10, weight: .semibold))
                         .foregroundStyle(
-                            isCurrent ? rank.color
-                            : (reached ? Color.secondary : Color.secondary.opacity(0.3))
+                            isCurrent ? .white
+                            : (reached ? rank.color : Color.secondary.opacity(0.45))
                         )
                 }
-                .frame(maxWidth: .infinity)
+                .frame(width: 32, height: 32)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(rank.rawValue)
+                .accessibilityValue(isCurrent ? "current rank" : (reached ? "unlocked" : "locked"))
             }
         }
+        .animation(.elosStandard, value: progress.rank)
     }
 
     // MARK: Stats row
@@ -150,31 +184,34 @@ struct XPRankCard: View {
         }
         .padding(.vertical, 6)
         .background(Color(.tertiarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func statCell(icon: String, color: Color, value: String, label: String) -> some View {
         VStack(spacing: 4) {
             HStack(spacing: 4) {
                 Image(systemName: icon)
-                    .font(.system(size: 11))
+                    .font(.elosMicro)
                     .foregroundStyle(color)
                 Text(value)
-                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                    .font(.elosNumeric(.callout, weight: .bold))
+                    .contentTransition(.numericText())
             }
             Text(label)
-                .font(.system(size: 10))
+                .font(.elosMicro)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 4)
+        .padding(.vertical, Space.xs)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
     }
 
     // MARK: Rank path toggle
 
     private var rankPathToggle: some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.2)) { rankPathExpanded.toggle() }
+            withAnimation(.elosQuick) { rankPathExpanded.toggle() }
         } label: {
             HStack {
                 Text("Rank Path")
@@ -201,32 +238,33 @@ struct XPRankCard: View {
                             .fill(isUnlocked ? rank.color.opacity(0.15) : Color.secondary.opacity(0.07))
                             .frame(width: 36, height: 36)
                         Image(systemName: rank.icon)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(.subheadline, weight: .semibold))
                             .foregroundStyle(isUnlocked ? rank.color : Color.secondary.opacity(0.3))
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(rank.rawValue)
-                            .font(.system(size: 14, weight: isCurrent ? .bold : .regular))
+                            .font(.system(.subheadline, weight: isCurrent ? .bold : .regular))
                             .foregroundStyle(isUnlocked ? .primary : .secondary)
-                        Text("\(rank.minXP) XP")
-                            .font(.system(size: 11, design: .monospaced))
+                        Text("\(rank.minXP.formatted()) XP")
+                            .font(.elosNumeric(.caption2, weight: .regular))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
                     if isCurrent {
-                        Text("YOU")
-                            .font(.system(size: 9, weight: .bold))
+                        // "YOU" in a 9pt shouting caps badge was the loudest thing in the list for
+                        // information the filled row already conveys. A quiet word does the job.
+                        Text("Current")
+                            .font(.system(.caption2, weight: .semibold))
                             .foregroundStyle(rank.color)
-                            .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(rank.color.opacity(0.12))
-                            .clipShape(Capsule())
+                            .padding(.horizontal, Space.s).padding(.vertical, 3)
+                            .background(rank.color.opacity(0.14), in: Capsule())
                     } else if isUnlocked {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 18))
+                            .font(.title3)
                             .foregroundStyle(rank.color)
                     } else {
-                        Text("+\(rank.minXP - progress.totalXP) XP")
-                            .font(.system(size: 11, design: .monospaced))
+                        Text("+\((rank.minXP - progress.totalXP).formatted())")
+                            .font(.elosNumeric(.caption2, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -234,6 +272,6 @@ struct XPRankCard: View {
         }
         .padding(12)
         .background(Color(.tertiarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }

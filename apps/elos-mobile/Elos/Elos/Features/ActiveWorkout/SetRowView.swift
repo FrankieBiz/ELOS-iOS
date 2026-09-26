@@ -18,6 +18,7 @@ struct SessionExerciseCard: View {
     let onSetToggle: (Int) -> Void
     let onSetDelete: (Int) -> Void
     let onSetEdit: (Int, Double, Int, Double) -> Void
+    var allExerciseNames: [String] = []
 
     @Environment(\.modelContext) private var modelContext
     @State private var expanded = true
@@ -27,7 +28,7 @@ struct SessionExerciseCard: View {
     @State private var howToToPresent: ExerciseHowTo?
     @State private var editingIndex: Int?
     @State private var editSnapshot: (weight: String, reps: String, rpe: String)?
-    @State private var editError = false
+    @State private var editErrorMessage: String?
     @FocusState private var focusedField: FocusableField?
 
     private enum FocusableField: Hashable { case weight, reps }
@@ -66,7 +67,7 @@ struct SessionExerciseCard: View {
             howTo = ExerciseHowToLookup.find(for: exercise, in: modelContext)
         }
         .sheet(isPresented: $showingSwap) {
-            ExerciseSwapSheet(exerciseName: $exercise.name)
+            ExerciseSwapSheet(exercise: $exercise, existingNames: allExerciseNames.filter { $0 != exercise.name })
         }
         .sheet(item: $howToToPresent) { ExerciseHowToSheet(howTo: $0) }
         .toolbar {
@@ -86,7 +87,7 @@ struct SessionExerciseCard: View {
         HStack(spacing: 10) {
             Button {
                 onSelect()
-                withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+                withAnimation(.elosQuick) { expanded.toggle() }
             } label: {
                 HStack(spacing: 10) {
                     Circle()
@@ -99,7 +100,7 @@ struct SessionExerciseCard: View {
                         .font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(Color.secondary.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                 }
             }
             .buttonStyle(.plain)
@@ -115,6 +116,7 @@ struct SessionExerciseCard: View {
                 Image(systemName: "info.circle").font(.caption).foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Exercise instructions")
 
             Image(systemName: expanded ? "chevron.up" : "chevron.down")
                 .font(.caption).foregroundStyle(.secondary)
@@ -122,10 +124,17 @@ struct SessionExerciseCard: View {
         .padding(.horizontal, 14).padding(.vertical, 12)
     }
 
-    private var muscleCaption: some View {
-        Text("Primary: \(exercise.primaryMuscle)" +
-             (exercise.secondaryMuscles.isEmpty ? "" : " · secondary: \(exercise.secondaryMuscles.prefix(2).joined(separator: ", "))"))
-            .font(.caption).foregroundStyle(.secondary)
+    /// Muscle strings are the catalog's snake_case keys ("lower_back"), so they have to go through
+    /// `muscleDisplayName` — printed raw this read "Primary: lower_back". Empty until the session
+    /// carries resolved targets, so the whole caption is dropped rather than showing a bare label.
+    @ViewBuilder private var muscleCaption: some View {
+        let primary = exercise.primaryMuscle.muscleDisplayName
+        let secondary = exercise.secondaryMuscles.prefix(2)
+            .map(\.muscleDisplayName).joined(separator: ", ")
+        if !primary.isEmpty {
+            Text("Primary: \(primary)" + (secondary.isEmpty ? "" : " · also \(secondary)"))
+                .font(.caption).foregroundStyle(.secondary)
+        }
     }
 
     // MARK: Row dispatch
@@ -149,22 +158,23 @@ struct SessionExerciseCard: View {
         let rpePart = RPEScale.parse(s.rpe).map { "  @\(RPEScale.label($0))" } ?? ""
         let weightPart = s.weight.isEmpty ? "—" : s.weight
         return HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill").font(.system(size: 16)).foregroundStyle(Color.good)
-            Text("\(i + 1)").font(.caption.monospaced()).foregroundStyle(.secondary).frame(width: 16)
+            Image(systemName: "checkmark.circle.fill").font(.callout).foregroundStyle(Color.good)
+            Text("\(i + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 16)
             Text("\(weightPart) \(unit.label) × \(s.reps.isEmpty ? "—" : s.reps)\(rpePart)")
-                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .font(.elosNumeric(.subheadline, weight: .medium))
             Spacer()
             Button {
                 beginEditing(i)
             } label: {
-                Image(systemName: "pencil").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.tint)
+                Image(systemName: "pencil").font(.system(.footnote, weight: .semibold)).foregroundStyle(Color.tint)
                     .frame(width: 30, height: 30)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Edit set")
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
         .background(Color.good.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .contextMenu {
             Button { beginEditing(i) } label: { Label("Edit set", systemImage: "pencil") }
             Button(role: .destructive) { onSetToggle(i) } label: { Label("Uncomplete", systemImage: "arrow.uturn.backward") }
@@ -177,8 +187,8 @@ struct SessionExerciseCard: View {
         let s = exercise.sets[i]
         let planned = (s.weight.isEmpty && s.reps.isEmpty) ? "— — —" : "\(s.weight.isEmpty ? "—" : s.weight) × \(s.reps.isEmpty ? "—" : s.reps)"
         return HStack(spacing: 10) {
-            Text("\(i + 1)").font(.caption.monospaced()).foregroundStyle(.secondary).frame(width: 16)
-            Text(planned).font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
+            Text("\(i + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 16)
+            Text(planned).font(.elosNumeric(.footnote, weight: .regular)).foregroundStyle(.secondary)
             Spacer()
         }
         .padding(.horizontal, 10).padding(.vertical, 7)
@@ -230,29 +240,29 @@ struct SessionExerciseCard: View {
                     onSetToggle(i)
                 } label: {
                     Label("Complete set", systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(.subheadline, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(Color.good)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
             } else {
-                if editError {
-                    Text("Enter reps before saving.").font(.caption2).foregroundStyle(Color.bad)
+                if let editErrorMessage {
+                    Text(editErrorMessage).font(.caption2).foregroundStyle(Color.bad)
                 }
                 HStack(spacing: 10) {
                     Button { cancelEditing(i) } label: {
                         Text("Cancel").font(.subheadline).fontWeight(.semibold).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity).padding(.vertical, 10)
-                            .background(Color(.tertiarySystemBackground)).clipShape(RoundedRectangle(cornerRadius: 10))
+                            .background(Color(.tertiarySystemBackground)).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     Button { saveEditing(i) } label: {
                         Text("Save").font(.subheadline).fontWeight(.bold).foregroundStyle(.white)
                             .frame(maxWidth: .infinity).padding(.vertical, 10)
-                            .background(Color.tint).clipShape(RoundedRectangle(cornerRadius: 10))
+                            .background(Color.tint).clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -260,8 +270,8 @@ struct SessionExerciseCard: View {
         }
         .padding(12)
         .background((mode == .edit ? Color.tint : Color.tint).opacity(0.06))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.tint.opacity(0.3), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.tint.opacity(0.3), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .contextMenu {
             if mode == .active {
                 Button(role: .destructive) { onSetDelete(i) } label: { Label("Delete set", systemImage: "trash") }
@@ -272,9 +282,9 @@ struct SessionExerciseCard: View {
     private func fieldColumn(label: String, placeholder: String, text: Binding<String>,
                              keyboard: UIKeyboardType, field: FocusableField, width: CGFloat? = nil) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary).tracking(0.5)
+            Text(label).font(.system(.caption2, weight: .semibold)).foregroundStyle(.secondary).tracking(0.5)
             TextField(placeholder, text: text)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.elosNumeric(.title2))
                 .multilineTextAlignment(.center)
                 .keyboardType(keyboard)
                 .focused($focusedField, equals: field)
@@ -282,7 +292,7 @@ struct SessionExerciseCard: View {
                 .frame(maxWidth: width == nil ? .infinity : nil)
                 .frame(width: width)
                 .background(Color(.tertiarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .frame(maxWidth: width == nil ? .infinity : nil)
     }
@@ -313,8 +323,8 @@ struct SessionExerciseCard: View {
     private func fillChip(icon: String, text: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 10, weight: .semibold))
-                Text(text).font(.system(size: 12, weight: .semibold))
+                Image(systemName: icon).font(.system(.caption2, weight: .semibold))
+                Text(text).font(.system(.caption, weight: .semibold))
             }
             .foregroundStyle(Color.tint)
             .padding(.horizontal, 10).padding(.vertical, 6)
@@ -389,7 +399,7 @@ struct SessionExerciseCard: View {
 
     private func beginEditing(_ i: Int) {
         editSnapshot = (exercise.sets[i].weight, exercise.sets[i].reps, exercise.sets[i].rpe)
-        editError = false
+        editErrorMessage = nil
         withAnimation { editingIndex = i }
     }
     private func cancelEditing(_ i: Int) {
@@ -399,23 +409,28 @@ struct SessionExerciseCard: View {
             exercise.sets[i].rpe = snap.rpe
         }
         editSnapshot = nil
-        editError = false
+        editErrorMessage = nil
         focusedField = nil
         withAnimation { editingIndex = nil }
     }
     private func saveEditing(_ i: Int) {
-        let weightVal = max(0, Double(exercise.sets[i].weight) ?? 0)
+        let weightText = exercise.sets[i].weight
+        // Mirror the completion guard — never save a zeroed-out or garbage set.
+        guard weightText.isEmpty || Double(weightText) != nil else {
+            editErrorMessage = "Weight isn't a number."
+            return
+        }
+        let weightVal = max(0, Double(weightText) ?? 0)
         let weightKg = unit.toKg(weightVal)
         let reps = Int(exercise.sets[i].reps) ?? 0
-        // Mirror the completion guard — never save a zeroed-out set.
-        guard reps > 0 else { editError = true; return }
+        guard reps > 0 else { editErrorMessage = "Enter reps before saving."; return }
         let rpe = min(10, max(0, Double(exercise.sets[i].rpe) ?? 0))
         // Normalize the WorkSet strings so the locked row matches the persisted/synced record.
         exercise.sets[i].weight = unit.formatValue(kg: weightKg)
         exercise.sets[i].reps = String(reps)
         exercise.sets[i].rpe = rpe > 0 ? RPEScale.label(rpe) : ""
         editSnapshot = nil
-        editError = false
+        editErrorMessage = nil
         focusedField = nil
         withAnimation { editingIndex = nil }
         onSetEdit(i, weightKg, reps, rpe)

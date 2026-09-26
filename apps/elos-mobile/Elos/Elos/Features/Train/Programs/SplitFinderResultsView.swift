@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SplitFinderResultsView: View {
+    @EnvironmentObject private var vm: AppViewModel
     @State private var recommendations: [SplitRecommendation]
     let input: SplitFinderInput
     let dismissAll: () -> Void
@@ -18,20 +19,37 @@ struct SplitFinderResultsView: View {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Your Splits")
-                        .font(.system(size: 28, weight: .bold))
+                        .font(.system(.title, weight: .bold))
                     Text("Personalised to your answers. Tap a split to subscribe.")
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
 
-                ForEach(recommendations.indices, id: \.self) { i in
-                    SFRecommendationCard(rec: $recommendations[i]) {
-                        selectedRec = recommendations[i]
+                if recommendations.isEmpty {
+                    emptyState
+                } else {
+                    ForEach(recommendations.indices, id: \.self) { i in
+                        SFRecommendationCard(rec: $recommendations[i]) {
+                            selectedRec = recommendations[i]
+                        }
+                        .padding(.horizontal, 20)
                     }
-                    .padding(.horizontal, 20)
                 }
                 Spacer(minLength: 40)
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if recommendations.isEmpty {
+                Button("Retake Quiz") { dismissAll() }
+                    .font(.system(.subheadline, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.tint)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
             }
         }
         .sheet(item: $selectedRec) { rec in
@@ -40,7 +58,21 @@ struct SplitFinderResultsView: View {
                 daysPerWeek: input.daysPerWeek,
                 dismissAll: dismissAll
             )
+            .environmentObject(vm)
         }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "questionmark.circle").font(.largeTitle).foregroundStyle(.secondary)
+            Text("No split matched those answers").font(.headline)
+            Text("Try loosening your equipment or days-per-week answer — a few combinations rule out every template.")
+                .font(.subheadline).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(32)
+        .padding(.horizontal, 20)
     }
 }
 
@@ -57,9 +89,9 @@ struct SFRecommendationCard: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(rec.name)
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(.title3, weight: .bold))
                     Text(rec.style.displayName)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(.caption, weight: .semibold))
                         .foregroundStyle(Color.tint)
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(Color.tintSoft)
@@ -82,7 +114,7 @@ struct SFRecommendationCard: View {
                     HStack(spacing: 6) {
                         ForEach(rec.matchTags, id: \.self) { tag in
                             Text(tag)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(.caption, weight: .semibold))
                                 .foregroundStyle(Color.good)
                                 .padding(.horizontal, 8).padding(.vertical, 4)
                                 .background(Color.good.opacity(0.12))
@@ -93,7 +125,7 @@ struct SFRecommendationCard: View {
             }
 
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
+                withAnimation(.elosQuick) { expanded.toggle() }
             } label: {
                 HStack {
                     Text(expanded ? "Hide Schedule" : "See Schedule")
@@ -111,7 +143,7 @@ struct SFRecommendationCard: View {
 
             Button(action: onSubscribe) {
                 Text("Use This Split")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(.subheadline, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity).frame(height: 46)
                     .background(Color.tint)
@@ -160,10 +192,11 @@ struct SFRecommendationCard: View {
                                         cycleExercise(dayIndex: di, exIndex: ei)
                                     } label: {
                                         Image(systemName: "arrow.2.circlepath")
-                                            .font(.system(size: 11, weight: .semibold))
+                                            .font(.system(.caption, weight: .semibold))
                                             .foregroundStyle(Color.tint)
                                     }
                                     .buttonStyle(.plain)
+                                    .accessibilityLabel("Show another suggestion")
                                 }
                             }
                             .padding(.leading, 24)

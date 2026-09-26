@@ -33,6 +33,19 @@ struct RepRestScorerTests {
         #expect(d.score < 60)
     }
 
+    /// rr-reps/rr-rest carried no action before this — a real gap, since they're the cheapest,
+    /// most deterministic score movers (a pure numeric edit, no exercise choice involved).
+    @Test func repRestTipsCarryRetuneActions() {
+        let strengthProfile = TrainingProfile(goal: .strength, experience: .intermediate)
+        let days = QualityFixtures.resolve([[
+            QualityFixtures.sx("bench", sets: 4, reps: "20-25", rest: 500),
+            QualityFixtures.sx("row", sets: 4, reps: "20-25", rest: 500),
+        ]])
+        let d = RepRestScorer.score(resolvedDays: days, scope: .singleSession, profile: strengthProfile)
+        #expect(d.tips.first { $0.id == "rr-reps" }?.action == .retuneReps)
+        #expect(d.tips.first { $0.id == "rr-rest" }?.action == .retuneRest)
+    }
+
     @Test func goalChangesRepScore() {
         let days = QualityFixtures.resolve([[
             QualityFixtures.sx("bench", sets: 4, reps: "5"),

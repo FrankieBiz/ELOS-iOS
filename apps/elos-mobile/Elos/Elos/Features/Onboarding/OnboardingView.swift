@@ -32,7 +32,7 @@ struct OnboardingView: View {
             .padding(.horizontal, 24)
             .padding(.top, 16)
             .padding(.bottom, 4)
-            .animation(.spring(duration: 0.4), value: vm.step)
+            .animation(.elosEmphasis, value: vm.step)
 
             // Step content
             Group {
@@ -55,7 +55,7 @@ struct OnboardingView: View {
             HStack(spacing: 12) {
                 if vm.step > 0 {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.3)) { vm.step -= 1 }
+                        withAnimation(.elosStandard) { vm.step -= 1 }
                     } label: {
                         Text("Back")
                     }
@@ -96,28 +96,32 @@ struct OnboardingView: View {
             }
         }
         .background(Color(.systemGroupedBackground))
-        .animation(.easeInOut(duration: 0.3), value: vm.step)
+        .animation(.elosStandard, value: vm.step)
     }
 
     private func advance() {
         if vm.step == vm.totalSteps - 1 {
             Task { await vm.completeOnboarding(context: modelContext, authStore: authStore) }
         } else {
-            withAnimation(.easeInOut(duration: 0.3)) { vm.step += 1 }
+            withAnimation(.elosStandard) { vm.step += 1 }
         }
     }
 }
 
 // MARK: - Final "Ready" step
 private struct ReadyStepView: View {
+    @State private var bounce = false
+
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 72))
+                .font(.largeTitle)
                 .foregroundStyle(Color.mGym)
+                .symbolEffect(.bounce, value: bounce)
+                .onAppear { bounce.toggle() }
             Text("You're all set!")
-                .font(.system(size: 32, weight: .bold))
+                .font(.system(.title, weight: .bold))
             Text("Your profile is ready.\nLet's get to work.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)

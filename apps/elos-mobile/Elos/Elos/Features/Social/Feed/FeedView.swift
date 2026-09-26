@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct FeedView: View {
+    /// Decorative empty/error glyph. Deliberately a fixed 40 at the default text size — it's an
+    /// illustration, not body copy — but scaled so it doesn't stay put while the message beside it grows.
+    @ScaledMetric(relativeTo: .largeTitle) private var emptyStateGlyph: CGFloat = 40
+
     @EnvironmentObject private var feedVM: FeedViewModel
     @EnvironmentObject private var vm: AppViewModel
 
@@ -23,7 +27,9 @@ struct FeedView: View {
                 }
             }
             .padding(16)
-            .padding(.bottom, 40)
+            // Clears the custom tab bar, which floats over the content rather than insetting it.
+            // Matches Today and Train, the other tab roots that scroll.
+            .padding(.bottom, 120)
         }
         .scrollIndicators(.hidden)
         .refreshable { await feedVM.load() }
@@ -35,7 +41,7 @@ struct FeedView: View {
     private var errorState: some View {
         VStack(spacing: 12) {
             Image(systemName: "wifi.exclamationmark")
-                .font(.system(size: 40))
+                .font(.system(size: emptyStateGlyph))
                 .foregroundStyle(.secondary)
             Text("Couldn't load your feed")
                 .font(.headline)
@@ -61,8 +67,9 @@ struct FeedView: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "square.stack.3d.up")
-                .font(.system(size: 40))
+                .font(.system(size: emptyStateGlyph))
                 .foregroundStyle(.secondary)
+                .symbolEffect(.pulse, options: .repeating)
             Text("Nothing here yet")
                 .font(.headline)
             Text("Add friends and share a workout, PR, or split to start your feed.")
@@ -127,12 +134,35 @@ struct FeedPostCard: View {
         }
     }
 
-    private var header: some View {
+    /// Avatar + name + "shared a workout · 2h". Split out so it can be used bare on your own posts
+    /// and wrapped in a link on everyone else's.
+    private var authorIdentity: some View {
         HStack(spacing: 10) {
             AvatarCircle(initials: post.author.initials, hex: post.author.avatarHex, size: 36)
             VStack(alignment: .leading, spacing: 1) {
                 Text(post.author.displayName).font(.subheadline).fontWeight(.semibold)
+                    .foregroundStyle(.primary)
                 Text(headerSubtitle).font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            // Tapping whoever posted opens their profile. The card was inert before, because it
+            // only ever rendered inside a sheet with no navigation stack to push onto — the Feed
+            // tab has one, so the obvious gesture finally does the obvious thing.
+            if post.is_mine {
+                authorIdentity
+            } else {
+                NavigationLink {
+                    FriendProfileView(userId: post.author.user_id,
+                                      displayName: post.author.displayName)
+                } label: {
+                    authorIdentity
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("View \(post.author.displayName)'s profile")
             }
             Spacer()
             if post.is_mine {
@@ -145,6 +175,7 @@ struct FeedPostCard: View {
                         .font(.subheadline).foregroundStyle(.secondary)
                         .frame(width: 28, height: 28)
                 }
+                .accessibilityLabel("Post options")
             } else {
                 Menu {
                     Button {
@@ -199,12 +230,12 @@ struct FeedPostCard: View {
                 } label: {
                     Label(imported ? "Imported" : "Import Split",
                           systemImage: imported ? "checkmark.circle.fill" : "square.and.arrow.down")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(.subheadline, weight: .semibold))
                         .foregroundStyle(imported ? Color.secondary : .white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .background(imported ? Color(.tertiarySystemBackground) : Color.tint)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .disabled(imported)
@@ -220,7 +251,7 @@ struct ReactionBar: View {
     @EnvironmentObject private var feedVM: FeedViewModel
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.s) {
             ForEach(feedReactionEmojis, id: \.self) { emoji in
                 let count = post.reactionCount(emoji)
                 let mine = post.my_reaction == emoji
@@ -228,18 +259,34 @@ struct ReactionBar: View {
                     Task { await feedVM.toggleReaction(post: post, emoji: emoji) }
                 } label: {
                     HStack(spacing: 4) {
-                        Text(emoji).font(.system(size: 14))
+                        // Drawn as an SF Symbol, not the stored emoji: emoji were the one piece of
+                        // iconography left in the app that came from a different visual system, and
+                        // they can't take the tint that marks *your* reaction.
+                        Image(systemName: FeedReactionStyle.symbol(for: emoji))
+                            .font(.elosCaption)
+                            .foregroundStyle(mine ? Color.tint : Color.secondary)
+                            .symbolVariant(mine ? .fill : .none)
                         if count > 0 {
                             Text("\(count)")
-                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                .font(.elosNumeric(.caption2, weight: .semibold))
                                 .foregroundStyle(mine ? Color.tint : .secondary)
                         }
                     }
+                    .frame(minWidth: 24)
                     .padding(.horizontal, 9).padding(.vertical, 6)
                     .background(mine ? Color.tintSoft : Color(.tertiarySystemBackground))
+                    .overlay {
+                        Capsule().strokeBorder(mine ? Color.tint.opacity(0.35) : .clear, lineWidth: 1)
+                    }
                     .clipShape(Capsule())
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                // An emoji announces as "fire" / "flexed biceps", which tells a VoiceOver user nothing
+                // about what the button does. Name the reaction and its state instead.
+                .accessibilityLabel(FeedReactionStyle.name(for: emoji))
+                .accessibilityValue(count > 0 ? "\(count)" : "none")
+                .accessibilityAddTraits(mine ? [.isSelected] : [])
             }
             Spacer()
         }
@@ -284,19 +331,19 @@ struct WorkoutPostContent: View {
 
     private func stat(_ value: String, _ label: String) -> some View {
         VStack(spacing: 3) {
-            Text(value).font(.system(size: 17, weight: .bold, design: .monospaced))
-            Text(label).font(.system(size: 10)).foregroundStyle(.secondary)
+            Text(value).font(.elosNumeric(.headline))
+            Text(label).font(.elosMicro).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
     }
 
     private func badge(icon: String, color: Color, text: String, trailing: String?) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: icon).font(.system(size: 11)).foregroundStyle(color)
-            Text(text).font(.system(size: 13, weight: .medium)).lineLimit(1)
+            Image(systemName: icon).font(.elosCaption).foregroundStyle(color)
+            Text(text).font(.system(.footnote, weight: .medium)).lineLimit(1)
             Spacer()
             if let trailing {
-                Text(trailing).font(.system(size: 13, weight: .bold, design: .monospaced))
+                Text(trailing).font(.elosNumeric(.footnote))
             }
         }
     }
@@ -309,20 +356,20 @@ struct PrPostContent: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "trophy.fill")
-                .font(.system(size: 22)).foregroundStyle(.yellow)
+                .font(.title3).foregroundStyle(.yellow)
             VStack(alignment: .leading, spacing: 2) {
                 Text(payload.exercise_name ?? "Personal Record")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(.callout, weight: .bold))
                 Text("\(appVM.weightUnit.formatWeight(kg: payload.weight_kg ?? 0, decimals: 0)) × \(payload.reps ?? 0)")
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(.elosNumeric(.footnote, weight: .regular))
                     .foregroundStyle(.secondary)
             }
             Spacer()
             VStack(spacing: 1) {
                 Text(appVM.weightUnit.formatValue(kg: payload.e1rm ?? 0, decimals: 0))
-                    .font(.system(size: 18, weight: .bold, design: .monospaced))
+                    .font(.elosNumeric(.title3))
                     .foregroundStyle(Color.tint)
-                Text("e1RM").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text("e1RM").font(.elosMicro).foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)
@@ -340,22 +387,22 @@ struct SplitPostContent: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "calendar")
-                    .font(.system(size: 14)).foregroundStyle(Color.tint)
+                    .font(.elosBody).foregroundStyle(Color.tint)
                 Text(payload.name ?? "Split")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(.callout, weight: .bold))
                 Spacer()
-                Text("\(trainingDays.count) days")
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+                Text(trainingDays.count.pluralized("day"))
+                    .font(.system(.caption, weight: .medium)).foregroundStyle(.secondary)
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     ForEach(trainingDays) { day in
                         Text(day.day_name)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.system(.caption2, weight: .medium))
                             .lineLimit(1)
                             .padding(.horizontal, 10).padding(.vertical, 6)
                             .background(Color(.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
                 }
             }

@@ -9,7 +9,10 @@ struct TemplateQualityEngineTests {
                                             dayNames: [""], scope: .singleSession,
                                             profile: profile, catalog: QualityFixtures.catalog)
         #expect(!r.isScored)
-        #expect(r == .empty)
+        #expect(r.overall == 0)
+        #expect(r.dimensions.isEmpty)
+        // The coverage bars are still produced while unscored, so they can fill in as you build.
+        #expect(r.volume.bars.count == MuscleGroup.allCases.count)
     }
 
     @Test func splitNeedsThreeExercises() {
@@ -33,7 +36,11 @@ struct TemplateQualityEngineTests {
         #expect(r.isScored)
         #expect(r.overall >= 75)
         #expect(r.tier == .dialedIn || r.tier == .optimized)
-        #expect(r.dimensions.count == 4)
+        // Five dimensions are computed; frequency doesn't apply to one session, so it's excluded
+        // from the scope-filtered view the UI renders and carries zero weight.
+        #expect(r.dimensions.count == 5)
+        #expect(r.dimensions(for: .singleSession).count == 4)
+        #expect(TemplateQualityEngine.weight(.frequency, scope: .singleSession) == 0)
     }
 
     @Test func poorTemplateScoresLowWithTips() {
@@ -93,5 +100,140 @@ struct TemplateQualityEngineTests {
                                             catalog: QualityFixtures.catalog)
         let ids = r.tips.map { $0.id }
         #expect(Set(ids).count == ids.count)
+    }
+
+    @Test func daySpecificExclusionAffectsSingleSessionScore() {
+        // Excluding a muscle that's genuinely missing removes the coverage-gap penalty for it.
+        let day = [
+            QualityFixtures.sx("bench", sets: 4),
+            QualityFixtures.sx("incline", sets: 4),
+        ]
+        let withoutExclusion = TemplateQualityEngine.score(
+            days: [day], dayNames: ["Push Day"], scope: .singleSession,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: TrainingIntent(goal: .hypertrophy, focus: .push))
+        let withExclusion = TemplateQualityEngine.score(
+            days: [day], dayNames: ["Push Day"], scope: .singleSession,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: TrainingIntent(goal: .hypertrophy, focus: .push, excludedMuscles: [.sideDelts, .frontDelts, .rotatorCuff, .biceps, .triceps, .forearms]))
+        let gapTips = { (r: QualityReport) in r.tips.filter { $0.id.hasPrefix("bal-focusgap-") } }
+        #expect(!gapTips(withoutExclusion).isEmpty)
+        #expect(gapTips(withExclusion).isEmpty)
+    }
+
+    @Test func dayScopedExclusionDoesNotAffectWeeklySplitScore() {
+        // D1: a per-day exclusion must be provably inert at `.weeklySplit` scope, regardless of what
+        // the intent passed in carries. This is the direct regression test for that guarantee.
+        let days: [[ScoredExercise]] = [
+            [QualityFixtures.sx("bench", sets: 6), QualityFixtures.sx("ohp", sets: 6)],
+            [QualityFixtures.sx("row", sets: 6), QualityFixtures.sx("pulldown", sets: 6)],
+            [QualityFixtures.sx("squat", sets: 6), QualityFixtures.sx("rdl", sets: 6)],
+        ]
+        let dayNames = ["Push", "Pull", "Legs"]
+        let withoutExclusion = TemplateQualityEngine.score(
+            days: days, dayNames: dayNames, scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: TrainingIntent(goal: .hypertrophy))
+        let withExclusion = TemplateQualityEngine.score(
+            days: days, dayNames: dayNames, scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: TrainingIntent(goal: .hypertrophy, excludedMuscles: [.quads, .hamstrings, .chest, .lats]))
+        #expect(withoutExclusion.overall == withExclusion.overall)
+    }
+
+    @Test func globalExclusionDoesAffectWeeklySplitScore() {
+        // Contrast with the test above: the *global* exclusion lever (VolumeOverrides) is not
+        // scope-gated — only the day-scoped one (TrainingIntent) is.
+        //
+        // Needs >= 3 total exercises for `.weeklySplit` scope to score at all (the `minToScore`
+        // gate) — a single-exercise fixture returns `overall: 0` on both sides regardless of
+        // exclusion, which trivially (and wrongly) satisfies a "!=" assertion for the wrong reason.
+        // Sets are deliberately lopsided (squat well-dosed, bench/row deep under minimum) so
+        // excluding quads/glutes actually shifts VolumeScorer's average quality rather than
+        // coincidentally averaging to the same number both ways (three equally-"under" muscles
+        // would do that).
+        let days: [[ScoredExercise]] = [
+            [QualityFixtures.sx("squat", sets: 20), QualityFixtures.sx("bench", sets: 2), QualityFixtures.sx("row", sets: 2)],
+        ]
+        let dayNames = ["Full Body"]
+        let withoutExclusion = TemplateQualityEngine.score(
+            days: days, dayNames: dayNames, scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog)
+        let excludedProfile = TrainingProfile(
+            goal: .hypertrophy, experience: .intermediate,
+            volumeOverrides: VolumeOverrides(excludedMuscles: [.quads, .glutes]))
+        let withExclusion = TemplateQualityEngine.score(
+            days: days, dayNames: dayNames, scope: .weeklySplit,
+            profile: excludedProfile, catalog: QualityFixtures.catalog)
+        #expect(withoutExclusion.overall != withExclusion.overall)
+    }
+
+    // MARK: Weekly intersection of per-day skips
+
+    private func lowerBackBar(_ r: QualityReport) -> MuscleVolumeBar? {
+        r.volume.bars.flatMap { $0.children.isEmpty ? [$0] : $0.children }.first { $0.fine == .lowerBack }
+    }
+
+    @Test func muscleExcludedOnEveryActiveDayIsExcludedWeekly() {
+        // Two active (non-rest, non-empty) days, both excluding lowerBack. No day trains it.
+        let days: [[ScoredExercise]] = [
+            [QualityFixtures.sx("bench", sets: 4), QualityFixtures.sx("row", sets: 4)],
+            [QualityFixtures.sx("squat", sets: 4), QualityFixtures.sx("legpress", sets: 4)],
+        ]
+        let dayExclusions: [Set<FineMuscle>] = [[.lowerBack], [.lowerBack]]
+        let report = TemplateQualityEngine.score(
+            days: days, dayNames: ["Day1", "Day2"], scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: nil, dayExclusions: dayExclusions, dayIsRest: [false, false])
+        #expect(lowerBackBar(report)?.isExcluded == true)
+    }
+
+    @Test func dayScopedExclusionOnSomeDaysDoesNotAffectWeeklySplitScore() {
+        // Same shape, but only ONE of two active days excludes it — the other still expects it.
+        let days: [[ScoredExercise]] = [
+            [QualityFixtures.sx("bench", sets: 4), QualityFixtures.sx("row", sets: 4)],
+            [QualityFixtures.sx("squat", sets: 4), QualityFixtures.sx("legpress", sets: 4)],
+        ]
+        let withoutAny = TemplateQualityEngine.score(
+            days: days, dayNames: ["Day1", "Day2"], scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: nil, dayExclusions: [[], []], dayIsRest: [false, false])
+        let withPartial = TemplateQualityEngine.score(
+            days: days, dayNames: ["Day1", "Day2"], scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: nil, dayExclusions: [[.lowerBack], []], dayIsRest: [false, false])
+        #expect(withoutAny.overall == withPartial.overall)
+        #expect(lowerBackBar(withPartial)?.isExcluded == false)
+    }
+
+    @Test func restToggledDayHoldingExercisesDoesNotVoteInTheIntersection() {
+        // dayIsRest[1] == true but days[1] is non-empty (CreateSplitView's "toggle rest, keep
+        // exercises" case) — it must not count as a training day, so only days[0] votes.
+        let days: [[ScoredExercise]] = [
+            [QualityFixtures.sx("bench", sets: 4)],
+            [QualityFixtures.sx("squat", sets: 4)],   // leftover exercises on a "rest" day
+        ]
+        let report = TemplateQualityEngine.score(
+            days: days, dayNames: ["Day1", "RestDay"], scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: nil, dayExclusions: [[.lowerBack], []], dayIsRest: [false, true])
+        // days[1] excludes nothing and would kill the intersection if it voted; since it's
+        // correctly excluded from voting, only days[0]'s exclusion (lowerBack) stands.
+        #expect(lowerBackBar(report)?.isExcluded == true)
+    }
+
+    @Test func shortDayExclusionsArrayCannotWidenTheWeeklyExclusion() {
+        // dayExclusions has only 1 entry for 2 active days. The missing index must vote as
+        // "no exclusion" (killing the intersection), not be skipped (which would let one day's
+        // skip stand in unchallenged).
+        let days: [[ScoredExercise]] = [
+            [QualityFixtures.sx("bench", sets: 4)],
+            [QualityFixtures.sx("squat", sets: 4)],
+        ]
+        let report = TemplateQualityEngine.score(
+            days: days, dayNames: ["Day1", "Day2"], scope: .weeklySplit,
+            profile: profile, catalog: QualityFixtures.catalog,
+            intent: nil, dayExclusions: [[.lowerBack]], dayIsRest: [false, false])
+        #expect(lowerBackBar(report)?.isExcluded == false)
     }
 }

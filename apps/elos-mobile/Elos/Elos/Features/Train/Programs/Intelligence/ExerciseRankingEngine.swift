@@ -9,10 +9,16 @@ struct RankingInputs {
     var personalization: PersonalizationProvider
     var isEquipmentAvailable: (String) -> Bool = { _ in true }
     var query: String = ""
+    /// Coarse equipment types (`GymEquipmentIndex.loggedEquipmentTypes`) actually logged at the
+    /// lifter's active gym. A small nudge toward what they've used there before, never a filter —
+    /// empty means "no active gym, or nothing logged yet," which must bias nothing at all rather
+    /// than penalizing everything.
+    var gymEquipmentTypes: Set<String> = []
 }
 
 enum ExerciseRankingEngine {
     private static let wDay = 3.0, wCompound = 1.5, wPers = 1.0, wGap = 1.2, wDup = 4.0, wEquip = 2.0
+    private static let wGymEquipment = 0.75
 
     static func rank(_ candidates: [ExerciseCandidate], inputs: RankingInputs,
                      mode: ExerciseSortMode = .smart) -> [ExerciseCandidate] {
@@ -66,6 +72,10 @@ enum ExerciseRankingEngine {
         s += wCompound * (MuscleTaxonomy.isCompound(movementPattern: c.movementPattern) ? 1.0 : 0.0)
         s += wPers * inputs.personalization.score(forName: c.name)
         if !inputs.isEquipmentAvailable(c.equipment) { s -= wEquip }
+        if !inputs.gymEquipmentTypes.isEmpty,
+           inputs.gymEquipmentTypes.contains(MuscleTaxonomy.normalize(c.equipment)) {
+            s += wGymEquipment
+        }
         return s
     }
 

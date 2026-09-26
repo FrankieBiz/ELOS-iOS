@@ -69,7 +69,7 @@ struct AddHabitSheet: View {
                                     targetDays = d
                                 } label: {
                                     Text("\(d)")
-                                        .font(.system(size: 16, weight: .bold))
+                                        .font(.system(.callout, weight: .bold))
                                         .foregroundStyle(targetDays == d ? .white : .primary)
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 12)
@@ -87,7 +87,7 @@ struct AddHabitSheet: View {
                         dismiss()
                     } label: {
                         Text("Add Habit")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(.callout, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)

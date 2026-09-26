@@ -18,7 +18,7 @@ struct FriendSearchView: View {
                 if results.isEmpty && query.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "magnifyingglass")
-                            .font(.system(size: 36))
+                            .font(.largeTitle)
                             .foregroundStyle(.secondary)
                         Text("Find friends by their @username or full name")
                             .font(.subheadline).foregroundStyle(.secondary)

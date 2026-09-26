@@ -9,6 +9,27 @@ final class FeedViewModel: ObservableObject {
     @Published var loadFailed = false
     @Published private(set) var nextCursor: String?
 
+    /// Whether finishing a workout posts it to the feed, and whether we've asked yet.
+    ///
+    /// Written through `didSet` so the choice survives relaunch; see `FeedAutoShare` for why this
+    /// is three states rather than a `Bool`.
+    @Published var autoShare: FeedAutoShare {
+        didSet { defaults.set(autoShare.rawValue, forKey: Self.autoShareKey) }
+    }
+
+    private static let autoShareKey = "elos.feed.autoShare"
+    private let defaults: UserDefaults
+
+    /// When the feed was last fetched in full, for `refreshIfStale()`.
+    private var lastLoadedAt: Date?
+    private static let staleAfter: TimeInterval = 60
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        autoShare = defaults.string(forKey: Self.autoShareKey)
+            .flatMap(FeedAutoShare.init(rawValue:)) ?? .unasked
+    }
+
     var hasMore: Bool { nextCursor != nil }
 
     // MARK: - Loading
@@ -21,10 +42,21 @@ final class FeedViewModel: ObservableObject {
             posts = page.posts
             nextCursor = page.next_cursor
             loadFailed = false
+            lastLoadedAt = Date()
         } catch {
             // Distinguish a failed load from a genuinely empty feed.
             loadFailed = posts.isEmpty
         }
+    }
+
+    /// Re-fetch when returning to the tab on a feed that's gone stale.
+    ///
+    /// The first load is `FeedView`'s job — this only refreshes something already on screen, so
+    /// switching tabs doesn't wipe the feed back to a spinner every time.
+    func refreshIfStale() async {
+        guard hasLoadedOnce, !isLoading else { return }
+        guard let last = lastLoadedAt, Date().timeIntervalSince(last) > Self.staleAfter else { return }
+        await load()
     }
 
     func loadMore() async {
@@ -124,9 +156,12 @@ final class FeedViewModel: ObservableObject {
 
     // MARK: - Sharing (returns true on success)
 
+    /// Returns the created post so the caller can undo it — auto-share needs a handle on what it
+    /// just published, which a `Bool` can't give it.
     @discardableResult
     func shareWorkout(date: String, durationMin: Int, volumeKg: Double, totalSets: Int,
-                       uniqueExercises: Int, topLift: FeedTopLift?, pr: String?) async -> Bool {
+                       uniqueExercises: Int, topLift: FeedTopLift?, pr: String?,
+                       silent: Bool = false) async -> FeedPostResponse? {
         struct TopLiftRequest: Encodable { let name: String; let weight_kg: Double; let reps: Int }
         struct Payload: Encodable {
             let date: String
@@ -142,7 +177,7 @@ final class FeedViewModel: ObservableObject {
         let req = Request(payload: Payload(
             date: date, duration_min: durationMin, volume_kg: volumeKg,
             total_sets: totalSets, unique_exercises: uniqueExercises, top_lift: topReq, pr: pr))
-        return await createPost(req)
+        return await createPost(req, silent: silent)
     }
 
     @discardableResult
@@ -150,7 +185,7 @@ final class FeedViewModel: ObservableObject {
         struct Payload: Encodable { let exercise_name: String; let weight_kg: Double; let reps: Int; let e1rm: Double }
         struct Request: Encodable { let kind = "pr"; let payload: Payload }
         let req = Request(payload: Payload(exercise_name: exerciseName, weight_kg: weightKg, reps: reps, e1rm: e1rm))
-        return await createPost(req)
+        return await createPost(req) != nil
     }
 
     @discardableResult
@@ -167,14 +202,17 @@ final class FeedViewModel: ObservableObject {
         }
     }
 
-    private func createPost(_ body: some Encodable) async -> Bool {
+    /// `silent` suppresses the success haptic. An auto-shared workout posts without anyone
+    /// pressing anything, and a celebratory buzz for an action the lifter didn't take reads as
+    /// the app twitching.
+    private func createPost(_ body: some Encodable, silent: Bool = false) async -> FeedPostResponse? {
         do {
             let post: FeedPostResponse = try await ApiClient.shared.post("/feed", body: body)
             posts.insert(post, at: 0)
-            HapticManager.success()
-            return true
+            if !silent { HapticManager.success() }
+            return post
         } catch {
-            return false
+            return nil
         }
     }
 

@@ -11,23 +11,53 @@ struct PickedExercise: Hashable {
     var equipmentDedupeKey: String? = nil
     var equipmentBrandName: String? = nil
     var isGenericExercise: Bool = true
+    /// Set when the lifter answered the muscle check-off at pick time — e.g. chose "Rear delt" on a
+    /// Pec/Rear Delt station. `nil` leaves it to automatic resolution.
+    var muscleTargets: MuscleTargets? = nil
 }
 
 struct ExercisePickerView: View {
     // Callbacks (exactly one should be provided; presence determines mode)
-    var onPickSingle: ((PickedExercise) -> Void)? = nil
+    /// Return `true` to dismiss the sheet, `false` to keep it open — e.g. a caller that rejects the
+    /// pick (duplicate name) and wants to show its own alert instead of losing the sheet under it.
+    var onPickSingle: ((PickedExercise) -> Bool)? = nil
     var onConfirmMulti: (([PickedExercise]) -> Void)? = nil
     var prefilterBrandSlug: String? = nil
     var prefilterMachineName: String? = nil
     /// Split-day focus for Smart Sort. nil/empty when the picker is opened outside split building.
     var dayContext: DayContext = .empty
+    /// Optional content rendered at the top of this view's own content area — inside its
+    /// `NavigationView`, under its real title bar/Cancel button. A caller that wraps this view in an
+    /// external sibling VStack would push that title bar/Cancel down below whatever sits above it,
+    /// since this view brings its own `NavigationView`; this is the seam for adding content without
+    /// causing that regression. Used by `ExerciseSwapSheet` to surface substitution suggestions.
+    /// Defaults to nothing for every other call site.
+    var topContent: () -> AnyView = { AnyView(EmptyView()) }
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @StateObject private var vm = ExercisePickerViewModel()
     @Query(sort: \ExerciseDefinitionRecord.name) private var dbExercises: [ExerciseDefinitionRecord]
     @Query private var profiles: [UserProfileRecord]
+    @Query(sort: \GymRecord.createdAt) private var gyms: [GymRecord]
     private var equipmentPreference: EquipmentPreference { profiles.first?.equipmentPreference ?? .fullGym }
+
+    /// Read through `@AppStorage` rather than `AppViewModel` so the picker keeps its current
+    /// dependency surface — it's presented from a dozen places, several of which don't already
+    /// carry that environment object. `AppViewModel` owns the published value; the key is shared
+    /// via `GymDefaultsKey` so the two can't drift.
+    @AppStorage(GymDefaultsKey.activeGymID) private var activeGymID: String = ""
+    @AppStorage(GymDefaultsKey.learningEnabled) private var learningEnabled: Bool = false
+
+    /// What the app has learned the active gym has. Loaded ONCE per picker session in `.task`,
+    /// never as a recomputed `private var` — this view re-renders on every keystroke, and a
+    /// derived-per-render inventory is exactly the perf trap that kept the earlier version of this
+    /// feature unwired.
+    @State private var gymInventory: GymInventory = .unknown
+
+    /// True only when the feature is on, a gym is selected, AND we've actually learned something
+    /// about it. An unknown gym must bias nothing — see `GymInventory`.
+    private var gymAware: Bool { learningEnabled && gymInventory.isKnown }
 
     @State private var tab: Tab = .all
     @State private var query = ""
@@ -40,6 +70,7 @@ struct ExercisePickerView: View {
     @State private var selectedIDs: Set<String> = []
     @State private var selectedItems: [PickedExercise] = []
     @State private var machinePick: MachinePick? = nil
+    @State private var muscleAsk: MuscleAsk? = nil
     @State private var howToRow: ExerciseHowTo? = nil
     @State private var sortMode: ExerciseSortMode = .smart
     @State private var coverageExpanded = true
@@ -52,6 +83,15 @@ struct ExercisePickerView: View {
         var isMultiPick: Bool = false   // true when triggered from multi-select
     }
 
+    /// A pick held back until the lifter says which movement they're doing on a machine that supports
+    /// more than one.
+    private struct MuscleAsk: Identifiable {
+        let id = UUID()
+        let picked: PickedExercise
+        let record: EquipmentRecord
+        let isMultiPick: Bool
+    }
+
     private var isMultiSelect: Bool { onConfirmMulti != nil }
 
     enum Tab: String, CaseIterable { case all = "All", recent = "Recent", favorites = "Favorites" }
@@ -60,6 +100,46 @@ struct ExercisePickerView: View {
 
     private var localBrands: [String] {
         Array(Set(EquipmentDatabase.all.map(\.brandName))).sorted()
+    }
+
+    /// The machines the app has learned the active gym actually has, honoring whatever the lifter
+    /// is currently filtering by.
+    ///
+    /// Deliberately shown even on a plain browse with no query, unlike `prominentMachineResults` —
+    /// answering "what can I build here" without typing anything is the entire point of learning an
+    /// inventory. Built by walking the (small) stored inventory and resolving each entry through the
+    /// catalog's O(1) index, never by scanning all 1,697 records per render.
+    private var gymMachineResults: [EquipmentRecord] {
+        guard gymAware, tab == .all, localBrandFilter == nil else { return [] }
+        // Free-weight and bodyweight browsing belongs to the generic exercise list; a learned
+        // inventory has nothing useful to add there.
+        guard equipFilter == .all || equipFilter == .machine || equipFilter == .cable else { return [] }
+
+        let ordered = gymInventory.entries.sorted {
+            $0.timesSeen == $1.timesSeen ? $0.displayName < $1.displayName : $0.timesSeen > $1.timesSeen
+        }
+        var pool = ordered.compactMap { EquipmentDatabase.find(dedupeKey: $0.dedupeKey) }
+            .filter { !Self.excludedEquipmentTypes.contains($0.equipmentType) }
+
+        if equipFilter == .machine {
+            pool = pool.filter { !$0.equipmentType.lowercased().contains("cable") }
+        } else if equipFilter == .cable {
+            pool = pool.filter { $0.equipmentType.lowercased().contains("cable") }
+        }
+        if bodyPartFilter != .all {
+            let keywords = Self.bodyPartKeywords(bodyPartFilter)
+            pool = pool.filter { record in
+                record.bodyParts.contains { part in
+                    keywords.contains { part.lowercased().contains($0) }
+                }
+            }
+        }
+        if query.count >= 2 {
+            let tokens = ExerciseSearch.tokens(from: query)
+            let nq = ExerciseSearch.normalizedQuery(query)
+            pool = pool.filter { Self.machineScore($0, tokens: tokens, normalizedQuery: nq) != nil }
+        }
+        return pool
     }
 
     // EquipmentDatabase records are ONLY shown for Machine filter or when a brand is selected.
@@ -115,6 +195,15 @@ struct ExercisePickerView: View {
         }
     }
 
+    /// `prominentMachineResults` minus everything already listed under "At <gym>", so one machine
+    /// never shows up twice in the same list.
+    private var otherMachineResults: [EquipmentRecord] {
+        let gymShown = gymMachineResults
+        guard !gymShown.isEmpty else { return prominentMachineResults }
+        let shown = Set(gymShown.map(\.equipmentId))
+        return prominentMachineResults.filter { !shown.contains($0.equipmentId) }
+    }
+
     private static func bodyPartKeywords(_ filter: BodyPartFilter) -> [String] {
         switch filter {
         case .all:       return []
@@ -140,6 +229,7 @@ struct ExercisePickerView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
+                topContent()
                 tabPicker
                 filterArea
                 if dayContext.hasFocus && !coverageChips.isEmpty {
@@ -174,11 +264,14 @@ struct ExercisePickerView: View {
                 if let preMachine = prefilterMachineName {
                     query = preMachine
                 }
+                loadGymInventory()
             }
             .sheet(item: $machinePick) { pick in
                 MachineSelectionSheet(
                     exerciseName: pick.row.name,
-                    variants: pick.variants
+                    variants: pick.variants,
+                    gymDedupeKeys: gymAware ? gymInventory.dedupeKeys : [],
+                    gymName: gymInventory.gymName
                 ) { machine in
                     if pick.isMultiPick {
                         confirmMultiPick(row: pick.row, machine: machine)
@@ -188,19 +281,30 @@ struct ExercisePickerView: View {
                 }
             }
             .sheet(item: $howToRow) { ExerciseHowToSheet(howTo: $0) }
+            .sheet(item: $muscleAsk) { ask in
+                MuscleTargetSheet(
+                    title: ask.picked.name,
+                    record: ask.record,
+                    initial: EquipmentMuscleMap.targets(for: ask.record) ?? MuscleTargets()
+                ) { chosen in
+                    var picked = ask.picked
+                    picked.muscleTargets = chosen   // nil = they chose to leave it automatic
+                    commitResolved(picked)
+                }
+            }
         }
     }
 
     // MARK: Tab Picker
 
     private var tabPicker: some View {
-        Picker("Tab", selection: $tab) {
-            ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-        }
-        .pickerStyle(.segmented)
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
+        // Was `.pickerStyle(.segmented)`, whose grey selected capsule reads as stock UIKit and left
+        // the selection ambiguous against full-white unselected labels — the same problem fixed in
+        // Plan. Uses the shared control so both switchers look like one app.
+        ElosSegmentedControl(tabs: Tab.allCases, label: \.rawValue, selection: $tab)
+            .padding(.horizontal, Space.gutter)
+            .padding(.top, Space.s)
+            .padding(.bottom, Space.xs)
     }
 
     // MARK: Filter Area
@@ -234,21 +338,6 @@ struct ExercisePickerView: View {
                     chip(tag.rawValue, selected: bodyPartFilter == tag) { bodyPartFilter = tag; muscleFilter = "All" }
                 }
             }
-            HStack {
-                Spacer()
-                Menu {
-                    Picker("Sort", selection: $sortMode) {
-                        ForEach(ExerciseSortMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.arrow.down")
-                        Text(sortMode.rawValue)
-                    }
-                    .font(.caption).foregroundStyle(Color.tint)
-                }
-                .padding(.trailing, 16).padding(.vertical, 4)
-            }
             if bodyPartFilter != .all && availableMuscles.count > 1 {
                 Divider().padding(.leading, 16)
                 filterRow(label: "Muscle") {
@@ -265,16 +354,30 @@ struct ExercisePickerView: View {
                     }
                 }
             }
+            // Sort and the filter toggle were each alone in their own right-aligned row, stacking two
+            // near-empty lines on top of three chip rows — the filter chrome pushed the exercise list
+            // itself past halfway down the screen. One row, opposite ends, one line reclaimed.
             HStack {
+                Menu {
+                    Picker("Sort", selection: $sortMode) {
+                        ForEach(ExerciseSortMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                } label: {
+                    HStack(spacing: Space.xs) {
+                        Image(systemName: "arrow.up.arrow.down")
+                        Text(sortMode.rawValue)
+                    }
+                    .font(.elosCaption).foregroundStyle(Color.tint)
+                }
                 Spacer()
                 Button(showAdvancedFilters ? "Fewer filters" : "More filters") {
-                    withAnimation { showAdvancedFilters.toggle() }
+                    withAnimation(.elosQuick) { showAdvancedFilters.toggle() }
                 }
-                .font(.caption)
+                .font(.elosCaption)
                 .foregroundStyle(Color.tint)
-                .padding(.trailing, 16)
-                .padding(.vertical, 6)
             }
+            .padding(.horizontal, Space.gutter)
+            .padding(.vertical, Space.xs + 2)
         }
         .background(Color(.systemBackground))
     }
@@ -309,16 +412,8 @@ struct ExercisePickerView: View {
 
     // MARK: Coverage Strip
 
-    private var addedDayCandidates: [ExerciseCandidate] {
-        let ids = dayContext.addedExerciseIDs
-        let names = dayContext.addedExerciseNames   // already normalized
-        return dbExercises
-            .filter { ids.contains($0.id) || names.contains(MuscleTaxonomy.normalize($0.name)) }
-            .map { ExerciseCandidate(record: $0) }
-    }
-
     private var coverageChips: [CoverageChip] {
-        MuscleCoverage.chips(context: dayContext, addedCandidates: addedDayCandidates)
+        MuscleCoverage.chips(context: dayContext)
     }
 
     @ViewBuilder private var coverageStrip: some View {
@@ -390,7 +485,7 @@ struct ExercisePickerView: View {
         guard bodyPartFilter != .all else { return [] }
         let muscles = dbExercises
             .filter { BodyPartFilter.from(primaryMuscle: $0.primaryMuscle) == bodyPartFilter }
-            .map { $0.primaryMuscle.capitalized }
+            .map { $0.primaryMuscle.muscleDisplayName }
         return ["All"] + Array(Set(muscles)).sorted()
     }
 
@@ -479,7 +574,8 @@ struct ExercisePickerView: View {
         let inputs = RankingInputs(context: dayContext,
                                    personalization: PersonalizationProvider(signals: personalizationSignals),
                                    isEquipmentAvailable: { equipmentPreference.isAvailable(equipment: $0) },
-                                   query: query)
+                                   query: query,
+                                   gymEquipmentTypes: gymAware ? gymInventory.equipmentTypes : [])
         let rankedIDs = ExerciseRankingEngine.rank(candidates, inputs: inputs, mode: sortMode).map { $0.id }
         let byID = Dictionary(result.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         return rankedIDs.compactMap { byID[$0] }
@@ -533,13 +629,13 @@ struct ExercisePickerView: View {
                 emptyState(icon: "clock", title: "No recent exercises", subtitle: "Log a set to see exercises here.")
             } else if tab == .favorites && vm.favorites.isEmpty && !vm.isLoadingFavorites {
                 emptyState(icon: "star", title: "No favorites yet", subtitle: "Tap the star on any exercise to add it here.")
-            } else if (filtered.isEmpty || localBrandFilter != nil) && prominentMachineResults.isEmpty && query.isEmpty {
+            } else if (filtered.isEmpty || localBrandFilter != nil) && prominentMachineResults.isEmpty && gymMachineResults.isEmpty && query.isEmpty {
                 emptyState(
                     icon: "magnifyingglass",
                     title: "No exercises match your filters.",
                     subtitle: "Try clearing filters or searching by name."
                 )
-            } else if (filtered.isEmpty || localBrandFilter != nil) && prominentMachineResults.isEmpty && !query.isEmpty {
+            } else if (filtered.isEmpty || localBrandFilter != nil) && prominentMachineResults.isEmpty && gymMachineResults.isEmpty && !query.isEmpty {
                 emptyState(
                     icon: "magnifyingglass",
                     title: "No results for \"\(query)\"",
@@ -549,7 +645,29 @@ struct ExercisePickerView: View {
                 List {
                     // Machine filter = EquipmentDatabase only; all other filters = generic exercises
                     let machineMode = equipFilter == .machine
-                    let hasMachines = !prominentMachineResults.isEmpty
+                    let gymMachines = gymMachineResults
+                    let otherMachines = otherMachineResults
+                    let hasMachines = !otherMachines.isEmpty
+
+                    // What this gym is known to have, pinned above everything else. Only rendered
+                    // when the feature is on and something has actually been learned — an unknown
+                    // gym shows nothing rather than an empty "your gym has:" promise.
+                    if !gymMachines.isEmpty {
+                        Section {
+                            ForEach(gymMachines) { machine in machineRowView(machine, atGym: true) }
+                        } header: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "building.2")
+                                Text("At \(gymInventory.gymName.isEmpty ? "your gym" : gymInventory.gymName)")
+                                    .lineLimit(1)
+                                Spacer()
+                                Text("\(gymMachines.count)")
+                            }
+                            .font(.caption2).fontWeight(.semibold)
+                            .foregroundStyle(Color.tint)
+                            .textCase(nil)
+                        }
+                    }
 
                     // Generic exercise rows (cable/free weight/bodyweight/all modes)
                     // Hidden when a brand is selected — brand mode shows only that brand's machines.
@@ -571,7 +689,7 @@ struct ExercisePickerView: View {
                     // Equipment records (Machine filter, or brand selected in any mode)
                     if hasMachines {
                         Section {
-                            ForEach(prominentMachineResults) { machine in
+                            ForEach(otherMachines) { machine in
                                 machineRowView(machine)
                             }
                         } header: {
@@ -604,8 +722,20 @@ struct ExercisePickerView: View {
         }
     }
 
-    private func machineRowView(_ machine: EquipmentRecord) -> some View {
-        Button {
+    /// `atGym` is passed explicitly by the "At <gym>" section rather than recomputed from the
+    /// inventory per row: rows in the lower section can also be at the gym in principle, but they're
+    /// filtered out of it, so a lookup here would only ever confirm what the caller already knows.
+    private func machineRowView(_ machine: EquipmentRecord, atGym: Bool = false) -> some View {
+        // Deselecting has to short-circuit before the muscle sheet — otherwise tapping a selected
+        // ambiguous machine would re-ask instead of removing it.
+        let isSelected = selectedIDs.contains(machine.equipmentId)
+        return Button {
+            HapticManager.impact(.light)
+            if isMultiSelect && isSelected {
+                selectedIDs.remove(machine.equipmentId)
+                selectedItems.removeAll { $0.id == machine.equipmentId }
+                return
+            }
             let picked = PickedExercise(
                 id: machine.equipmentId,
                 name: "\(machine.brandName) \(machine.machineName)",
@@ -614,24 +744,13 @@ struct ExercisePickerView: View {
                 equipmentBrandName: machine.brandName,
                 isGenericExercise: false
             )
-            if isMultiSelect {
-                if selectedIDs.contains(machine.equipmentId) {
-                    selectedIDs.remove(machine.equipmentId)
-                    selectedItems.removeAll { $0.id == machine.equipmentId }
-                } else {
-                    selectedIDs.insert(machine.equipmentId)
-                    selectedItems.append(picked)
-                }
-            } else {
-                onPickSingle?(picked)
-                dismiss()
-            }
+            commit(picked, machine: machine)
         } label: {
             HStack(spacing: 10) {
                 if isMultiSelect {
-                    Image(systemName: selectedIDs.contains(machine.equipmentId) ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(selectedIDs.contains(machine.equipmentId) ? Color.tint : Color.secondary)
-                        .font(.system(size: 20))
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(isSelected ? Color.tint : Color.secondary)
+                        .font(.title3)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(machine.brandName) \(machine.machineName)")
@@ -639,9 +758,17 @@ struct ExercisePickerView: View {
                         .font(.subheadline)
                     HStack(spacing: 6) {
                         machineBadge(machine.equipmentType)
-                        if !machine.modelSeries.isEmpty {
-                            Text(machine.modelSeries)
+                        if atGym { atGymBadge }
+                        // What it trains, so the picker is honest before the exercise is even added.
+                        if let t = EquipmentMuscleMap.targets(for: machine) {
+                            Text(t.summary)
                                 .font(.caption2).foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        if EquipmentMuscleMap.isAmbiguous(machine) {
+                            Text("choose movement")
+                                .font(.caption2).fontWeight(.semibold)
+                                .foregroundStyle(Color.warn)
                         }
                     }
                 }
@@ -649,6 +776,69 @@ struct ExercisePickerView: View {
             }
             .padding(.vertical, 2)
         }
+    }
+
+    /// Finish a pick, asking which movement first when the machine supports several that train
+    /// different muscle groups (a Pec/Rear Delt station). Everything else commits straight through.
+    private func commit(_ picked: PickedExercise, machine: EquipmentRecord?) {
+        // Only ask when the machine *is* the exercise. Picking the "Pec Fly" exercise and then a
+        // Pec/Rear Delt machine to do it on already states the intent — don't re-ask.
+        if let machine, picked.muscleTargets == nil, picked.id == machine.equipmentId,
+           EquipmentMuscleMap.isAmbiguous(machine) {
+            muscleAsk = MuscleAsk(picked: picked, record: machine, isMultiPick: isMultiSelect)
+            return
+        }
+        commitResolved(picked)
+    }
+
+    /// Add the pick, no further questions. Separate from `commit` so answering the muscle sheet can't
+    /// loop back into asking again.
+    private func commitResolved(_ picked: PickedExercise) {
+        noteMachineForActiveGym(picked)
+        if isMultiSelect {
+            selectedIDs.insert(picked.id)
+            selectedItems.append(picked)
+        } else if onPickSingle?(picked) ?? true {
+            dismiss()
+        }
+    }
+
+    // MARK: - Learned gym equipment
+
+    private func loadGymInventory() {
+        guard learningEnabled, !activeGymID.isEmpty, let ownerID = profiles.first?.ownerID else {
+            gymInventory = .unknown
+            return
+        }
+        let name = gyms.first { $0.id == activeGymID }?.name ?? ""
+        gymInventory = GymEquipmentStore.inventory(gymID: activeGymID, gymName: name,
+                                                   ownerID: ownerID, context: modelContext)
+    }
+
+    /// Picking a specific machine while a gym is selected is the app's main way of learning what
+    /// that gym has — this is the single choke point every pick in this view funnels through, so
+    /// templates, splits, and mid-session adds are all covered without chasing each save site.
+    ///
+    /// Recorded as `planned`, the weakest source: putting a machine in a plan says you intend to use
+    /// it there, which is good evidence but not proof. Actually completing a set on it promotes the
+    /// same entry to `logged`.
+    private func noteMachineForActiveGym(_ picked: PickedExercise) {
+        guard learningEnabled, !activeGymID.isEmpty,
+              let key = picked.equipmentDedupeKey, !key.isEmpty,
+              let ownerID = profiles.first?.ownerID, !ownerID.isEmpty else { return }
+        GymEquipmentStore.record(dedupeKey: key, equipmentId: picked.equipmentId,
+                                 gymID: activeGymID, source: .planned,
+                                 ownerID: ownerID, context: modelContext)
+        loadGymInventory()
+    }
+
+    private var atGymBadge: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "checkmark.circle.fill")
+            Text("At your gym")
+        }
+        .font(.caption2).fontWeight(.semibold)
+        .foregroundStyle(Color.good)
     }
 
     private func machineBadge(_ type: String) -> some View {
@@ -672,7 +862,7 @@ struct ExercisePickerView: View {
                 if isMultiSelect {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(isSelected ? Color.tint : Color.secondary)
-                        .font(.system(size: 20))
+                        .font(.title3)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.name)
@@ -680,7 +870,7 @@ struct ExercisePickerView: View {
                         .font(.subheadline)
                     HStack(spacing: 6) {
                         equipmentBadge(row.equipment)
-                        Text(row.primaryMuscle.capitalized)
+                        Text(row.primaryMuscle.muscleDisplayName)
                             .font(.caption2).foregroundStyle(.secondary)
                         if row.isCustom {
                             Text("Custom")
@@ -705,6 +895,7 @@ struct ExercisePickerView: View {
                         Image(systemName: "info.circle").foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("How to perform this exercise")
                 }
                 Button {
                     HapticManager.impact(.light)
@@ -712,7 +903,7 @@ struct ExercisePickerView: View {
                 } label: {
                     Image(systemName: isFav ? "star.fill" : "star")
                         .foregroundStyle(isFav ? .yellow : .secondary)
-                        .font(.system(size: 16))
+                        .font(.callout)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isFav ? "Remove from favorites" : "Add to favorites")
@@ -748,18 +939,14 @@ struct ExercisePickerView: View {
     }
 
     private func confirmPick(row: Row, machine: EquipmentRecord?) {
-        var picked = PickedExercise(id: row.id, name: row.name)
-        if let m = machine {
-            picked.equipmentId        = m.equipmentId
-            picked.equipmentDedupeKey = m.dedupeKey
-            picked.equipmentBrandName = m.brandName
-            picked.isGenericExercise  = false
-        }
-        onPickSingle?(picked)
-        dismiss()
+        commit(pickedExercise(row: row, machine: machine), machine: machine)
     }
 
     private func confirmMultiPick(row: Row, machine: EquipmentRecord?) {
+        commit(pickedExercise(row: row, machine: machine), machine: machine)
+    }
+
+    private func pickedExercise(row: Row, machine: EquipmentRecord?) -> PickedExercise {
         var picked = PickedExercise(id: row.id, name: row.name)
         if let m = machine {
             picked.equipmentId        = m.equipmentId
@@ -767,8 +954,7 @@ struct ExercisePickerView: View {
             picked.equipmentBrandName = m.brandName
             picked.isGenericExercise  = false
         }
-        selectedIDs.insert(picked.id)
-        selectedItems.append(picked)
+        return picked
     }
 
     private var multiSelectFooter: some View {
@@ -799,7 +985,7 @@ struct ExercisePickerView: View {
     private func emptyState(icon: String, title: String, subtitle: String) -> some View {
         VStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 36))
+                .font(.largeTitle)
                 .foregroundStyle(.secondary)
             Text(title).font(.subheadline).foregroundStyle(.secondary)
             Text(subtitle).font(.caption).foregroundStyle(.secondary)
@@ -886,4 +1072,14 @@ enum MovementFilter: String, CaseIterable {
     case carry      = "Carry"
     case rotation   = "Rotation"
     case isolation  = "Isolation"
+}
+
+// MARK: - Muscle label
+
+extension String {
+    /// Catalog muscle keys are snake_case (`front_delts`, `hip_flexors`). Plain `.capitalized`
+    /// keeps the underscore, so the picker was showing "Front_Delts" to users.
+    var muscleDisplayName: String {
+        replacingOccurrences(of: "_", with: " ").capitalized
+    }
 }

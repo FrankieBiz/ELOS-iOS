@@ -71,7 +71,7 @@ struct SplitSubscribeSheet: View {
     private var conflictSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("You already have an active split")
-                .font(.system(size: 22, weight: .bold))
+                .font(.system(.title2, weight: .bold))
             if let name = vm.activeSplit?.name {
                 Text("Currently on: \(name)")
                     .font(.subheadline).foregroundStyle(.secondary)
@@ -117,7 +117,7 @@ struct SplitSubscribeSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Choose Your Training Days")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(.title2, weight: .bold))
                 Text("Tap days to toggle. Minimum 2 training days.")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
@@ -131,9 +131,9 @@ struct SplitSubscribeSheet: View {
                         }
                     } label: {
                         VStack(spacing: 4) {
-                            Text(day.label).font(.system(size: 11, weight: .semibold))
+                            Text(day.label).font(.system(.caption, weight: .semibold))
                             Image(systemName: selectedWeekdays.contains(day.value) ? "dumbbell.fill" : "moon.fill")
-                                .font(.system(size: 12))
+                                .font(.caption)
                                 .foregroundStyle(selectedWeekdays.contains(day.value) ? Color.white : Color.secondary)
                         }
                         .frame(maxWidth: .infinity).padding(.vertical, 10)
@@ -153,14 +153,14 @@ struct SplitSubscribeSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Day Order")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(.title3, weight: .bold))
                 Text("Reorder to match your preferred rotation.")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             ForEach(orderedDays.indices, id: \.self) { i in
                 HStack(spacing: 12) {
                     Text("\(i + 1)")
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .font(.system(.footnote, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 18)
                     RoundedRectangle(cornerRadius: 2)
@@ -174,23 +174,25 @@ struct SplitSubscribeSheet: View {
                             moveDay(from: i, by: -1)
                         } label: {
                             Image(systemName: "chevron.up")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(.subheadline, weight: .semibold))
                                 .frame(width: 36, height: 36)
                                 .foregroundStyle(i == 0 ? Color.secondary.opacity(0.3) : Color.tint)
                         }
                         .buttonStyle(.plain)
                         .disabled(i == 0)
+                        .accessibilityLabel("Collapse day")
 
                         Button {
                             moveDay(from: i, by: 1)
                         } label: {
                             Image(systemName: "chevron.down")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(.subheadline, weight: .semibold))
                                 .frame(width: 36, height: 36)
                                 .foregroundStyle(i == orderedDays.count - 1 ? Color.secondary.opacity(0.3) : Color.tint)
                         }
                         .buttonStyle(.plain)
                         .disabled(i == orderedDays.count - 1)
+                        .accessibilityLabel("Expand day")
                     }
                 }
                 .padding(.horizontal, 14).padding(.vertical, 10)
@@ -218,7 +220,7 @@ struct SplitSubscribeSheet: View {
                     ProgressView().tint(.white)
                 } else {
                     Text("Start \(recommendation.name)")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(.callout, weight: .bold))
                         .foregroundStyle(.white)
                 }
             }

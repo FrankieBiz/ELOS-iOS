@@ -10,7 +10,7 @@ struct NameStepView: View {
         VStack(alignment: .leading, spacing: 28) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("What's your name?")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(.title, weight: .bold))
                 Text("We'll use this to personalize your experience.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -29,7 +29,7 @@ struct NameStepView: View {
                         .onSubmit { focused = .last }
                         .padding(14)
                         .background(Color(.secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -44,7 +44,7 @@ struct NameStepView: View {
                         .onSubmit { focused = .username }
                         .padding(14)
                         .background(Color(.secondarySystemGroupedBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
 
                 usernameField
@@ -79,7 +79,7 @@ struct NameStepView: View {
             }
             .padding(14)
             .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             Text(statusMessage)
                 .font(.caption)
@@ -92,10 +92,10 @@ struct NameStepView: View {
         switch vm.usernameStatus {
         case .checking:
             ProgressView().controlSize(.small)
-        case .available:
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.good)
-        case .taken, .invalid:
-            Image(systemName: "xmark.circle.fill").foregroundStyle(Color.bad)
+        case .available, .taken, .invalid:
+            Image(systemName: vm.usernameStatus == .available ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .foregroundStyle(vm.usernameStatus == .available ? Color.good : Color.bad)
+                .contentTransition(.symbolEffect(.replace))
         case .unknown:
             Image(systemName: "wifi.slash").foregroundStyle(.secondary)
         case .empty:

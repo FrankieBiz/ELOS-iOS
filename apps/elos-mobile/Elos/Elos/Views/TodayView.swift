@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 // MARK: - Schedule data model (local to Today)
 private struct ScheduleRow: Identifiable {
@@ -16,25 +17,93 @@ private struct ScheduleRow: Identifiable {
 // MARK: - Main View
 struct TodayView: View {
     @EnvironmentObject var vm: AppViewModel
+    @EnvironmentObject var trainingContext: TrainingContext
+    @EnvironmentObject var layout: LayoutStore
+    @Environment(\.openTab) private var openTab
+    // Existence check only (not the switching logic itself, which GymSwitcherControl owns) — needed
+    // so an empty gym list doesn't leave a blank padded card floating in the middle of the screen.
+    @Query private var gyms: [GymRecord]
+
+    /// Whether a widget has anything to show right now. Kept here rather than in the layout store
+    /// because it's a fact about today's data, not a preference — and because only this screen knows
+    /// that "gym switcher" needs both an active split *and* at least one saved gym.
+    private func isAvailable(_ section: LayoutSection) -> Bool {
+        switch section {
+        case .todayRecovery:    return vm.healthSnapshot.recoveryHint != nil
+        case .todayGymSwitcher: return vm.activeSplit != nil && !gyms.isEmpty
+        case .todayNextWorkout: return vm.nextTrainingDay != nil
+        case .todayLatestPR:    return !vm.personalRecords.isEmpty
+        case .todayBodyWeight:  return (vm.healthSnapshot.bodyWeightKg ?? 0) > 0
+        case .todayMuscleFocus: return vm.muscleVolume.contains { $0.current > 0 }
+        default:                return true
+        }
+    }
 
     var body: some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 24) {
-                headerSection
-                if let hint = vm.healthSnapshot.recoveryHint {
-                    recoveryHintCard(hint)
+            // The whole screen is now assembled from the stored arrangement rather than a fixed
+            // list — order, width and visibility all come from `LayoutStore`. What used to be the
+            // hard-coded "quick stats" grid is three independent half/full-width widgets, which is
+            // why sleep and volume can now be split up, swapped, or sent to the bottom.
+            SectionStack(screen: .today, spacing: 24, isAvailable: isAvailable) { section in
+                switch section {
+                case .todayGreeting:    headerSection
+                case .todayRecovery:    recoveryHintCard(vm.healthSnapshot.recoveryHint ?? "")
+                case .todayGymSwitcher: gymSwitcherCard
+                case .todayBrief:       DailyBriefCard()
+                case .todayHabits:      habitsSection
+                case .todaySchedule:    scheduleSection
+                case .todayUpcoming:    upcomingDueSection
+                case .todaySleep:       sleepCard
+                case .todayGymVolume:   gymVolCard
+                case .todayHydration:   hydrationCard
+
+                case .todayStreak:            StreakWidget()
+                case .todaySessionsThisWeek:  SessionsThisWeekWidget()
+                case .todayWeeklyVolume:      WeeklyVolumeWidget()
+                case .todayNextWorkout:       NextWorkoutWidget()
+                case .todayLatestPR:          LatestPRWidget()
+                case .todayReadiness:         ReadinessWidget()
+                case .todayBodyWeight:        BodyWeightWidget()
+                case .todayMuscleFocus:       MuscleFocusWidget()
+
+                default: EmptyView()
                 }
-                DailyBriefCard()
-                habitsSection
-                scheduleSection
-                upcomingDueSection
-                quickStatsGrid
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 20)
+            .padding(.horizontal, Space.gutter)
+            .padding(.top, Space.xl)
             .padding(.bottom, 120)
         }
         .scrollIndicators(.hidden)
+        .elosPageBackground()
+        // This screen has a custom header instead of a navigation bar, so nothing was covering the
+        // status bar: scrolled content ran straight into the clock and became unreadable. A blur
+        // pinned over the top safe area lets content pass *behind* it, which is what the system
+        // toolbar would have done.
+        .overlay(alignment: .top) { statusBarScrim }
+    }
+
+    @ViewBuilder
+    private var gymSwitcherCard: some View {
+        // Reachable from the screen actually opened every day, instead of three taps deep into a
+        // specific split's detail view — switching gyms changes what today's workout actually is,
+        // and this used to be undiscoverable from here.
+        if let split = vm.activeSplit {
+            GymSwitcherControl(split: split)
+                .padding(Space.card)
+                .elosCard()
+        }
+    }
+
+    private var statusBarScrim: some View {
+        GeometryReader { proxy in
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .frame(height: proxy.safeAreaInsets.top)
+                .ignoresSafeArea(edges: .top)
+                .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .allowsHitTesting(false)
     }
 
     // MARK: Recovery hint (from Apple Health resting HR vs baseline)
@@ -46,35 +115,51 @@ struct TodayView: View {
         }
         .padding(14)
         .background(Color.warn.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // MARK: Header
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(vm.todayDateString)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(vm.greeting)
-                .font(.largeTitle)
-                .fontWeight(.bold)
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(vm.todayDateString)
+                    .elosSectionLabel()
+                // largeTitle + a two-line greeting was the single biggest waste of space in the app.
+                // One line, a step down the ramp, and it scales rather than wraps for long names.
+                Text(vm.greeting)
+                    .font(.title).fontWeight(.bold)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+            .accessibilityElement(children: .combine)
+
+            Spacer(minLength: Space.s)
+
+            // Today is the one screen with no navigation bar to hang a toolbar item off, so the
+            // entry point rides in the header instead.
+            CustomizeScreenButton(screen: .today)
         }
     }
 
     // MARK: Habits
     private var habitsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.m) {
             HStack {
-                Text("HABITS · \(vm.doneHabits)/\(vm.habits.count)")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
+                // With no habits yet this read "HABITS · 0/0" beside an empty ring stranded at the
+                // far right — a progress gauge for nothing, and a count that looks like a failure
+                // rather than an invitation. Both only appear once there's something to track.
+                Text(vm.habits.isEmpty ? "HABITS" : "HABITS · \(vm.doneHabits)/\(vm.habits.count)")
+                    .elosSectionLabel()
                 Spacer()
-                SmallRingView(
-                    progress: vm.habits.isEmpty ? 0 : Double(vm.doneHabits) / Double(vm.habits.count),
-                    color: .mHabits,
-                    size: 28
-                )
+                if !vm.habits.isEmpty {
+                    ProgressRing(
+                        progress: Double(vm.doneHabits) / Double(vm.habits.count),
+                        color: .mHabits,
+                        lineWidth: 3,
+                        size: 28
+                    )
+                    .accessibilityLabel("\(vm.doneHabits) of \(vm.habits.count) habits done")
+                }
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -87,17 +172,17 @@ struct TodayView: View {
                     Button {
                         vm.showingAddHabit = true
                     } label: {
-                        HStack(spacing: 6) {
+                        HStack(spacing: Space.xs + 2) {
                             Image(systemName: "plus")
-                                .font(.system(size: 14, weight: .semibold))
-                            Text("Add")
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.system(.footnote, weight: .semibold))
+                            Text(vm.habits.isEmpty ? "Add your first habit" : "Add")
+                                .font(.system(.footnote, weight: .medium))
                         }
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .padding(.horizontal, Space.l)
+                        .padding(.vertical, Space.m)
+                        .background(Color(.secondarySystemGroupedBackground),
+                                    in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }
@@ -163,6 +248,7 @@ struct TodayView: View {
                         ScheduleRowView(row: row) {
                             if row.isCTA {
                                 vm.prepareExercisesForToday()
+                                trainingContext.startSession(activeSplit: vm.activeSplit)
                                 vm.showingSession = true
                             }
                         }
@@ -183,11 +269,14 @@ struct TodayView: View {
             VStack(spacing: 0) {
                 let pending = vm.assignments.filter { !$0.done }.prefix(3)
                 if pending.isEmpty {
-                    Text("All caught up! 🎉")
-                        .font(.subheadline)
+                    // "All caught up! 🎉" — a party popper and an exclamation mark for the routine
+                    // state of having no homework due. Stated plainly it reads as information
+                    // rather than the app congratulating you.
+                    Label("Nothing due", systemImage: "checkmark.circle")
+                        .font(.elosBody)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
-                        .padding(16)
+                        .padding(Space.gutter)
                 } else {
                     ForEach(Array(pending.enumerated()), id: \.element.id) { idx, assign in
                         AssignmentRow(assign: assign) {
@@ -198,7 +287,9 @@ struct TodayView: View {
                 }
                 Divider()
                 Button {
-                    vm.selectedTab = .plan
+                    // Plan ships hidden, so this usually points at a tab that isn't in the bar.
+                    // `openTab` decides what that means; see `OpenTabAction`.
+                    openTab(.plan)
                 } label: {
                     HStack {
                         Text("View all assignments")
@@ -218,16 +309,10 @@ struct TodayView: View {
     }
 
     // MARK: Quick Stats
-    private var quickStatsGrid: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("QUICK STATS")
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                sleepCard
-                gymVolCard
-                hydrationCard
-            }
-        }
-    }
+    //
+    // These were a fixed "QUICK STATS" grid — sleep and volume paired, hydration full width. They're
+    // three independent widgets now, each carrying its own half/full width preference, so the same
+    // default arrangement falls out of `SectionRowPacker` while any other one is a drag away.
 
     private var sleepCard: some View {
         Button {
@@ -262,22 +347,27 @@ struct TodayView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
-            .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .elosCard()
         }
         .buttonStyle(.plain)
     }
 
     private var gymVolCard: some View {
+        // Three states, because the number means something different in each. Previously it showed only
+        // the live draft, so it read "0 — tap to train" right after you'd finished a workout.
         StatCard(color: .mGym, label: "GYM VOL",
                  value: gymVolString,
-                 sub: "\(vm.weightUnit.label) this session") {
-            vm.selectedTab = .train
+                 sub: {
+                     if vm.sessionVolumeKg > 0 { return "\(vm.weightUnit.label) this session" }
+                     if vm.todayVolumeKg > 0   { return "\(vm.weightUnit.label) today" }
+                     return "\(vm.weightUnit.label) — tap to train"
+                 }()) {
+            openTab(.train)
         }
     }
 
     private var gymVolString: String {
-        let vol = vm.weightUnit.fromKg(vm.sessionVolumeKg)
+        let vol = vm.weightUnit.fromKg(vm.todayVolumeKg)
         if vol >= 1000 { return String(format: "%.1fk", vol / 1000) }
         return String(format: "%.0f", vol)
     }
@@ -308,7 +398,7 @@ struct TodayView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Color.mNutri.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         .buttonStyle(.plain)
                 }
             }
@@ -321,23 +411,22 @@ struct TodayView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Color(.tertiarySystemFill))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         .buttonStyle(.plain)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .elosCard()
     }
 
     // MARK: Helpers
+
+    /// Routed through the shared modifier rather than restating the font here, so the accent-headers
+    /// preference reaches this screen's headers along with everywhere else's.
     private func sectionHeader(_ text: String) -> some View {
-        Text(text)
-            .font(.caption)
-            .fontWeight(.semibold)
-            .foregroundStyle(.secondary)
+        Text(text).elosSectionLabel()
     }
 
     private func qualityLabel(_ q: Int) -> String {
@@ -381,8 +470,7 @@ private struct StatCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
-            .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .elosCard()
         }
         .buttonStyle(.plain)
     }
@@ -407,26 +495,26 @@ private struct HabitPillView: View {
                     if habit.done {
                         Circle().fill(Color.tint).frame(width: 22, height: 22)
                         Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(.caption2, weight: .bold))
                             .foregroundStyle(.white)
                     }
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(habit.label)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(.footnote, weight: .medium))
                         .foregroundStyle(.primary)
                     Text("\(habit.streak)d streak")
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .font(.elosNumeric(.caption, weight: .regular))
                         .foregroundStyle(.secondary)
                 }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(habit.done ? Color.tintSoft : Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .shadow(color: .black.opacity(0.04), radius: 3, y: 1)
             .scaleEffect(pressed ? 0.96 : 1)
-            .animation(.easeOut(duration: 0.1), value: pressed)
+            .animation(.elosPress, value: pressed)
         }
         .buttonStyle(.plain)
         .simultaneousGesture(
@@ -446,7 +534,7 @@ private struct ScheduleRowView: View {
         Button(action: onTap) {
             HStack(spacing: 12) {
                 Text(row.time)
-                    .font(.system(size: 13, weight: .regular, design: .monospaced))
+                    .font(.elosNumeric(.footnote, weight: .regular))
                     .foregroundStyle(.secondary)
                     .frame(width: 44, alignment: .leading)
 
@@ -467,7 +555,7 @@ private struct ScheduleRowView: View {
 
                 if row.duration != "—" {
                     Text(row.duration)
-                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .font(.elosNumeric(.caption, weight: .regular))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -494,7 +582,7 @@ private struct AssignmentRow: View {
                         .frame(width: 24, height: 24)
                     if assign.done {
                         Circle().fill(Color.good).frame(width: 24, height: 24)
-                        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                        Image(systemName: "checkmark").font(.system(.caption2, weight: .bold)).foregroundStyle(.white)
                     }
                 }
 
@@ -519,21 +607,3 @@ private struct AssignmentRow: View {
     }
 }
 
-// MARK: - Small Ring
-private struct SmallRingView: View {
-    let progress: Double
-    let color: Color
-    let size: CGFloat
-
-    var body: some View {
-        ZStack {
-            Circle().stroke(color.opacity(0.15), lineWidth: 3)
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(.easeInOut(duration: 0.6), value: progress)
-        }
-        .frame(width: size, height: size)
-    }
-}
